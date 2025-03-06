@@ -4,15 +4,20 @@ import { useState } from 'react';
 import { addQuestion } from '@/lib/questions';
 
 interface QuestionFormProps {
-  userEmail: string;
+  userIdentifier?: string;
+  classCode: string;
 }
 
-export default function QuestionForm({ userEmail }: QuestionFormProps) {
+export default function QuestionForm({ 
+  userIdentifier = 'student',
+  classCode 
+}: QuestionFormProps) {
   const [question, setQuestion] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!question.trim()) {
@@ -20,18 +25,27 @@ export default function QuestionForm({ userEmail }: QuestionFormProps) {
       return;
     }
     
-    // Add the question
-    addQuestion(question, userEmail);
+    setIsSubmitting(true);
     
-    // Clear the form and show success message
-    setQuestion('');
-    setError('');
-    setSuccess(true);
-    
-    // Hide success message after 3 seconds
-    setTimeout(() => {
-      setSuccess(false);
-    }, 3000);
+    try {
+      // Add the question
+      await addQuestion(question, userIdentifier, classCode);
+      
+      // Clear the form and show success message
+      setQuestion('');
+      setError('');
+      setSuccess(true);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Error submitting question:', error);
+      setError('Failed to submit question. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -67,9 +81,10 @@ export default function QuestionForm({ userEmail }: QuestionFormProps) {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={isSubmitting}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-gray-400"
           >
-            Submit Question
+            {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>
         </div>
       </form>

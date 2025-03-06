@@ -4,16 +4,18 @@ A web application for students to anonymously ask questions to their professors 
 
 ## Features
 
-- **User Authentication**: Simple email/password authentication
+- **Anonymous Questions**: Students can ask questions without revealing their identity to others
 - **Professor Interface**: Create class codes, view and manage student questions
 - **Student Interface**: Join classes using codes, submit anonymous questions
 - **Real-time Updates**: Questions appear in real-time for professors
+- **Cross-Device Support**: Works across multiple devices with Firebase integration
 
 ## Technology Stack
 
 - **Frontend**: Next.js with React and TypeScript
 - **Styling**: Tailwind CSS
-- **State Management**: React Hooks and localStorage (no database required)
+- **Database**: Firebase Firestore for real-time data synchronization
+- **State Management**: React Hooks
 
 ## Getting Started
 
@@ -21,6 +23,7 @@ A web application for students to anonymously ask questions to their professors 
 
 - Node.js (v14 or later)
 - npm or yarn
+- Firebase account (for production use)
 
 ### Installation
 
@@ -37,37 +40,45 @@ npm install
 yarn install
 ```
 
-3. Start the development server
+3. Configure Firebase
+   - Create a Firebase project at [https://console.firebase.google.com/](https://console.firebase.google.com/)
+   - Enable Firestore database
+   - Replace the Firebase configuration in `src/lib/firebase.ts` with your own
+
+4. Start the development server
 ```bash
 npm run dev
 # or
 yarn dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Usage
 
-1. **Login**: Use any email/password combination (no actual authentication in this demo)
-2. **Professor**: Select "Professor" role to create a class code
-3. **Student**: Select "Student" role to join a class using a code
+1. **Select Role**: Choose whether you are a student or professor
+2. **Professor**: You'll automatically get a class code to share with students
+3. **Student**: Enter a class code to join a class
 4. **Ask Questions**: Students can submit questions anonymously
 5. **View Questions**: Professors can see all questions in real-time
 
+## How Anonymity Works
+
+The application preserves student anonymity through several mechanisms:
+
+1. **No Personal Information**: Questions are stored without any identifying information
+2. **Separate Collections**: Questions are stored in a global collection without user IDs
+3. **User-Specific Tracking**: A separate collection tracks which questions belong to which user, but this information is only accessible to that specific user
+4. **Unique IDs**: Users are identified by randomly generated UUIDs rather than personal information
+
 ## Project Structure
 
-- `src/app/page.tsx` - Login page
+- `src/app/page.tsx` - Role selection page
 - `src/app/professor/page.tsx` - Professor dashboard
 - `src/app/student/page.tsx` - Student dashboard
-- `src/app/layout.tsx` - Main layout component
-- `src/app/globals.css` - Global styles
-
-## Notes
-
-This application uses localStorage for data persistence, which means:
-- Data is stored only in the browser
-- Data will be lost if the browser storage is cleared
-- In a production environment, you would want to use a proper database
+- `src/components/` - Reusable UI components
+- `src/lib/` - Utility functions and Firebase integration
+- `src/types/` - TypeScript type definitions
 
 ## License
 

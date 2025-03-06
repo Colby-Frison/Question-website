@@ -6,8 +6,8 @@ import Navbar from '@/components/Navbar';
 import JoinClass from '@/components/JoinClass';
 import QuestionForm from '@/components/QuestionForm';
 import QuestionList from '@/components/QuestionList';
-import { logout, getCurrentUser, isStudent } from '@/lib/auth';
-import { getUserQuestions } from '@/lib/questions';
+import { clearUserType, isStudent, getUserId } from '@/lib/auth';
+import { listenForUserQuestions } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
 
@@ -16,60 +16,82 @@ export default function StudentPage() {
   const [classCode, setClassCode] = useState('');
   const [joined, setJoined] = useState(false);
   const [myQuestions, setMyQuestions] = useState<Question[]>([]);
-  const [user, setUser] = useState<{ email: string; userType: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [studentId, setStudentId] = useState('');
 
   useEffect(() => {
-    // Check if user is logged in and is a student
+    // Check if user is a student
     if (!isStudent()) {
       router.push('/');
       return;
     }
 
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
+    const userId = getUserId();
+    setStudentId(userId);
 
-    // Check if student has already joined a class
-    const joinedClass = getJoinedClass();
-    if (joinedClass) {
-      setClassCode(joinedClass);
-      setJoined(true);
-    }
-
-    // Load student's questions from localStorage
-    if (currentUser) {
-      loadQuestions(currentUser.email);
-    }
-
-    // Set up interval to check for new questions
-    const interval = setInterval(() => {
-      if (currentUser) {
-        loadQuestions(currentUser.email);
+    const checkJoinedClass = async () => {
+      try {
+        // Check if student has already joined a class
+        const joinedClass = await getJoinedClass(userId);
+        
+        if (joinedClass) {
+          setClassCode(joinedClass);
+          setJoined(true);
+          
+          // Set up listener for student's questions
+          const unsubscribe = listenForUserQuestions(userId, joinedClass, (questions) => {
+            setMyQuestions(questions);
+            setIsLoading(false);
+          });
+          
+          return () => {
+            unsubscribe();
+          };
+        } else {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error checking joined class:', error);
+        setIsLoading(false);
       }
-    }, 5000);
+    };
 
-    return () => clearInterval(interval);
+    checkJoinedClass();
   }, [router]);
 
-  const loadQuestions = (email: string) => {
-    setMyQuestions(getUserQuestions(email));
-  };
-
-  const handleJoinSuccess = () => {
-    const joinedClass = getJoinedClass();
-    if (joinedClass) {
-      setClassCode(joinedClass);
-      setJoined(true);
+  const handleJoinSuccess = async () => {
+    try {
+      // Refresh the joined class
+      const joinedClass = await getJoinedClass(studentId);
+      
+      if (joinedClass) {
+        setClassCode(joinedClass);
+        setJoined(true);
+        
+        // Set up listener for student's questions
+        listenForUserQuestions(studentId, joinedClass, (questions) => {
+          setMyQuestions(questions);
+          setIsLoading(false);
+        });
+      }
+    } catch (error) {
+      console.error('Error handling join success:', error);
     }
   };
 
   const handleLogout = () => {
-    logout();
+    clearUserType();
   };
 
-  const handleLeaveClass = () => {
-    setJoined(false);
-    setClassCode('');
-    leaveClass();
+  const handleLeaveClass = async () => {
+    try {
+      await leaveClass(studentId);
+      setJoined(false);
+      setClassCode('');
+      setMyQuestions([]);
+    } catch (error) {
+      console.error('Error leaving class:', error);
+    }
   };
 
   return (
@@ -82,7 +104,7 @@ export default function StudentPage() {
         </div>
 
         {!joined ? (
-          <JoinClass onJoin={handleJoinSuccess} />
+          <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
         ) : (
           <>
             <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
@@ -103,7 +125,7 @@ export default function StudentPage() {
             </div>
 
             <div className="mb-8">
-              {user && <QuestionForm userEmail={user.email} />}
+              <QuestionForm userIdentifier={studentId} classCode={classCode} />
             </div>
 
             <div className="rounded-lg bg-white p-6 shadow-md">
@@ -111,6 +133,7 @@ export default function StudentPage() {
               <QuestionList 
                 questions={myQuestions} 
                 emptyMessage="You haven't asked any questions yet."
+                isLoading={isLoading}
               />
             </div>
           </>

@@ -5,25 +5,44 @@ import { validateClassCode, joinClass } from '@/lib/classCode';
 
 interface JoinClassProps {
   onJoin: () => void;
+  studentId: string;
 }
 
-export default function JoinClass({ onJoin }: JoinClassProps) {
+export default function JoinClass({ onJoin, studentId }: JoinClassProps) {
   const [enteredCode, setEnteredCode] = useState('');
   const [error, setError] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
 
-  const handleJoinClass = () => {
+  const handleJoinClass = async () => {
     if (!enteredCode.trim()) {
       setError('Please enter a class code');
       return;
     }
     
-    // Validate the class code
-    if (validateClassCode(enteredCode)) {
-      joinClass(enteredCode);
-      setError('');
-      onJoin();
-    } else {
-      setError('Invalid class code. Please try again.');
+    setIsJoining(true);
+    
+    try {
+      // Validate the class code
+      const isValid = await validateClassCode(enteredCode);
+      
+      if (isValid) {
+        // Join the class
+        const joined = await joinClass(enteredCode, studentId);
+        
+        if (joined) {
+          setError('');
+          onJoin();
+        } else {
+          setError('Failed to join class. Please try again.');
+        }
+      } else {
+        setError('Invalid class code. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error joining class:', error);
+      setError('An error occurred. Please try again.');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -53,9 +72,10 @@ export default function JoinClass({ onJoin }: JoinClassProps) {
         </div>
         <button
           onClick={handleJoinClass}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          disabled={isJoining}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-blue-400"
         >
-          Join Class
+          {isJoining ? 'Joining...' : 'Join Class'}
         </button>
       </div>
     </div>
