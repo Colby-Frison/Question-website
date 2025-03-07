@@ -44,15 +44,21 @@ yarn install
    - Create a Firebase project at [https://console.firebase.google.com/](https://console.firebase.google.com/)
    - Enable Firestore database
    - Replace the Firebase configuration in `src/lib/firebase.ts` with your own
+   - Set up Firestore security rules (see below)
 
-4. Start the development server
+4. Test Firebase connectivity
+```bash
+node src/lib/test-firebase.js
+```
+
+5. Start the development server
 ```bash
 npm run dev
 # or
 yarn dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Usage
 
@@ -70,6 +76,58 @@ The application preserves student anonymity through several mechanisms:
 2. **Separate Collections**: Questions are stored in a global collection without user IDs
 3. **User-Specific Tracking**: A separate collection tracks which questions belong to which user, but this information is only accessible to that specific user
 4. **Unique IDs**: Users are identified by randomly generated UUIDs rather than personal information
+
+## Deployment
+
+### Deploying to Vercel (Recommended)
+
+1. Push your code to a GitHub repository
+2. Connect your repository to Vercel
+3. During setup, add your Firebase environment variables if you're using them
+4. Deploy your application
+
+Your Firebase integration will work without any additional database setup on Vercel's side. The application will continue to use your Firebase Firestore database for data storage and real-time updates.
+
+For more detailed deployment instructions, see the [Deployment Guide](DEPLOYMENT.md).
+
+## Firestore Security Rules
+
+For a production application, use these security rules as a starting point:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Questions collection
+    match /questions/{questionId} {
+      allow read: if true;
+      allow create: if request.resource.data.text != null 
+                    && request.resource.data.classCode != null;
+      allow delete: if true;
+    }
+    
+    // User questions collection
+    match /userQuestions/{userQuestionId} {
+      allow read, write: if true;
+    }
+    
+    // Class codes collection
+    match /classCodes/{codeId} {
+      allow read: if true;
+      allow create: if request.resource.data.code != null;
+    }
+    
+    // Joined classes collection
+    match /joinedClasses/{joinId} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+If you encounter issues with Firebase connectivity or other aspects of the application, please refer to the [Troubleshooting Guide](TROUBLESHOOTING.md) for detailed solutions to common problems.
 
 ## Project Structure
 
