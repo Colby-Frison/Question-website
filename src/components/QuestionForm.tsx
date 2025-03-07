@@ -68,30 +68,30 @@ export default function QuestionForm({
   };
 
   return (
-    <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
-      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask a Question</h2>
+    <div className="rounded-lg bg-white p-4 sm:p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
+      <h2 className="mb-3 sm:mb-4 text-lg sm:text-xl font-semibold text-text dark:text-dark-text">Ask a Question</h2>
       
       {error && (
-        <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+        <div className="mb-3 sm:mb-4 rounded-md bg-red-50 p-3 sm:p-4 text-xs sm:text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
           {error}
         </div>
       )}
       
       {success && (
-        <div className="mb-4 rounded-md bg-green-50 p-4 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+        <div className="mb-3 sm:mb-4 rounded-md bg-green-50 p-3 sm:p-4 text-xs sm:text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
           Your question has been submitted!
         </div>
       )}
       
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label htmlFor="question" className="block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
+      <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto">
+        <div className="mb-3 sm:mb-4">
+          <label htmlFor="question" className="block text-xs sm:text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
             Your Question
           </label>
           <textarea
             id="question"
             rows={3}
-            className="mt-1 block w-full rounded-md border border-background-tertiary bg-background px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary"
+            className="mt-1 block w-full rounded-md border border-background-tertiary bg-background px-3 py-2 text-sm sm:text-base text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary"
             placeholder="Type your question here..."
             value={question}
             onChange={handleQuestionChange}
@@ -109,7 +109,7 @@ export default function QuestionForm({
           <button
             type="submit"
             disabled={isSubmitting || charCount > MAX_CHARS}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-primary/70 dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:disabled:bg-dark-primary/70"
+            className="rounded-md bg-primary px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-primary/70 dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:disabled:bg-dark-primary/70"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>

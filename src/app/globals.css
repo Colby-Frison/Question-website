@@ -16,18 +16,40 @@
 
 /* Smooth transitions for theme changes */
 * {
-  @apply transition-colors duration-200;
+  @apply transition-colors duration-500;
+}
+
+html {
+  transition: background-color 0.5s ease, color 0.5s ease;
 }
 
 /* Base styles */
 body {
-  @apply antialiased;
+  @apply antialiased min-h-screen;
 }
 
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .container {
     @apply px-4;
+  }
+  
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 1025px) {
+  html {
+    font-size: 16px;
   }
 }
 
@@ -37,43 +59,39 @@ body {
 }
 
 /* Custom scrollbar for dark mode */
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    @apply bg-dark-background-secondary;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    @apply bg-dark-background-tertiary rounded-full;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-primary;
-  }
+.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  @apply bg-dark-background-secondary;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-dark-background-tertiary rounded-full;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-dark-primary;
 }
 
 /* Custom scrollbar for light mode */
-@media (prefers-color-scheme: light) {
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    @apply bg-background-secondary;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    @apply bg-background-tertiary rounded-full;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary;
-  }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-background-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-background-tertiary rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary;
 }
 
 /* Utility classes for responsive design */
@@ -87,6 +105,27 @@ body {
 
 .responsive-grid {
   @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+}
+
+/* Responsive typography */
+.responsive-text-xs {
+  @apply text-xs sm:text-sm;
+}
+
+.responsive-text-sm {
+  @apply text-sm sm:text-base;
+}
+
+.responsive-text-base {
+  @apply text-base sm:text-lg;
+}
+
+.responsive-text-lg {
+  @apply text-lg sm:text-xl;
+}
+
+.responsive-text-xl {
+  @apply text-xl sm:text-2xl;
 }
 
 /* Card styles with dark mode support */
@@ -110,4 +149,26 @@ body {
 /* Form input styles with dark mode support */
 .form-input {
   @apply w-full rounded-md border border-background-tertiary bg-background px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary;
+}
+
+/* Responsive flex utilities */
+.responsive-flex {
+  @apply flex flex-col sm:flex-row;
+}
+
+.responsive-flex-reverse {
+  @apply flex flex-col-reverse sm:flex-row;
+}
+
+/* Aspect ratio containers for responsive media */
+.aspect-video {
+  @apply relative pb-[56.25%];
+}
+
+.aspect-square {
+  @apply relative pb-[100%];
+}
+
+.aspect-content {
+  @apply absolute inset-0 h-full w-full object-cover;
 } 

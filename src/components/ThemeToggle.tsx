@@ -19,18 +19,17 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="flex items-center justify-center rounded-md p-2 transition-colors hover:bg-background-tertiary dark:hover:bg-dark-background-tertiary"
+      className="flex items-center justify-center rounded-md p-2 transition-all duration-300 hover:bg-background-tertiary dark:hover:bg-dark-background-tertiary"
       aria-label="Toggle theme"
     >
       {theme === 'dark' ? (
-        // Sun icon for dark mode (to switch to light)
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
           strokeWidth={1.5}
           stroke="currentColor"
-          className="h-5 w-5 text-dark-text-secondary"
+          className="h-5 w-5 text-dark-primary transition-all duration-300"
         >
           <path
             strokeLinecap="round"
@@ -39,14 +38,13 @@ export function ThemeToggle() {
           />
         </svg>
       ) : (
-        // Moon icon for light mode (to switch to dark)
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
           strokeWidth={1.5}
           stroke="currentColor"
-          className="h-5 w-5 text-text-secondary"
+          className="h-5 w-5 text-primary transition-all duration-300"
         >
           <path
             strokeLinecap="round"
