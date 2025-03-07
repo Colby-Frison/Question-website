@@ -2,14 +2,112 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+  }
+  
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+  }
 }
 
+/* Smooth transitions for theme changes */
+* {
+  @apply transition-colors duration-200;
+}
+
+/* Base styles */
 body {
-  color: rgb(var(--foreground-rgb));
-  background: white;
-  min-height: 100vh;
+  @apply antialiased;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .container {
+    @apply px-4;
+  }
+}
+
+/* Improved focus styles for accessibility */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-primary dark:outline-dark-primary;
+}
+
+/* Custom scrollbar for dark mode */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-background-secondary;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-background-tertiary rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-primary;
+  }
+}
+
+/* Custom scrollbar for light mode */
+@media (prefers-color-scheme: light) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-background-secondary;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-background-tertiary rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary;
+  }
+}
+
+/* Utility classes for responsive design */
+.responsive-container {
+  @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+.responsive-padding {
+  @apply px-4 sm:px-6 lg:px-8;
+}
+
+.responsive-grid {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+}
+
+/* Card styles with dark mode support */
+.card {
+  @apply bg-white dark:bg-dark-background-secondary rounded-lg shadow-md dark:shadow-dark-md p-4 transition-all hover:shadow-lg dark:hover:shadow-dark-lg;
+}
+
+/* Button styles with dark mode support */
+.btn-primary {
+  @apply bg-primary hover:bg-primary-hover text-white dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted px-4 py-2 rounded-md transition-colors;
+}
+
+.btn-secondary {
+  @apply bg-secondary hover:bg-secondary-hover text-white dark:bg-dark-secondary dark:hover:bg-dark-secondary-hover dark:text-dark-text-inverted px-4 py-2 rounded-md transition-colors;
+}
+
+.btn-outline {
+  @apply border border-primary text-primary hover:bg-primary hover:text-white dark:border-dark-primary dark:text-dark-primary dark:hover:bg-dark-primary dark:hover:text-dark-text-inverted px-4 py-2 rounded-md transition-colors;
+}
+
+/* Form input styles with dark mode support */
+.form-input {
+  @apply w-full rounded-md border border-background-tertiary bg-background px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary;
 } 

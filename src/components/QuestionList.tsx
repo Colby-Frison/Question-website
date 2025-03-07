@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Question } from '@/types';
 import { deleteQuestion } from '@/lib/questions';
 
@@ -12,16 +12,17 @@ interface QuestionListProps {
   isLoading?: boolean;
 }
 
-export default function QuestionList({
+const QuestionList: React.FC<QuestionListProps> = React.memo(({
   questions,
   isProfessor = false,
   onDelete,
   emptyMessage = "No questions yet.",
   isLoading = false
-}: QuestionListProps) {
+}) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     
     try {
@@ -35,52 +36,89 @@ export default function QuestionList({
     } finally {
       setDeletingId(null);
     }
-  };
+  }, [onDelete]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
-        <span className="ml-2 text-gray-500">Loading questions...</span>
-      </div>
-    );
-  }
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  }, [expandedId]);
 
-  if (questions.length === 0) {
-    return (
-      <div className="rounded-md bg-gray-50 p-8 text-center">
-        <p className="text-gray-500">{emptyMessage}</p>
-      </div>
-    );
-  }
+  const renderLoading = useMemo(() => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center py-8">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
+          <span className="ml-2 text-text-secondary dark:text-dark-text-secondary">Loading questions...</span>
+        </div>
+      );
+    }
+    return null;
+  }, [isLoading]);
 
-  return (
-    <ul className="divide-y divide-gray-200">
-      {questions.map((question) => (
-        <li key={question.id} className="py-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-gray-800">{question.text}</p>
-              <p className="text-xs text-gray-500">
-                {new Date(question.timestamp).toLocaleString()}
-              </p>
+  const renderEmptyState = useMemo(() => {
+    if (questions.length === 0) {
+      return (
+        <div className="rounded-md bg-background-secondary p-8 text-center dark:bg-dark-background-tertiary">
+          <p className="text-text-secondary dark:text-dark-text-secondary">{emptyMessage}</p>
+        </div>
+      );
+    }
+    return null;
+  }, [questions.length, emptyMessage]);
+
+  const questionItems = useMemo(() => {
+    return questions.map((question) => (
+      <li key={question.id} className="py-4">
+        <div className="flex flex-col space-y-2 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+          <div className="flex-1 pr-4">
+            <div 
+              className={`text-text dark:text-dark-text ${
+                question.text.length > 150 && expandedId !== question.id ? 'line-clamp-3' : ''
+              }`}
+            >
+              {question.text}
             </div>
-            {isProfessor && (
+            {question.text.length > 150 && (
+              <button 
+                onClick={() => toggleExpand(question.id)}
+                className="mt-1 text-xs font-medium text-primary hover:text-primary-hover dark:text-dark-primary dark:hover:text-dark-primary-hover"
+              >
+                {expandedId === question.id ? 'Show less' : 'Show more'}
+              </button>
+            )}
+            <p className="mt-1 text-xs text-text-tertiary dark:text-dark-text-tertiary">
+              {new Date(question.timestamp).toLocaleString()}
+            </p>
+          </div>
+          {isProfessor && (
+            <div className="flex items-center space-x-2">
               <button
                 onClick={() => handleDelete(question.id)}
                 disabled={deletingId === question.id}
-                className={`ml-4 rounded-md px-3 py-1 text-xs font-medium ${
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
                   deletingId === question.id
-                    ? 'bg-gray-200 text-gray-500'
-                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                    ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
+                    : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
                 }`}
               >
                 {deletingId === question.id ? 'Deleting...' : 'Delete'}
               </button>
-            )}
-          </div>
-        </li>
-      ))}
+            </div>
+          )}
+        </div>
+      </li>
+    ));
+  }, [questions, expandedId, deletingId, isProfessor, handleDelete, toggleExpand]);
+
+  if (isLoading) return renderLoading;
+  if (questions.length === 0) return renderEmptyState;
+
+  return (
+    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary">
+      {questionItems}
     </ul>
   );
-} 
+});
+
+QuestionList.displayName = 'QuestionList';
+
+export default QuestionList; 

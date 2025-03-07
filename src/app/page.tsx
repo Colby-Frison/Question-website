@@ -7,7 +7,6 @@ import { setUserType, getUserType } from '@/lib/auth';
 export default function SelectRolePage() {
   const router = useRouter();
   const [userType, setUserTypeState] = useState<'student' | 'professor' | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Check if user type is already selected
@@ -16,8 +15,6 @@ export default function SelectRolePage() {
       router.push('/professor');
     } else if (currentUserType === 'student') {
       router.push('/student');
-    } else {
-      setIsLoading(false);
     }
   }, [router]);
 
@@ -35,48 +32,49 @@ export default function SelectRolePage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
-        <p className="mt-4 text-gray-600">Loading...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-6 shadow-md">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Classroom Q&A</h1>
-          <p className="mt-2 text-gray-600">Ask questions anonymously</p>
+          <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Classroom Q&A</h1>
+          <p className="mt-2 text-text-secondary dark:text-dark-text-secondary">Ask questions anonymously</p>
         </div>
 
         <div className="mt-8 space-y-6">
           <div className="flex flex-col space-y-4">
-            <div className="text-sm font-medium text-gray-700">I am a:</div>
-            <div className="flex space-x-4">
+            <div className="text-sm font-medium text-text-secondary dark:text-dark-text-secondary">I am a:</div>
+            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4">
               <button
                 type="button"
-                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-md px-4 py-3 text-sm font-medium transition-colors ${
                   userType === 'student'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary/80'
                 }`}
                 onClick={() => setUserTypeState('student')}
               >
-                Student
+                <div className="flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  Student
+                </div>
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-md px-4 py-3 text-sm font-medium transition-colors ${
                   userType === 'professor'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary/80'
                 }`}
                 onClick={() => setUserTypeState('professor')}
               >
-                Professor
+                <div className="flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                  </svg>
+                  Professor
+                </div>
               </button>
             </div>
           </div>
@@ -85,7 +83,7 @@ export default function SelectRolePage() {
             <button
               onClick={handleContinue}
               disabled={!userType}
-              className="group relative flex w-full justify-center rounded-md border border-transparent bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-gray-400"
+              className="group relative flex w-full justify-center rounded-md border border-transparent bg-primary py-3 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
             >
               Continue
             </button>

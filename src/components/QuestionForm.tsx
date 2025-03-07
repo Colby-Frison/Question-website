@@ -16,12 +16,19 @@ export default function QuestionForm({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [charCount, setCharCount] = useState(0);
+  const MAX_CHARS = 1000;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!question.trim()) {
       setError('Please enter a question');
+      return;
+    }
+
+    if (question.length > MAX_CHARS) {
+      setError(`Question is too long. Maximum ${MAX_CHARS} characters allowed.`);
       return;
     }
     
@@ -33,6 +40,7 @@ export default function QuestionForm({
       
       // Clear the form and show success message
       setQuestion('');
+      setCharCount(0);
       setError('');
       setSuccess(true);
       
@@ -48,41 +56,60 @@ export default function QuestionForm({
     }
   };
 
+  const handleQuestionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    setQuestion(text);
+    setCharCount(text.length);
+    
+    // Clear error if user starts typing again
+    if (error) {
+      setError('');
+    }
+  };
+
   return (
-    <div className="rounded-lg bg-white p-6 shadow-md">
-      <h2 className="mb-4 text-xl font-semibold text-gray-800">Ask a Question</h2>
+    <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
+      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask a Question</h2>
       
       {error && (
-        <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700">
+        <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
           {error}
         </div>
       )}
       
       {success && (
-        <div className="mb-4 rounded-md bg-green-50 p-4 text-sm text-green-700">
+        <div className="mb-4 rounded-md bg-green-50 p-4 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
           Your question has been submitted!
         </div>
       )}
       
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="question" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="question" className="block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
             Your Question
           </label>
           <textarea
             id="question"
             rows={3}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-primary focus:outline-none focus:ring-primary"
+            className="mt-1 block w-full rounded-md border border-background-tertiary bg-background px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary"
             placeholder="Type your question here..."
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={handleQuestionChange}
+            maxLength={MAX_CHARS + 10} // Allow a little extra for better UX, but still validate
           ></textarea>
+          <div className={`mt-1 text-right text-xs ${
+            charCount > MAX_CHARS 
+              ? 'text-red-600 dark:text-red-400' 
+              : 'text-text-tertiary dark:text-dark-text-tertiary'
+          }`}>
+            {charCount}/{MAX_CHARS} characters
+          </div>
         </div>
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-gray-400"
+            disabled={isSubmitting || charCount > MAX_CHARS}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-primary/70 dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:disabled:bg-dark-primary/70"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>

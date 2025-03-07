@@ -148,21 +148,21 @@ export default function ProfessorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background dark:bg-dark-background">
       <Navbar userType="professor" onLogout={handleLogout} />
       
       <div className="mx-auto max-w-4xl p-4">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Professor Dashboard</h1>
+          <h1 className="text-3xl font-bold text-text dark:text-dark-text">Professor Dashboard</h1>
         </div>
 
         {error && (
-          <div className="mb-8 rounded-lg bg-red-50 p-6 shadow-md">
-            <h2 className="mb-2 text-lg font-semibold text-red-700">Error</h2>
-            <p className="text-red-600">{error}</p>
+          <div className="mb-8 rounded-lg bg-red-50 p-6 shadow-md dark:bg-red-900/20">
+            <h2 className="mb-2 text-lg font-semibold text-red-700 dark:text-red-400">Error</h2>
+            <p className="text-red-600 dark:text-red-300">{error}</p>
             <button 
               onClick={handleRetry}
-              className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
             >
               Retry Connection
             </button>
@@ -177,8 +177,8 @@ export default function ProfessorPage() {
           />
         </div>
 
-        <div className="rounded-lg bg-white p-6 shadow-md">
-          <h2 className="mb-4 text-xl font-semibold text-gray-800">Student Questions</h2>
+        <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
+          <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Questions</h2>
           <QuestionList 
             questions={questions} 
             isProfessor={true} 
