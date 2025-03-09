@@ -1,6 +1,5 @@
 {
   "buildCommand": "npm run build",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./functions/",
   "installCommand": "npm install",
   "outputDirectory": ".next",
   "framework": "nextjs",
@@ -16,5 +15,12 @@
         { "key": "X-XSS-Protection", "value": "1; mode=block" }
       ]
     }
-  ]
+  ],
+  "builds": [
+    {
+      "src": "next.config.mjs",
+      "use": "@vercel/next"
+    }
+  ],
+  "buildCommand": "next build"
 } 
