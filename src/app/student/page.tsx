@@ -13,7 +13,7 @@ import { Question } from '@/types';
 
 export default function StudentPage() {
   const router = useRouter();
-  const [classCode, setClassCode] = useState('');
+  const [className, setClassName] = useState('');
   const [joined, setJoined] = useState(false);
   const [myQuestions, setMyQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +36,7 @@ export default function StudentPage() {
         const joinedClass = await getJoinedClass(userId);
         
         if (joinedClass) {
-          setClassCode(joinedClass);
+          setClassName(joinedClass);
           setJoined(true);
           
           // Set up listener for student's questions
@@ -53,45 +53,50 @@ export default function StudentPage() {
         }
       } catch (error) {
         console.error('Error checking joined class:', error);
-        setError('Failed to check joined class. Please try again.');
+        setError('Failed to check joined class. Please refresh the page.');
         setIsLoading(false);
       }
     };
-
+    
     checkJoinedClass();
   }, [router]);
 
   const handleJoinSuccess = async () => {
     try {
-      // Refresh the joined class
+      // Refresh joined class
       const joinedClass = await getJoinedClass(studentId);
       
       if (joinedClass) {
-        setClassCode(joinedClass);
+        setClassName(joinedClass);
         setJoined(true);
         
         // Set up listener for student's questions
-        listenForUserQuestions(studentId, joinedClass, (questions) => {
+        const unsubscribe = listenForUserQuestions(studentId, joinedClass, (questions) => {
           setMyQuestions(questions);
-          setIsLoading(false);
         });
+        
+        // We don't need to return the unsubscribe function here since this isn't a useEffect
       }
     } catch (error) {
-      console.error('Error handling join success:', error);
-      setError('Failed to join class. Please try again.');
+      console.error('Error after joining class:', error);
+      setError('Failed to load questions. Please refresh the page.');
     }
   };
 
   const handleLogout = () => {
     clearUserType();
+    router.push('/');
   };
 
   const handleLeaveClass = async () => {
     try {
-      await leaveClass(studentId);
-      setJoined(false);
-      setClassCode('');
-      setMyQuestions([]);
+      const success = await leaveClass(studentId);
+      
+      if (success) {
+        setClassName('');
+        setJoined(false);
+        setMyQuestions([]);
+      }
     } catch (error) {
       console.error('Error leaving class:', error);
       setError('Failed to leave class. Please try again.');
@@ -99,63 +104,64 @@ export default function StudentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background dark:bg-dark-background">
+    <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
       <Navbar userType="student" onLogout={handleLogout} />
       
-      <div className="mx-auto max-w-4xl p-4">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-text dark:text-dark-text">Student Dashboard</h1>
-        </div>
-
-        {error && (
-          <div className="mb-8 rounded-lg bg-red-50 p-6 shadow-md dark:bg-red-900/20">
-            <h2 className="mb-2 text-lg font-semibold text-red-700 dark:text-red-400">Error</h2>
-            <p className="text-red-600 dark:text-red-300">{error}</p>
-            <button 
-              onClick={() => setError(null)}
-              className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {!joined ? (
-          <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
-        ) : (
-          <>
-            <div className="mb-8 rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
-              <div className="flex flex-col items-start justify-between space-y-4 sm:flex-row sm:items-center sm:space-y-0">
-                <div>
-                  <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
-                  <div className="mt-2 rounded-md bg-background-secondary px-4 py-2 font-mono font-bold text-text dark:bg-dark-background-tertiary dark:text-dark-text">
-                    {classCode}
+      <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <h1 className="mb-8 text-3xl font-bold text-text dark:text-dark-text">Student Dashboard</h1>
+          
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
+              <span className="ml-2 text-text-secondary dark:text-dark-text-secondary">Loading...</span>
+            </div>
+          ) : null}
+          
+          {error && (
+            <div className="mb-8 rounded-lg bg-error-light/20 p-6 shadow-all-around dark:bg-error-light/10">
+              <h2 className="mb-2 text-lg font-semibold text-error-dark dark:text-error-light">Error</h2>
+              <p className="text-error-dark dark:text-error-light">{error}</p>
+            </div>
+          )}
+          
+          {!joined ? (
+            <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
+          ) : (
+            <>
+              <div className="mb-8 rounded-lg bg-white p-6 shadow-all-around dark:bg-dark-background-secondary">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
+                    <p className="mt-1 text-text-secondary dark:text-dark-text-secondary">
+                      {className}
+                    </p>
                   </div>
+                  <button
+                    onClick={handleLeaveClass}
+                    className="mt-4 rounded-md bg-error-light/20 px-4 py-2 text-sm font-medium text-error-dark transition-colors hover:bg-error-light/30 sm:mt-0 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
+                  >
+                    Leave Class
+                  </button>
                 </div>
-                <button
-                  onClick={handleLeaveClass}
-                  className="rounded-md bg-background-secondary px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary/80"
-                >
-                  Leave Class
-                </button>
               </div>
-            </div>
-
-            <div className="mb-8">
-              <QuestionForm userIdentifier={studentId} classCode={classCode} />
-            </div>
-
-            <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
-              <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
-              <QuestionList 
-                questions={myQuestions} 
-                emptyMessage="You haven't asked any questions yet."
-                isLoading={isLoading}
-              />
-            </div>
-          </>
-        )}
-      </div>
+              
+              <div className="mb-8">
+                <QuestionForm userIdentifier={studentId} classCode={className} />
+              </div>
+              
+              <div className="rounded-lg bg-white p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
+                <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
+                <QuestionList 
+                  questions={myQuestions} 
+                  emptyMessage="You haven't asked any questions yet."
+                  isLoading={isLoading}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 } 

@@ -1,41 +1,58 @@
 'use client';
 
 import { useState } from 'react';
-import { generateClassCode, createClassCode } from '@/lib/classCode';
+import { validateClassName, formatClassName, createClass } from '@/lib/classCode';
 import { archiveClassSession, closeClassSession } from '@/lib/classSession';
 
-interface ClassCodeDisplayProps {
-  classCode: string;
+interface ClassNameDisplayProps {
+  className: string;
   professorId: string;
   sessionId: string;
-  onCodeChange: (newCode: string) => void;
+  onClassNameChange?: (newClassName: string) => void;
 }
 
-export default function ClassCodeDisplay({ 
-  classCode, 
+export default function ClassNameDisplay({ 
+  className, 
   professorId,
   sessionId,
-  onCodeChange 
-}: ClassCodeDisplayProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  onClassNameChange 
+}: ClassNameDisplayProps) {
+  const [newClassName, setNewClassName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleRegenerateCode = async () => {
-    setIsGenerating(true);
+  const handleCreateClass = async () => {
+    // Clear previous errors
+    setError('');
+    
+    // Validate class name
+    const formattedName = formatClassName(newClassName);
+    if (!validateClassName(formattedName)) {
+      setError('Class name must be 3-30 characters and contain only letters, numbers, and spaces.');
+      return;
+    }
+    
+    setIsCreating(true);
     
     try {
-      const newCode = generateClassCode();
-      const success = await createClassCode(newCode, professorId);
+      const success = await createClass(formattedName, professorId);
       
       if (success) {
-        onCodeChange(newCode);
+        if (onClassNameChange) {
+          onClassNameChange(formattedName);
+        }
+        setNewClassName('');
+      } else {
+        setError('This class name already exists. Please try a different name.');
       }
     } catch (error) {
-      console.error('Error regenerating class code:', error);
+      console.error('Error creating class:', error);
+      setError('Failed to create class. Please try again.');
     } finally {
-      setIsGenerating(false);
+      setIsCreating(false);
     }
   };
 
@@ -63,73 +80,105 @@ export default function ClassCodeDisplay({
     }
   };
 
-  const handleCopyCode = () => {
-    if (classCode) {
-      navigator.clipboard.writeText(classCode);
+  const handleCopyClassName = () => {
+    if (className) {
+      navigator.clipboard.writeText(className);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     }
   };
 
   return (
-    <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
-      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Class Code</h2>
+    <div className="rounded-lg bg-white p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
+      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Your Class</h2>
+      
+      {error && (
+        <div className="mb-4 rounded-md bg-error-light/20 p-4 text-sm text-error-dark dark:bg-error-light/10 dark:text-error-light">
+          {error}
+        </div>
+      )}
+      
       <div className="flex flex-col space-y-4">
-        <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:space-x-4 sm:space-y-0">
-          <div className="flex flex-1 items-center">
-            <div className="relative w-full">
-              <div className="flex items-center rounded-md bg-background-secondary px-4 py-3 font-mono text-lg font-bold text-text dark:bg-dark-background-tertiary dark:text-dark-text">
-                {classCode || 'No code generated yet'}
-              </div>
-              {classCode && (
-                <button
-                  onClick={handleCopyCode}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-secondary hover:text-text dark:text-dark-text-secondary dark:hover:text-dark-text"
-                  aria-label="Copy class code"
-                >
-                  {isCopied ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
-                      <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2a1 1 0 110 2h-2v-2z" />
-                    </svg>
-                  )}
-                </button>
-              )}
+        {!className ? (
+          <div className="flex flex-col space-y-4 sm:flex-row sm:items-end sm:space-x-4 sm:space-y-0">
+            <div className="flex-1">
+              <label htmlFor="className" className="block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
+                Create a Class Name
+              </label>
+              <input
+                type="text"
+                id="className"
+                className="form-input"
+                placeholder="e.g. Math 101"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                maxLength={30}
+              />
+              <p className="mt-1 text-xs text-text-tertiary dark:text-dark-text-tertiary">
+                Class name must be 3-30 characters and can contain letters, numbers, and spaces.
+              </p>
             </div>
+            <button
+              onClick={handleCreateClass}
+              disabled={isCreating || !newClassName.trim()}
+              className="btn-primary"
+            >
+              {isCreating ? 'Creating...' : 'Create Class'}
+            </button>
           </div>
-          <button
-            onClick={handleRegenerateCode}
-            disabled={isGenerating}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-primary/70 dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:disabled:bg-dark-primary/70"
-          >
-            {isGenerating ? 'Generating...' : 'Generate New Code'}
-          </button>
-        </div>
+        ) : (
+          <>
+            <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:space-x-4 sm:space-y-0">
+              <div className="flex flex-1 items-center">
+                <div className="relative w-full">
+                  <div className="flex items-center rounded-md bg-background-secondary px-4 py-3 font-medium text-lg text-text dark:bg-dark-background-tertiary dark:text-dark-text">
+                    {className}
+                  </div>
+                  <button
+                    onClick={handleCopyClassName}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-secondary hover:text-primary dark:text-dark-text-secondary dark:hover:text-dark-primary"
+                    aria-label="Copy class name"
+                  >
+                    {isCopied ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+                        <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2a1 1 0 110 2h-2v-2z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
 
-        <div className="flex flex-col space-y-2 sm:flex-row sm:space-x-2 sm:space-y-0">
-          <button
-            onClick={handleArchiveClass}
-            disabled={isArchiving}
-            className="rounded-md bg-yellow-100 px-4 py-2 text-sm font-medium text-yellow-700 transition-colors hover:bg-yellow-200 disabled:bg-yellow-100/70 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50"
-          >
-            {isArchiving ? 'Archiving...' : 'Archive Class'}
-          </button>
-          <button
-            onClick={handleCloseClass}
-            disabled={isClosing}
-            className="rounded-md bg-red-100 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-200 disabled:bg-red-100/70 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-          >
-            {isClosing ? 'Closing...' : 'Close Class'}
-          </button>
-        </div>
+            <div className="flex flex-col space-y-2 sm:flex-row sm:space-x-2 sm:space-y-0">
+              <button
+                onClick={handleArchiveClass}
+                disabled={isArchiving}
+                className="rounded-md bg-warning-light/20 px-4 py-2 text-sm font-medium text-warning-dark transition-colors hover:bg-warning-light/30 disabled:opacity-70 dark:bg-warning-light/10 dark:text-warning-light dark:hover:bg-warning-light/20"
+              >
+                {isArchiving ? 'Archiving...' : 'Archive Class'}
+              </button>
+              <button
+                onClick={handleCloseClass}
+                disabled={isClosing}
+                className="rounded-md bg-error-light/20 px-4 py-2 text-sm font-medium text-error-dark transition-colors hover:bg-error-light/30 disabled:opacity-70 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
+              >
+                {isClosing ? 'Closing...' : 'Close Class'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
-      <p className="mt-2 text-sm text-text-secondary dark:text-dark-text-secondary">
-        Share this code with your students so they can join your class.
-      </p>
+      
+      {className && (
+        <p className="mt-2 text-sm text-text-secondary dark:text-dark-text-secondary">
+          Share this class name with your students so they can join your class.
+        </p>
+      )}
     </div>
   );
 } 

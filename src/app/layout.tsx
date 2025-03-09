@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { Footer } from '@/components/Footer';
+import { FloatingThemeToggle } from '@/components/FloatingThemeToggle';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -29,7 +29,7 @@ export default function RootLayout({
           <div className="flex flex-1 flex-col">
             {children}
           </div>
-          <Footer />
+          <FloatingThemeToggle />
         </ThemeProvider>
       </body>
     </html>

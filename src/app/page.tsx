@@ -34,7 +34,7 @@ export default function SelectRolePage() {
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
+      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">Classroom Q&A</h1>
           <p className="mt-2 text-text-secondary dark:text-dark-text-secondary">Ask questions anonymously</p>
@@ -83,7 +83,7 @@ export default function SelectRolePage() {
             <button
               onClick={handleContinue}
               disabled={!userType}
-              className="group relative flex w-full justify-center rounded-md border border-transparent bg-primary py-3 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
+              className="flex w-full justify-center rounded-md bg-primary py-3 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
             >
               Continue
             </button>

@@ -11,55 +11,87 @@ import {
   setDoc 
 } from 'firebase/firestore';
 
-// Collection reference
+// Collection reference - keeping the same collection names for backward compatibility
 const CLASS_CODES_COLLECTION = 'classCodes';
 const JOINED_CLASSES_COLLECTION = 'joinedClasses';
 
-// Generate a random class code
-export const generateClassCode = (): string => {
-  // Generate a random 6-character alphanumeric code
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  console.log(`Generated class code: ${result}`);
-  return result;
+// Validate class name format
+export const validateClassName = (name: string): boolean => {
+  // Class name should be at least 3 characters and contain only letters, numbers, and spaces
+  const regex = /^[a-zA-Z0-9 ]{3,30}$/;
+  return regex.test(name);
 };
 
-// Create a new class code in Firestore
-export const createClassCode = async (code: string, professorId: string): Promise<boolean> => {
-  if (!code || !professorId) {
-    console.error("Missing parameters for createClassCode");
+// Format class name (trim and capitalize)
+export const formatClassName = (name: string): string => {
+  return name.trim();
+};
+
+// Create a new class in Firestore
+export const createClass = async (className: string, professorId: string): Promise<boolean> => {
+  if (!className || !professorId) {
+    console.error("Missing parameters for createClass");
     return false;
   }
 
   try {
-    console.log(`Creating class code ${code} for professor ${professorId}`);
+    console.log(`Creating class "${className}" for professor ${professorId}`);
     
-    // Check if code already exists
-    const existingCode = await getClassCodeDoc(code);
-    if (existingCode) {
-      console.warn(`Class code ${code} already exists`);
+    // Check if class name already exists
+    const existingClass = await getClassByName(className);
+    if (existingClass) {
+      console.warn(`Class name "${className}" already exists`);
       return false;
     }
     
-    // Add the class code to Firestore
+    // Add the class to Firestore
     const docRef = await addDoc(collection(db, CLASS_CODES_COLLECTION), {
-      code,
+      code: className, // Using 'code' field for backward compatibility
+      className: className,
       professorId,
       createdAt: Date.now()
     });
     
-    console.log(`Class code created with ID: ${docRef.id}`);
+    console.log(`Class created with ID: ${docRef.id}`);
     return true;
   } catch (error) {
-    console.error('Error creating class code:', error);
+    console.error('Error creating class:', error);
     return false;
   }
 };
 
-// Get a class code document
+// Get a class by name
+export const getClassByName = async (className: string) => {
+  if (!className) {
+    console.error("No class name provided to getClassByName");
+    return null;
+  }
+
+  try {
+    console.log(`Looking up class: "${className}"`);
+    const q = query(
+      collection(db, CLASS_CODES_COLLECTION),
+      where('className', '==', className)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      console.log(`No class found with name: "${className}"`);
+      return null;
+    }
+    
+    console.log(`Found class document with ID: ${querySnapshot.docs[0].id}`);
+    return {
+      id: querySnapshot.docs[0].id,
+      ...querySnapshot.docs[0].data()
+    };
+  } catch (error) {
+    console.error('Error getting class:', error);
+    return null;
+  }
+};
+
+// For backward compatibility
 export const getClassCodeDoc = async (code: string) => {
   if (!code) {
     console.error("No code provided to getClassCodeDoc");
@@ -75,8 +107,8 @@ export const getClassCodeDoc = async (code: string) => {
     
     const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
-      console.log(`No class code found for: ${code}`);
-      return null;
+      // Try looking up by className as well
+      return await getClassByName(code);
     }
     
     console.log(`Found class code document with ID: ${querySnapshot.docs[0].id}`);
@@ -90,15 +122,15 @@ export const getClassCodeDoc = async (code: string) => {
   }
 };
 
-// Get a class code for a professor
-export const getClassCodeForProfessor = async (professorId: string): Promise<string | null> => {
+// Get a class for a professor
+export const getClassForProfessor = async (professorId: string): Promise<string | null> => {
   if (!professorId) {
-    console.error("No professor ID provided to getClassCodeForProfessor");
+    console.error("No professor ID provided to getClassForProfessor");
     return null;
   }
 
   try {
-    console.log(`Looking up class code for professor: ${professorId}`);
+    console.log(`Looking up class for professor: ${professorId}`);
     const q = query(
       collection(db, CLASS_CODES_COLLECTION),
       where('professorId', '==', professorId)
@@ -106,39 +138,44 @@ export const getClassCodeForProfessor = async (professorId: string): Promise<str
     
     const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
-      console.log(`No class code found for professor: ${professorId}`);
+      console.log(`No class found for professor: ${professorId}`);
       return null;
     }
     
-    const code = querySnapshot.docs[0].data().code;
-    console.log(`Found class code for professor: ${code}`);
-    return code;
+    // Return className if available, otherwise fall back to code
+    const className = querySnapshot.docs[0].data().className || querySnapshot.docs[0].data().code;
+    console.log(`Found class for professor: "${className}"`);
+    return className;
   } catch (error) {
-    console.error('Error getting class code for professor:', error);
+    console.error('Error getting class for professor:', error);
     return null;
   }
 };
 
+// For backward compatibility
+export const getClassCodeForProfessor = getClassForProfessor;
+
 // Join a class
-export const joinClass = async (code: string, studentId: string): Promise<boolean> => {
-  if (!code || !studentId) {
+export const joinClass = async (className: string, studentId: string): Promise<boolean> => {
+  if (!className || !studentId) {
     console.error("Missing parameters for joinClass");
     return false;
   }
 
   try {
-    console.log(`Student ${studentId} attempting to join class with code: ${code}`);
+    console.log(`Student ${studentId} attempting to join class: "${className}"`);
     
-    // Check if the class code exists
-    const classCodeDoc = await getClassCodeDoc(code);
-    if (!classCodeDoc) {
-      console.warn(`Invalid class code: ${code}`);
+    // Check if the class exists
+    const classDoc = await getClassByName(className) || await getClassCodeDoc(className);
+    if (!classDoc) {
+      console.warn(`Invalid class name: "${className}"`);
       return false;
     }
     
     // Add to joined classes
     const docRef = await addDoc(collection(db, JOINED_CLASSES_COLLECTION), {
-      classCode: code,
+      classCode: classDoc.code || className, // For backward compatibility
+      className: className,
       studentId,
       joinedAt: Date.now()
     });
@@ -171,9 +208,10 @@ export const getJoinedClass = async (studentId: string): Promise<string | null> 
       return null;
     }
     
-    const classCode = querySnapshot.docs[0].data().classCode;
-    console.log(`Found joined class for student: ${classCode}`);
-    return classCode;
+    // Return className if available, otherwise fall back to classCode
+    const className = querySnapshot.docs[0].data().className || querySnapshot.docs[0].data().classCode;
+    console.log(`Found joined class for student: "${className}"`);
+    return className;
   } catch (error) {
     console.error('Error getting joined class:', error);
     return null;
@@ -216,21 +254,25 @@ export const leaveClass = async (studentId: string): Promise<boolean> => {
   }
 };
 
-// Validate a class code
-export const validateClassCode = async (code: string): Promise<boolean> => {
-  if (!code) {
-    console.error("No code provided to validateClassCode");
+// Validate a class name
+export const validateClass = async (className: string): Promise<boolean> => {
+  if (!className) {
+    console.error("No class name provided to validateClass");
     return false;
   }
 
   try {
-    console.log(`Validating class code: ${code}`);
-    const classCodeDoc = await getClassCodeDoc(code);
-    const isValid = classCodeDoc !== null;
-    console.log(`Class code ${code} is ${isValid ? 'valid' : 'invalid'}`);
+    console.log(`Validating class name: "${className}"`);
+    const classDoc = await getClassByName(className) || await getClassCodeDoc(className);
+    const isValid = classDoc !== null;
+    console.log(`Class name "${className}" is ${isValid ? 'valid' : 'invalid'}`);
     return isValid;
   } catch (error) {
-    console.error('Error validating class code:', error);
+    console.error('Error validating class name:', error);
     return false;
   }
-}; 
+};
+
+// For backward compatibility
+export const validateClassCode = validateClass;
+export const generateClassCode = (name: string): string => name; 

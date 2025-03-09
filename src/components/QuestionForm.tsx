@@ -68,17 +68,17 @@ export default function QuestionForm({
   };
 
   return (
-    <div className="rounded-lg bg-background-secondary p-4 sm:p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
+    <div className="rounded-lg bg-white p-4 sm:p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
       <h2 className="mb-3 sm:mb-4 text-lg sm:text-xl font-semibold text-text dark:text-dark-text">Ask a Question</h2>
       
       {error && (
-        <div className="mb-3 sm:mb-4 rounded-md bg-red-50 p-3 sm:p-4 text-xs sm:text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+        <div className="mb-3 sm:mb-4 rounded-md bg-error-light/20 p-3 sm:p-4 text-xs sm:text-sm text-error-dark dark:bg-error-light/10 dark:text-error-light">
           {error}
         </div>
       )}
       
       {success && (
-        <div className="mb-3 sm:mb-4 rounded-md bg-green-50 p-3 sm:p-4 text-xs sm:text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+        <div className="mb-3 sm:mb-4 rounded-md bg-success-light/20 p-3 sm:p-4 text-xs sm:text-sm text-success-dark dark:bg-success-light/10 dark:text-success-light">
           Your question has been submitted!
         </div>
       )}
@@ -91,7 +91,7 @@ export default function QuestionForm({
           <textarea
             id="question"
             rows={3}
-            className="mt-1 block w-full rounded-md border border-background-tertiary bg-white px-3 py-2 text-sm sm:text-base text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary"
+            className="form-input"
             placeholder="Type your question here..."
             value={question}
             onChange={handleQuestionChange}
@@ -99,7 +99,7 @@ export default function QuestionForm({
           ></textarea>
           <div className={`mt-1 text-right text-xs ${
             charCount > MAX_CHARS 
-              ? 'text-red-600 dark:text-red-400' 
+              ? 'text-error-dark dark:text-error-light' 
               : 'text-text-tertiary dark:text-dark-text-tertiary'
           }`}>
             {charCount}/{MAX_CHARS} characters
@@ -109,7 +109,7 @@ export default function QuestionForm({
           <button
             type="submit"
             disabled={isSubmitting || charCount > MAX_CHARS}
-            className="rounded-md bg-primary px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-primary/70 dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:disabled:bg-dark-primary/70"
+            className="btn-primary"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>

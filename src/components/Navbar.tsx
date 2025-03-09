@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
   userType: 'student' | 'professor';
@@ -32,12 +31,9 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           {/* Desktop menu */}
           <div className="hidden items-center sm:flex">
             <div className="flex items-center space-x-4">
-              <div className="ml-2">
-                <ThemeToggle />
-              </div>
               <button
                 onClick={onLogout}
-                className="rounded-md bg-primary bg-opacity-10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-opacity-20 dark:bg-dark-background-secondary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary"
+                className="rounded-md bg-white px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary-50 border border-primary-100 dark:bg-dark-background dark:text-dark-primary dark:border-dark-background-tertiary dark:hover:bg-dark-background-secondary"
               >
                 Change Role
               </button>
@@ -46,12 +42,9 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
 
           {/* Mobile menu button */}
           <div className="flex items-center space-x-2 sm:hidden">
-            <div className="mr-2">
-              <ThemeToggle />
-            </div>
             <button
               onClick={toggleMenu}
-              className="inline-flex items-center justify-center rounded-md p-2 text-text-secondary hover:bg-background-secondary hover:text-text dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary dark:hover:text-dark-text"
+              className="inline-flex items-center justify-center rounded-md p-2 text-text-secondary hover:bg-primary-50 hover:text-primary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary dark:hover:text-dark-primary"
               aria-expanded={isMenuOpen}
             >
               <span className="sr-only">Open main menu</span>
@@ -90,7 +83,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           <div className="space-y-1 px-4 pb-3 pt-2">
             <button
               onClick={onLogout}
-              className="block w-full rounded-md bg-primary bg-opacity-10 px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-opacity-20 dark:bg-dark-background-secondary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary"
+              className="block w-full rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-primary-50 border border-primary-100 dark:bg-dark-background dark:text-dark-primary dark:border-dark-background-tertiary dark:hover:bg-dark-background-secondary"
             >
               Change Role
             </button>

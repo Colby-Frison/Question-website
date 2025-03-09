@@ -9,56 +9,93 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Light mode colors - Enhanced for better contrast
+        // Light mode colors - Unified blue theme
         primary: {
-          DEFAULT: "#2563eb", // Darker blue for better contrast
-          hover: "#1d4ed8",
-          light: "#60a5fa",
-          dark: "#1e40af",
+          DEFAULT: "#3b82f6", // Blue
+          hover: "#2563eb",
+          light: "#93c5fd",
+          dark: "#1d4ed8",
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
         },
-        secondary: {
-          DEFAULT: "#059669", // Darker green for better contrast
-          hover: "#047857",
-          light: "#34d399",
-          dark: "#065f46",
+        accent: {
+          DEFAULT: "#f97316", // Orange accent
+          hover: "#ea580c",
+          light: "#fdba74",
+          dark: "#c2410c",
         },
         background: {
-          DEFAULT: "#f8fafc", // Slightly off-white background
-          secondary: "#e2e8f0", // Lighter gray with blue tint
-          tertiary: "#cbd5e1", // Medium gray with blue tint
+          DEFAULT: "#ffffff", // Pure white background
+          secondary: "#f1f5f9", // Very light blue-gray
+          tertiary: "#e2e8f0", // Light blue-gray
         },
         text: {
-          DEFAULT: "#0f172a", // Darker text for better readability
-          secondary: "#334155", // Darker secondary text
-          tertiary: "#64748b", // Darker tertiary text
+          DEFAULT: "#0f172a", // Very dark blue-gray
+          secondary: "#334155", // Dark blue-gray
+          tertiary: "#64748b", // Medium blue-gray
           inverted: "#ffffff",
         },
         
-        // Dark mode colors (Obsidian-inspired)
+        // Dark mode colors (Purple theme)
         dark: {
           primary: {
             DEFAULT: "#9580ff", // Purple
             hover: "#b8a8ff",
             light: "#d4caff",
             dark: "#7b68ee",
+            50: "#f5f3ff",
+            100: "#ede9fe",
+            200: "#ddd6fe",
+            300: "#c4b5fd",
+            400: "#a78bfa",
+            500: "#8b5cf6",
+            600: "#7c3aed",
+            700: "#6d28d9",
+            800: "#5b21b6",
+            900: "#4c1d95",
           },
-          secondary: {
-            DEFAULT: "#a277ff", // Lighter purple
-            hover: "#b99aff",
-            light: "#d0bdff",
-            dark: "#8a5cf7",
+          accent: {
+            DEFAULT: "#fb7185", // Pink accent
+            hover: "#f43f5e",
+            light: "#fda4af",
+            dark: "#e11d48",
           },
           background: {
-            DEFAULT: "#1e1e2e", // Dark gray
-            secondary: "#2a2a3c",
-            tertiary: "#363646",
+            DEFAULT: "#1e1e2e", // Dark gray with slight purple tint
+            secondary: "#2a2a3c", // Slightly lighter
+            tertiary: "#363646", // Even lighter
           },
           text: {
-            DEFAULT: "#e2e8f0",
-            secondary: "#cbd5e1",
-            tertiary: "#94a3b8",
+            DEFAULT: "#e2e8f0", // Very light gray
+            secondary: "#cbd5e1", // Light gray
+            tertiary: "#94a3b8", // Medium gray
             inverted: "#1e1e2e",
           },
+        },
+        
+        // Status colors
+        success: {
+          DEFAULT: "#10b981", // Green
+          light: "#a7f3d0",
+          dark: "#059669",
+        },
+        warning: {
+          DEFAULT: "#f59e0b", // Amber
+          light: "#fcd34d",
+          dark: "#d97706",
+        },
+        error: {
+          DEFAULT: "#ef4444", // Red
+          light: "#fca5a5",
+          dark: "#dc2626",
         },
       },
       fontFamily: {

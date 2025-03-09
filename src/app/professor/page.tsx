@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import ClassCodeDisplay from '@/components/ClassCodeDisplay';
+import ClassNameDisplay from '@/components/ClassCodeDisplay';
 import QuestionList from '@/components/QuestionList';
 import { clearUserType, isProfessor, getUserId } from '@/lib/auth';
 import { listenForQuestions, deleteQuestion } from '@/lib/questions';
-import { generateClassCode, getClassCodeForProfessor, createClassCode } from '@/lib/classCode';
+import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
 import { createClassSession } from '@/lib/classSession';
 import { Question } from '@/types';
 
 export default function ProfessorPage() {
   const router = useRouter();
-  const [classCode, setClassCode] = useState('');
+  const [className, setClassName] = useState('');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [professorId, setProfessorId] = useState('');
@@ -45,9 +45,9 @@ export default function ProfessorPage() {
           return;
         }
         
-        // Initialize class code
+        // Initialize class
         if (userId) {
-          await initializeClassCode(userId);
+          await initializeClass(userId);
         }
       } catch (error) {
         console.error("Connection check error:", error);
@@ -60,34 +60,22 @@ export default function ProfessorPage() {
     checkConnection();
   }, [router]);
 
-  const initializeClassCode = async (userId: string) => {
+  const initializeClass = async (userId: string) => {
     try {
-      console.log("Starting class code initialization for user:", userId);
+      console.log("Starting class initialization for user:", userId);
       
-      // Get existing class code for this professor
-      let code = await getClassCodeForProfessor(userId);
-      console.log("Existing code result:", code);
+      // Get existing class for this professor
+      const existingClassName = await getClassForProfessor(userId);
+      console.log("Existing class result:", existingClassName);
       
-      // If no code exists, create one
-      if (!code) {
-        code = generateClassCode();
-        console.log("Generated new code:", code);
-        const success = await createClassCode(code, userId);
-        console.log("Code creation success:", success);
-        
-        if (!success) {
-          setError("Failed to create class code. Please try again.");
-          setIsLoading(false);
-          return;
-        }
+      if (existingClassName) {
+        setClassName(existingClassName);
       }
       
-      setClassCode(code);
-      
       // Create a session ID if we don't have one
-      if (!sessionId) {
+      if (!sessionId && existingClassName) {
         try {
-          const newSessionId = await createClassSession(code, userId);
+          const newSessionId = await createClassSession(existingClassName, userId);
           setSessionId(newSessionId);
           console.log("Created new session ID:", newSessionId);
         } catch (err) {
@@ -97,18 +85,23 @@ export default function ProfessorPage() {
         }
       }
       
-      // Start listening for questions
-      const unsubscribe = listenForQuestions(code, (newQuestions) => {
-        setQuestions(newQuestions);
+      // Start listening for questions if we have a class name
+      if (existingClassName) {
+        const unsubscribe = listenForQuestions(existingClassName, (newQuestions) => {
+          setQuestions(newQuestions);
+          setIsLoading(false);
+        });
+        
+        // Cleanup function
+        return () => {
+          unsubscribe();
+        };
+      } else {
+        // No class yet, just stop loading
         setIsLoading(false);
-      });
-      
-      // Cleanup function
-      return () => {
-        unsubscribe();
-      };
+      }
     } catch (error) {
-      console.error("Error initializing class code:", error);
+      console.error("Error initializing class:", error);
       setError("Failed to initialize class. Please refresh the page.");
       setIsLoading(false);
     }
@@ -123,8 +116,18 @@ export default function ProfessorPage() {
     }
   };
 
-  const handleClassCodeChange = (newCode: string) => {
-    setClassCode(newCode);
+  const handleClassNameChange = (newClassName: string) => {
+    setClassName(newClassName);
+    
+    // Start listening for questions with the new class name
+    if (newClassName) {
+      const unsubscribe = listenForQuestions(newClassName, (newQuestions) => {
+        setQuestions(newQuestions);
+      });
+      
+      // We don't need to return the unsubscribe function here since this isn't a useEffect
+      // The old listener will be replaced when this function is called again
+    }
   };
 
   const handleLogout = () => {
@@ -137,15 +140,15 @@ export default function ProfessorPage() {
     setConnectionStatus('checking');
     const userId = getUserId();
     if (userId) {
-      await initializeClassCode(userId);
+      await initializeClass(userId);
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
       <Navbar userType="professor" onLogout={handleLogout} />
       
-      <main className="flex-1 bg-background px-4 py-8 dark:bg-dark-background sm:px-6 lg:px-8">
+      <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <h1 className="mb-8 text-3xl font-bold text-text dark:text-dark-text">Professor Dashboard</h1>
           
@@ -157,12 +160,12 @@ export default function ProfessorPage() {
           ) : null}
           
           {error && (
-            <div className="mb-8 rounded-lg bg-red-50 p-6 shadow-md dark:bg-red-900/20">
-              <h2 className="mb-2 text-lg font-semibold text-red-700 dark:text-red-400">Error</h2>
-              <p className="text-red-600 dark:text-red-300">{error}</p>
+            <div className="mb-8 rounded-lg bg-error-light/20 p-6 shadow-all-around dark:bg-error-light/10">
+              <h2 className="mb-2 text-lg font-semibold text-error-dark dark:text-error-light">Error</h2>
+              <p className="text-error-dark dark:text-error-light">{error}</p>
               <button 
                 onClick={handleRetry}
-                className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+                className="mt-4 rounded-md bg-error-dark px-4 py-2 text-sm font-medium text-white hover:bg-error-dark/90 dark:bg-error-light dark:text-error-dark dark:hover:bg-error-light/90"
               >
                 Retry Connection
               </button>
@@ -170,24 +173,26 @@ export default function ProfessorPage() {
           )}
 
           <div className="mb-8">
-            <ClassCodeDisplay 
-              classCode={classCode} 
+            <ClassNameDisplay 
+              className={className} 
               professorId={professorId}
               sessionId={sessionId || 'fallback-session-id'}
-              onCodeChange={handleClassCodeChange}
+              onClassNameChange={handleClassNameChange}
             />
           </div>
 
-          <div className="rounded-lg bg-white p-6 shadow-md transition-all dark:bg-dark-background-secondary dark:shadow-dark-md">
-            <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Questions</h2>
-            <QuestionList 
-              questions={questions} 
-              isProfessor={true}
-              onDelete={handleDeleteQuestion}
-              emptyMessage="No questions yet. Share your class code with students to get started."
-              isLoading={isLoading}
-            />
-          </div>
+          {className && (
+            <div className="rounded-lg bg-white p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
+              <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Questions</h2>
+              <QuestionList 
+                questions={questions} 
+                isProfessor={true}
+                onDelete={handleDeleteQuestion}
+                emptyMessage="No questions yet. Share your class name with students to get started."
+                isLoading={isLoading}
+              />
+            </div>
+          )}
         </div>
       </main>
     </div>
