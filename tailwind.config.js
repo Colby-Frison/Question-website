@@ -9,28 +9,28 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Light mode colors
+        // Light mode colors - Enhanced for better contrast
         primary: {
-          DEFAULT: "#3b82f6", // Blue
-          hover: "#2563eb",
-          light: "#93c5fd",
-          dark: "#1d4ed8",
+          DEFAULT: "#2563eb", // Darker blue for better contrast
+          hover: "#1d4ed8",
+          light: "#60a5fa",
+          dark: "#1e40af",
         },
         secondary: {
-          DEFAULT: "#10b981", // Green
-          hover: "#059669",
-          light: "#6ee7b7",
-          dark: "#047857",
+          DEFAULT: "#059669", // Darker green for better contrast
+          hover: "#047857",
+          light: "#34d399",
+          dark: "#065f46",
         },
         background: {
-          DEFAULT: "#ffffff",
-          secondary: "#f3f4f6",
-          tertiary: "#e5e7eb",
+          DEFAULT: "#f8fafc", // Slightly off-white background
+          secondary: "#e2e8f0", // Lighter gray with blue tint
+          tertiary: "#cbd5e1", // Medium gray with blue tint
         },
         text: {
-          DEFAULT: "#1f2937",
-          secondary: "#4b5563",
-          tertiary: "#6b7280",
+          DEFAULT: "#0f172a", // Darker text for better readability
+          secondary: "#334155", // Darker secondary text
+          tertiary: "#64748b", // Darker tertiary text
           inverted: "#ffffff",
         },
         

@@ -57,7 +57,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const renderEmptyState = useMemo(() => {
     if (questions.length === 0) {
       return (
-        <div className="rounded-md bg-background-secondary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
+        <div className="rounded-md bg-background-tertiary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
           <p className="text-sm sm:text-base text-text-secondary dark:text-dark-text-secondary">{emptyMessage}</p>
         </div>
       );
@@ -67,7 +67,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
 
   const questionItems = useMemo(() => {
     return questions.map((question) => (
-      <li key={question.id} className="py-3 sm:py-4">
+      <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0">
         <div className="flex flex-col space-y-2 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
           <div className="flex-1 pr-2 sm:pr-4">
             <div 
@@ -97,7 +97,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                 className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
                   deletingId === question.id
                     ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                    : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
+                    : 'bg-red-200 text-red-800 hover:bg-red-300 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
                 }`}
               >
                 {deletingId === question.id ? 'Deleting...' : 'Delete'}
@@ -113,7 +113,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary">
+    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-background-secondary p-2 sm:p-4 dark:bg-dark-background-secondary">
       {questionItems}
     </ul>
   );
