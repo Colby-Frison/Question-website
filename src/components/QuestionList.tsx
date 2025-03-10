@@ -133,8 +133,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           </div>
         )}
 
-        <div className="flex flex-col space-y-2">
-          <div className="flex-1 pr-2 sm:pr-4">
+        <div className="flex flex-col space-y-2 w-full">
+          <div className="w-full">
             {editingId === question.id ? (
               <div className="space-y-2">
                 <textarea
@@ -163,7 +163,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
             ) : (
               <>
                 <div 
-                  className={`text-sm sm:text-base text-text dark:text-dark-text ${
+                  className={`text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere ${
                     question.text.length > 150 && expandedId !== question.id ? 'line-clamp-3' : ''
                   }`}
                 >
@@ -177,60 +177,63 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                     {expandedId === question.id ? 'Show less' : 'Show more'}
                   </button>
                 )}
-                <p className="mt-1 text-xs text-text-tertiary dark:text-dark-text-tertiary">
-                  {new Date(question.timestamp).toLocaleString()}
-                </p>
               </>
             )}
           </div>
           
           {/* Action buttons for professors or students */}
           {(isProfessor || isStudent) && editingId !== question.id && (
-            <div className={`flex items-center space-x-2 ${isStudent ? 'justify-end' : ''}`}>
-              {isProfessor && (
-                <div className="flex items-center mr-2">
-                  <button
-                    onClick={() => toggleQuestionStatus(question.id, question.status)}
-                    disabled={updatingStatusId === question.id}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      updatingStatusId === question.id
-                        ? 'bg-background-tertiary dark:bg-dark-background-tertiary'
-                        : question.status === 'answered'
-                          ? 'bg-success-light dark:bg-success-dark'
-                          : 'bg-error-light dark:bg-error-dark'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        question.status === 'answered' ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                  <span className="ml-2 text-xs text-text-secondary dark:text-dark-text-secondary">
-                    {question.status === 'answered' ? 'Answered' : 'Unanswered'}
-                  </span>
-                </div>
-              )}
+            <div className={`flex items-center ${isStudent ? 'justify-between' : ''}`}>
+              <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary">
+                {new Date(question.timestamp).toLocaleString()}
+              </p>
               
-              {isStudent && (
+              <div className="flex items-center space-x-2">
+                {isProfessor && (
+                  <div className="flex items-center mr-2">
+                    <button
+                      onClick={() => toggleQuestionStatus(question.id, question.status)}
+                      disabled={updatingStatusId === question.id}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        updatingStatusId === question.id
+                          ? 'bg-background-tertiary dark:bg-dark-background-tertiary'
+                          : question.status === 'answered'
+                            ? 'bg-success-light dark:bg-success-dark'
+                            : 'bg-error-light dark:bg-error-dark'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          question.status === 'answered' ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                    <span className="ml-2 text-xs text-text-secondary dark:text-dark-text-secondary">
+                      {question.status === 'answered' ? 'Answered' : 'Unanswered'}
+                    </span>
+                  </div>
+                )}
+                
+                {isStudent && (
+                  <button
+                    onClick={() => startEditing(question.id, question.text)}
+                    className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
+                  >
+                    Edit
+                  </button>
+                )}
                 <button
-                  onClick={() => startEditing(question.id, question.text)}
-                  className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
+                  onClick={() => handleDelete(question.id)}
+                  disabled={deletingId === question.id}
+                  className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
+                    deletingId === question.id
+                      ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
+                      : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
+                  }`}
                 >
-                  Edit
+                  {deletingId === question.id ? 'Deleting...' : 'Delete'}
                 </button>
-              )}
-              <button
-                onClick={() => handleDelete(question.id)}
-                disabled={deletingId === question.id}
-                className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                  deletingId === question.id
-                    ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                    : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
-                }`}
-              >
-                {deletingId === question.id ? 'Deleting...' : 'Delete'}
-              </button>
+              </div>
             </div>
           )}
         </div>
@@ -258,7 +261,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary">
+    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary w-full overflow-hidden">
       {questionItems}
     </ul>
   );
