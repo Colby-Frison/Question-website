@@ -14,16 +14,23 @@
   }
 }
 
+/* Prevent flash of unstyled content during theme change */
+html {
+  visibility: visible;
+  opacity: 1;
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+html.theme-transitioning {
+  opacity: 0;
+  visibility: hidden;
+}
+
 /* Smooth transitions for theme changes */
 * {
-  @apply transition-colors duration-500;
+  @apply transition-colors duration-300;
 }
 
-html {
-  transition: background-color 0.5s ease, color 0.5s ease;
-}
-
-/* Base styles */
 body {
   @apply antialiased min-h-screen;
 }
@@ -130,34 +137,34 @@ body {
 
 /* Shadow styles */
 .shadow-all-around {
-  @apply shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(0,0,0,0.3)];
+  @apply shadow-[0_0_15px_rgba(73,84,100,0.1)] dark:shadow-[0_0_15px_rgba(38,40,43,0.3)];
 }
 
 /* Card styles with dark mode support */
 .card {
-  @apply bg-white rounded-lg shadow-all-around p-4 transition-all hover:shadow-[0_0_20px_rgba(0,0,0,0.15)] dark:bg-dark-background-secondary dark:hover:shadow-[0_0_20px_rgba(0,0,0,0.4)];
+  @apply bg-white rounded-lg shadow-all-around p-4 transition-all duration-300 hover:shadow-[0_0_20px_rgba(73,84,100,0.15)] dark:bg-dark-background-secondary dark:hover:shadow-[0_0_20px_rgba(38,40,43,0.4)];
 }
 
 /* Button styles with dark mode support */
 .btn-primary {
-  @apply bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-md transition-colors focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted dark:focus:ring-dark-primary-200;
+  @apply bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted dark:focus:ring-dark-primary-200;
 }
 
 .btn-accent {
-  @apply bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-md transition-colors focus:ring-2 focus:ring-accent-light focus:ring-offset-2 dark:bg-dark-accent dark:hover:bg-dark-accent-hover dark:text-dark-text-inverted dark:focus:ring-dark-accent-light;
+  @apply bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-accent-light focus:ring-offset-2 dark:bg-dark-accent dark:hover:bg-dark-accent-hover dark:text-dark-text-inverted dark:focus:ring-dark-accent-light;
 }
 
 .btn-outline {
-  @apply border border-primary text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:border-dark-primary dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
+  @apply border border-primary text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:border-dark-primary dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
 }
 
 .btn-ghost {
-  @apply text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
+  @apply text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
 }
 
 /* Form input styles with dark mode support */
 .form-input {
-  @apply w-full rounded-md border border-background-tertiary bg-white px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary;
+  @apply w-full rounded-md border border-background-tertiary bg-white px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary transition-[border-color,box-shadow,background-color,color] duration-300;
 }
 
 /* Responsive flex utilities */

@@ -4,13 +4,16 @@ import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
 export function FloatingThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // Avoid hydration mismatch by only rendering after mount
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Use the resolved theme to determine the current theme
+  const currentTheme = mounted ? resolvedTheme : null;
 
   if (!mounted) {
     return null;
@@ -19,11 +22,11 @@ export function FloatingThemeToggle() {
   return (
     <div className="fixed bottom-4 right-4 z-50">
       <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        className="flex h-12 w-12 items-center justify-center rounded-full bg-white border-2 border-primary shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-300 hover:bg-primary-50 dark:bg-dark-background-secondary dark:border-dark-primary dark:shadow-[0_0_10px_rgba(149,128,255,0.5)] dark:hover:bg-dark-background-tertiary"
+        onClick={() => setTheme(currentTheme === 'dark' ? 'light' : 'dark')}
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-background-default border-2 border-primary shadow-[0_0_10px_rgba(73,84,100,0.5)] transition-all duration-300 hover:bg-background-secondary dark:bg-dark-background-secondary dark:border-dark-primary dark:shadow-[0_0_10px_rgba(38,40,43,0.5)] dark:hover:bg-dark-background-tertiary"
         aria-label="Toggle theme"
       >
-        {theme === 'dark' ? (
+        {currentTheme === 'dark' ? (
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"

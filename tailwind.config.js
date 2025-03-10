@@ -9,75 +9,76 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Light mode colors - Unified blue theme
+        // Light mode colors - Cool gray theme
         primary: {
-          DEFAULT: "#3b82f6", // Blue
-          hover: "#2563eb",
-          light: "#93c5fd",
-          dark: "#1d4ed8",
-          50: "#eff6ff",
-          100: "#dbeafe",
-          200: "#bfdbfe",
-          300: "#93c5fd",
-          400: "#60a5fa",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          800: "#1e40af",
-          900: "#1e3a8a",
+          DEFAULT: "#495464", // Dark blue-gray
+          hover: "#3A4350",
+          light: "#BBBFCA",
+          dark: "#2A3038",
+          50: "#F4F4F2",
+          100: "#E8E8E8",
+          200: "#DCDCDC",
+          300: "#BBBFCA",
+          400: "#A4A9B7",
+          500: "#8D93A4",
+          600: "#767D91",
+          700: "#5F677E",
+          800: "#495464",
+          900: "#3A4350",
         },
         accent: {
-          DEFAULT: "#f97316", // Orange accent
-          hover: "#ea580c",
-          light: "#fdba74",
-          dark: "#c2410c",
+          DEFAULT: "#BBBFCA", // Medium blue-gray
+          hover: "#A4A9B7",
+          light: "#E8E8E8",
+          dark: "#495464",
         },
         background: {
-          DEFAULT: "#ffffff", // Pure white background
-          secondary: "#f1f5f9", // Very light blue-gray
-          tertiary: "#e2e8f0", // Light blue-gray
+          DEFAULT: "#F4F4F2", // Light gray/off-white
+          secondary: "#E8E8E8", // Slightly darker gray
+          tertiary: "#BBBFCA", // Medium blue-gray
         },
         text: {
-          DEFAULT: "#0f172a", // Very dark blue-gray
-          secondary: "#334155", // Dark blue-gray
-          tertiary: "#64748b", // Medium blue-gray
-          inverted: "#ffffff",
+          DEFAULT: "#495464", // Dark blue-gray
+          secondary: "#5F677E", // Medium blue-gray
+          tertiary: "#767D91", // Light blue-gray
+          inverted: "#F4F4F2", // Light gray/off-white
         },
         
-        // Dark mode colors (Purple theme)
+        // Dark mode colors (Blue-Gray theme)
         dark: {
           primary: {
-            DEFAULT: "#9580ff", // Purple
-            hover: "#b8a8ff",
-            light: "#d4caff",
-            dark: "#7b68ee",
-            50: "#f5f3ff",
-            100: "#ede9fe",
-            200: "#ddd6fe",
-            300: "#c4b5fd",
-            400: "#a78bfa",
-            500: "#8b5cf6",
-            600: "#7c3aed",
-            700: "#6d28d9",
-            800: "#5b21b6",
-            900: "#4c1d95",
+            DEFAULT: "#5F85DB", // Medium blue
+            hover: "#4A6AB0",
+            light: "#90B8F8",
+            dark: "#3D5690",
+            50: "#F0F4FC",
+            100: "#E1E9FA",
+            200: "#C3D4F5",
+            300: "#90B8F8",
+            400: "#7AA1E6",
+            500: "#5F85DB",
+            600: "#4A6AB0",
+            700: "#3D5690",
+            800: "#2F4270",
+            900: "#26282B",
           },
           accent: {
-            DEFAULT: "#fb7185", // Pink accent
-            hover: "#f43f5e",
-            light: "#fda4af",
-            dark: "#e11d48",
+            DEFAULT: "#90B8F8", // Light blue
+            hover: "#7AA1E6",
+            light: "#C3D4F5",
+            dark: "#5F85DB",
           },
           background: {
-            DEFAULT: "#1e1e2e", // Dark gray with slight purple tint
-            secondary: "#2a2a3c", // Slightly lighter
-            tertiary: "#363646", // Even lighter
+            DEFAULT: "#26282B", // Darkest gray
+            secondary: "#2D3035", // Dark gray
+            tertiary: "#404449", // Medium gray (darker than secondary, lighter than primary)
+            quaternary: "#4A4E54", // New color for hover state (darker than tertiary)
           },
           text: {
-            DEFAULT: "#e2e8f0", // Very light gray
-            secondary: "#cbd5e1", // Light gray
-            tertiary: "#94a3b8", // Medium gray
-            inverted: "#1e1e2e",
+            DEFAULT: "#F0F4FC", // Very light blue-gray
+            secondary: "#C3D4F5", // Light blue
+            tertiary: "#90B8F8", // Medium blue
+            inverted: "#26282B", // Dark gray
           },
         },
         

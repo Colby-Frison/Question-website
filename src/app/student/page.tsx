@@ -150,7 +150,7 @@ export default function StudentPage() {
                 <QuestionForm userIdentifier={studentId} classCode={className} />
               </div>
               
-              <div className="rounded-lg bg-white p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
+              <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
                 <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
                 <QuestionList 
                   questions={myQuestions} 

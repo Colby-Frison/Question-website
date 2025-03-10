@@ -113,7 +113,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 shadow-all-around dark:bg-dark-background-secondary">
+    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary">
       {questionItems}
     </ul>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { setUserType, getUserType } from '@/lib/auth';
 
@@ -49,7 +49,7 @@ export default function SelectRolePage() {
                 className={`flex-1 rounded-md px-4 py-3 text-sm font-medium transition-colors ${
                   userType === 'student'
                     ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary/80'
+                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
                 onClick={() => setUserTypeState('student')}
               >
@@ -65,7 +65,7 @@ export default function SelectRolePage() {
                 className={`flex-1 rounded-md px-4 py-3 text-sm font-medium transition-colors ${
                   userType === 'professor'
                     ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary/80'
+                    : 'bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
                 onClick={() => setUserTypeState('professor')}
               >
