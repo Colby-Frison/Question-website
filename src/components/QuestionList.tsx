@@ -119,19 +119,21 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const questionItems = useMemo(() => {
     return questions.map((question) => (
       <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
-        {/* Status indicator */}
-        <div className="absolute top-3 right-3">
-          <div 
-            className={`h-3 w-3 rounded-full ${
-              question.status === 'answered' 
-                ? 'bg-success-light dark:bg-success-dark' 
-                : 'bg-error-light dark:bg-error-dark'
-            }`}
-            title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
-          ></div>
-        </div>
+        {/* Status indicator - only show for students */}
+        {!isProfessor && isStudent && (
+          <div className="absolute top-2 right-2 z-10">
+            <div 
+              className={`h-4 w-4 rounded-full ${
+                question.status === 'answered' 
+                  ? 'bg-success-light dark:bg-success-dark' 
+                  : 'bg-error-light dark:bg-error-dark'
+              }`}
+              title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
+            ></div>
+          </div>
+        )}
 
-        <div className="flex flex-col space-y-2 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+        <div className="flex flex-col space-y-2">
           <div className="flex-1 pr-2 sm:pr-4">
             {editingId === question.id ? (
               <div className="space-y-2">
@@ -184,7 +186,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           
           {/* Action buttons for professors or students */}
           {(isProfessor || isStudent) && editingId !== question.id && (
-            <div className="flex items-center space-x-2 mt-2 sm:mt-0">
+            <div className={`flex items-center space-x-2 ${isStudent ? 'justify-end' : ''}`}>
               {isProfessor && (
                 <div className="flex items-center mr-2">
                   <button
