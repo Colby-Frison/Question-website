@@ -24,7 +24,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   isLoading = false
 }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
@@ -45,10 +44,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       setDeletingId(null);
     }
   }, [onDelete]);
-
-  const toggleExpand = useCallback((id: string) => {
-    setExpandedId(expandedId === id ? null : id);
-  }, [expandedId]);
 
   const startEditing = useCallback((id: string, text: string) => {
     setEditingId(id);
@@ -163,34 +158,24 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
             ) : (
               <>
                 <div 
-                  className={`text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere ${
-                    question.text.length > 150 && expandedId !== question.id ? 'line-clamp-3' : ''
-                  }`}
+                  className={`text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere ${!isProfessor && isStudent ? 'pr-8 pl-2' : ''}`}
                 >
                   {question.text}
                 </div>
-                {question.text.length > 150 && (
-                  <button 
-                    onClick={() => toggleExpand(question.id)}
-                    className="mt-1 text-xs font-medium text-primary hover:text-primary-hover dark:text-dark-primary dark:hover:text-dark-primary-hover"
-                  >
-                    {expandedId === question.id ? 'Show less' : 'Show more'}
-                  </button>
-                )}
               </>
             )}
           </div>
           
           {/* Action buttons for professors or students */}
           {(isProfessor || isStudent) && editingId !== question.id && (
-            <div className={`flex items-center ${isStudent ? 'justify-between' : ''}`}>
+            <div className={`flex items-center justify-between`}>
               <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary">
                 {new Date(question.timestamp).toLocaleString()}
               </p>
               
               <div className="flex items-center space-x-2">
                 {isProfessor && (
-                  <div className="flex items-center mr-2">
+                  <div className="flex items-center">
                     <button
                       onClick={() => toggleQuestionStatus(question.id, question.status)}
                       disabled={updatingStatusId === question.id}
@@ -208,31 +193,44 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                         }`}
                       />
                     </button>
-                    <span className="ml-2 text-xs text-text-secondary dark:text-dark-text-secondary">
+                    <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary">
                       {question.status === 'answered' ? 'Answered' : 'Unanswered'}
                     </span>
+                    <button
+                      onClick={() => handleDelete(question.id)}
+                      disabled={deletingId === question.id}
+                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
+                        deletingId === question.id
+                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
+                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
+                      }`}
+                    >
+                      {deletingId === question.id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </div>
                 )}
                 
                 {isStudent && (
-                  <button
-                    onClick={() => startEditing(question.id, question.text)}
-                    className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
-                  >
-                    Edit
-                  </button>
+                  <>
+                    <button
+                      onClick={() => startEditing(question.id, question.text)}
+                      className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(question.id)}
+                      disabled={deletingId === question.id}
+                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
+                        deletingId === question.id
+                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
+                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
+                      }`}
+                    >
+                      {deletingId === question.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </>
                 )}
-                <button
-                  onClick={() => handleDelete(question.id)}
-                  disabled={deletingId === question.id}
-                  className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                    deletingId === question.id
-                      ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                      : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
-                  }`}
-                >
-                  {deletingId === question.id ? 'Deleting...' : 'Delete'}
-                </button>
               </div>
             </div>
           )}
@@ -241,7 +239,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     ));
   }, [
     questions, 
-    expandedId, 
     deletingId, 
     isProfessor, 
     isStudent, 
@@ -250,7 +247,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     isUpdating,
     updatingStatusId,
     handleDelete, 
-    toggleExpand, 
     startEditing, 
     saveEdit, 
     cancelEditing,
