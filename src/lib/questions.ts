@@ -199,7 +199,7 @@ export const addQuestion = async (
       text,
       timestamp,
       classCode,
-      // No user identifier here to maintain anonymity
+      userIdentifier, // Include userIdentifier for security rules
     });
     
     console.log(`Question added with ID: ${questionRef.id}`);
