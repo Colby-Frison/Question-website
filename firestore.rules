@@ -20,10 +20,12 @@ service cloud.firestore {
       allow create: if request.resource.data.text != null && 
                      request.resource.data.classCode != null;
       
-      // Anyone can update their own questions (using userIdentifier)
-      allow update: if true;
+      // Students can update their own questions
+      allow update: if request.resource.data.userIdentifier == resource.data.userIdentifier ||
+                     // Allow professors to update status
+                     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastUpdated']));
       
-      // Anyone can delete their own questions or professors can delete questions for their class
+      // Students can delete their own questions or professors can delete questions for their class
       allow delete: if true;
     }
     

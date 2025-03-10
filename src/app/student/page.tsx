@@ -156,6 +156,8 @@ export default function StudentPage() {
                   questions={myQuestions} 
                   emptyMessage="You haven't asked any questions yet."
                   isLoading={isLoading}
+                  isStudent={true}
+                  studentId={studentId}
                 />
               </div>
             </>

@@ -9,7 +9,8 @@ import {
   orderBy, 
   deleteDoc, 
   doc, 
-  onSnapshot 
+  onSnapshot,
+  updateDoc
 } from 'firebase/firestore';
 
 // Collection references
@@ -38,6 +39,7 @@ export const getQuestions = async (classCode: string): Promise<Question[]> => {
       id: doc.id,
       text: doc.data().text,
       timestamp: doc.data().timestamp,
+      status: doc.data().status || 'unanswered',
     }));
   } catch (error) {
     console.error('Error getting questions:', error);
@@ -74,6 +76,7 @@ export const listenForQuestions = (
             id: doc.id,
             text: data.text || "No text provided",
             timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
           };
         });
         callback(questions);
@@ -120,6 +123,7 @@ export const getUserQuestions = async (
         id: data.questionId || doc.id,
         text: data.text || "No text provided",
         timestamp: data.timestamp || Date.now(),
+        status: data.status || 'unanswered',
       };
     });
   } catch (error) {
@@ -159,10 +163,11 @@ export const listenForUserQuestions = (
             id: data.questionId || doc.id,
             text: data.text || "No text provided",
             timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
           };
         });
         callback(questions);
-      },
+      }, 
       (error) => {
         console.error("Error in user questions listener:", error);
         callback([]);
@@ -200,6 +205,7 @@ export const addQuestion = async (
       timestamp,
       classCode,
       userIdentifier, // Include userIdentifier for security rules
+      status: 'unanswered', // Default status
     });
     
     console.log(`Question added with ID: ${questionRef.id}`);
@@ -211,6 +217,7 @@ export const addQuestion = async (
       timestamp,
       userIdentifier,
       classCode,
+      status: 'unanswered', // Default status
     });
     
     console.log("User question reference added");
@@ -219,10 +226,61 @@ export const addQuestion = async (
       id: questionRef.id,
       text,
       timestamp,
+      status: 'unanswered',
     };
   } catch (error) {
     console.error('Error adding question:', error);
     return null;
+  }
+};
+
+// Update an existing question
+export const updateQuestion = async (
+  id: string,
+  text: string,
+  userIdentifier: string = 'student'
+): Promise<boolean> => {
+  if (!id || !text || !userIdentifier) {
+    console.error("Missing parameters for updateQuestion");
+    return false;
+  }
+
+  try {
+    console.log(`Updating question with ID: ${id}`);
+    
+    // Update in global questions collection
+    const questionRef = doc(db, QUESTIONS_COLLECTION, id);
+    await updateDoc(questionRef, {
+      text,
+      lastEdited: Date.now(),
+    });
+    
+    console.log("Question updated in global collection");
+    
+    // Find and update in user questions collection
+    const userQuestionsQuery = query(
+      collection(db, USER_QUESTIONS_COLLECTION),
+      where('questionId', '==', id),
+      where('userIdentifier', '==', userIdentifier)
+    );
+    
+    const querySnapshot = await getDocs(userQuestionsQuery);
+    console.log(`Found ${querySnapshot.docs.length} user question references to update`);
+    
+    const updatePromises = querySnapshot.docs.map(doc => 
+      updateDoc(doc.ref, {
+        text,
+        lastEdited: Date.now(),
+      })
+    );
+    
+    await Promise.all(updatePromises);
+    console.log("All user question references updated");
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating question:', error);
+    return false;
   }
 };
 
@@ -259,6 +317,54 @@ export const deleteQuestion = async (id: string): Promise<boolean> => {
     return true;
   } catch (error) {
     console.error('Error deleting question:', error);
+    return false;
+  }
+};
+
+// Update question status
+export const updateQuestionStatus = async (
+  id: string,
+  status: 'answered' | 'unanswered'
+): Promise<boolean> => {
+  if (!id) {
+    console.error("No ID provided to updateQuestionStatus");
+    return false;
+  }
+
+  try {
+    console.log(`Updating question status with ID: ${id} to ${status}`);
+    
+    // Update in global questions collection
+    const questionRef = doc(db, QUESTIONS_COLLECTION, id);
+    await updateDoc(questionRef, {
+      status,
+      lastUpdated: Date.now(),
+    });
+    
+    console.log("Question status updated in global collection");
+    
+    // Find and update in user questions collection
+    const userQuestionsQuery = query(
+      collection(db, USER_QUESTIONS_COLLECTION),
+      where('questionId', '==', id)
+    );
+    
+    const querySnapshot = await getDocs(userQuestionsQuery);
+    console.log(`Found ${querySnapshot.docs.length} user question references to update status`);
+    
+    const updatePromises = querySnapshot.docs.map(doc => 
+      updateDoc(doc.ref, {
+        status,
+        lastUpdated: Date.now(),
+      })
+    );
+    
+    await Promise.all(updatePromises);
+    console.log("All user question references updated with new status");
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating question status:', error);
     return false;
   }
 }; 
