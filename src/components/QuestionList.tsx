@@ -114,11 +114,11 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const questionItems = useMemo(() => {
     return questions.map((question) => (
       <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
-        {/* Status indicator - only show for students */}
+        {/* Status indicator for students */}
         {!isProfessor && isStudent && (
           <div className="absolute top-2 right-2 z-10">
             <div 
-              className={`h-4 w-4 rounded-full ${
+              className={`h-2 w-2 rounded-full ${
                 question.status === 'answered' 
                   ? 'bg-success-light dark:bg-success-dark' 
                   : 'bg-error-light dark:bg-error-dark'
