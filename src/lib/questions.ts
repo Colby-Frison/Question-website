@@ -10,12 +10,15 @@ import {
   deleteDoc, 
   doc, 
   onSnapshot,
-  updateDoc
+  updateDoc,
+  limit
 } from 'firebase/firestore';
 
 // Collection references
 const QUESTIONS_COLLECTION = 'questions';
 const USER_QUESTIONS_COLLECTION = 'userQuestions';
+const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
+const ANSWERS_COLLECTION = 'answers';
 
 // Get all questions for a specific class code
 export const getQuestions = async (classCode: string): Promise<Question[]> => {
@@ -366,5 +369,279 @@ export const updateQuestionStatus = async (
   } catch (error) {
     console.error('Error updating question status:', error);
     return false;
+  }
+};
+
+// Add a new active question (for professors)
+export const addActiveQuestion = async (
+  text: string,
+  professorId: string,
+  classCode: string
+): Promise<string | null> => {
+  if (!text || !professorId || !classCode) {
+    console.error("Missing parameters for addActiveQuestion");
+    return null;
+  }
+
+  try {
+    console.log(`Adding active question for class ${classCode}`);
+    
+    // Create a timestamp
+    const timestamp = Date.now();
+    
+    // First, clear any existing active questions for this class
+    await clearActiveQuestions(classCode);
+    
+    // Add the new active question
+    const questionRef = await addDoc(collection(db, ACTIVE_QUESTION_COLLECTION), {
+      text,
+      timestamp,
+      classCode,
+      professorId,
+      answers: [],
+    });
+    
+    console.log(`Active question added with ID: ${questionRef.id}`);
+    return questionRef.id;
+  } catch (error) {
+    console.error('Error adding active question:', error);
+    return null;
+  }
+};
+
+// Clear existing active questions for a class
+export const clearActiveQuestions = async (classCode: string): Promise<boolean> => {
+  if (!classCode) {
+    console.error("No class code provided to clearActiveQuestions");
+    return false;
+  }
+
+  try {
+    console.log(`Clearing active questions for class ${classCode}`);
+    
+    const q = query(
+      collection(db, ACTIVE_QUESTION_COLLECTION),
+      where('classCode', '==', classCode)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log(`Found ${querySnapshot.docs.length} active questions to clear`);
+    
+    const deletePromises = querySnapshot.docs.map(doc => 
+      deleteDoc(doc.ref)
+    );
+    
+    await Promise.all(deletePromises);
+    console.log("All active questions cleared");
+    
+    return true;
+  } catch (error) {
+    console.error('Error clearing active questions:', error);
+    return false;
+  }
+};
+
+// Get the current active question for a class
+export const getActiveQuestion = async (classCode: string): Promise<{id: string, text: string, timestamp: number} | null> => {
+  if (!classCode) {
+    console.warn("getActiveQuestion called without a class code");
+    return null;
+  }
+
+  try {
+    console.log(`Fetching active question for class code: ${classCode}`);
+    const q = query(
+      collection(db, ACTIVE_QUESTION_COLLECTION), 
+      where('classCode', '==', classCode),
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      console.log("No active question found");
+      return null;
+    }
+    
+    const doc = querySnapshot.docs[0];
+    const data = doc.data();
+    
+    return {
+      id: doc.id,
+      text: data.text || "No text provided",
+      timestamp: data.timestamp || Date.now(),
+    };
+  } catch (error) {
+    console.error('Error getting active question:', error);
+    return null;
+  }
+};
+
+// Set up a real-time listener for the active question
+export const listenForActiveQuestion = (
+  classCode: string, 
+  callback: (question: {id: string, text: string, timestamp: number} | null) => void
+) => {
+  if (!classCode) {
+    console.error("No class code provided to listenForActiveQuestion");
+    callback(null);
+    return () => {};
+  }
+
+  console.log(`Setting up active question listener for class: ${classCode}`);
+  
+  try {
+    const q = query(
+      collection(db, ACTIVE_QUESTION_COLLECTION), 
+      where('classCode', '==', classCode),
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+    
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        if (querySnapshot.empty) {
+          console.log("No active question found in listener");
+          callback(null);
+          return;
+        }
+        
+        const doc = querySnapshot.docs[0];
+        const data = doc.data();
+        
+        callback({
+          id: doc.id,
+          text: data.text || "No text provided",
+          timestamp: data.timestamp || Date.now(),
+        });
+      }, 
+      (error) => {
+        console.error("Error in active question listener:", error);
+        callback(null);
+      }
+    );
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("Error setting up active question listener:", error);
+    callback(null);
+    return () => {};
+  }
+};
+
+// Add an answer to the active question
+export const addAnswer = async (
+  activeQuestionId: string,
+  text: string,
+  studentId: string,
+  classCode: string
+): Promise<string | null> => {
+  if (!activeQuestionId || !text || !studentId || !classCode) {
+    console.error("Missing parameters for addAnswer");
+    return null;
+  }
+
+  try {
+    console.log(`Adding answer for question ${activeQuestionId}`);
+    
+    // Create a timestamp
+    const timestamp = Date.now();
+    
+    // Add the answer
+    const answerRef = await addDoc(collection(db, ANSWERS_COLLECTION), {
+      activeQuestionId,
+      text,
+      timestamp,
+      studentId,
+      classCode,
+    });
+    
+    console.log(`Answer added with ID: ${answerRef.id}`);
+    return answerRef.id;
+  } catch (error) {
+    console.error('Error adding answer:', error);
+    return null;
+  }
+};
+
+// Get answers for an active question
+export const getAnswers = async (activeQuestionId: string): Promise<{id: string, text: string, timestamp: number, studentId: string}[]> => {
+  if (!activeQuestionId) {
+    console.warn("getAnswers called without an active question ID");
+    return [];
+  }
+
+  try {
+    console.log(`Fetching answers for question ID: ${activeQuestionId}`);
+    const q = query(
+      collection(db, ANSWERS_COLLECTION), 
+      where('activeQuestionId', '==', activeQuestionId),
+      orderBy('timestamp', 'asc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log(`Retrieved ${querySnapshot.docs.length} answers`);
+    
+    return querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        text: data.text || "No text provided",
+        timestamp: data.timestamp || Date.now(),
+        studentId: data.studentId || "unknown",
+      };
+    });
+  } catch (error) {
+    console.error('Error getting answers:', error);
+    return [];
+  }
+};
+
+// Set up a real-time listener for answers to an active question
+export const listenForAnswers = (
+  activeQuestionId: string, 
+  callback: (answers: {id: string, text: string, timestamp: number, studentId: string}[]) => void
+) => {
+  if (!activeQuestionId) {
+    console.error("No active question ID provided to listenForAnswers");
+    callback([]);
+    return () => {};
+  }
+
+  console.log(`Setting up answers listener for question: ${activeQuestionId}`);
+  
+  try {
+    const q = query(
+      collection(db, ANSWERS_COLLECTION), 
+      where('activeQuestionId', '==', activeQuestionId),
+      orderBy('timestamp', 'asc')
+    );
+    
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        console.log(`Answers snapshot received with ${querySnapshot.docs.length} documents`);
+        const answers = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            studentId: data.studentId || "unknown",
+          };
+        });
+        callback(answers);
+      }, 
+      (error) => {
+        console.error("Error in answers listener:", error);
+        callback([]);
+      }
+    );
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("Error setting up answers listener:", error);
+    callback([]);
+    return () => {};
   }
 }; 

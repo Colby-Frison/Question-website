@@ -8,7 +8,12 @@ import QuestionForm from '@/components/QuestionForm';
 import QuestionList from '@/components/QuestionList';
 import ClassQuestionList from '@/components/ClassQuestionList';
 import { clearUserType, isStudent, getUserId } from '@/lib/auth';
-import { listenForUserQuestions, listenForQuestions } from '@/lib/questions';
+import { 
+  listenForUserQuestions, 
+  listenForQuestions, 
+  listenForActiveQuestion,
+  addAnswer
+} from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
 
@@ -32,11 +37,19 @@ export default function StudentPage() {
     }
     return 0;
   });
+  const [pointsInput, setPointsInput] = useState<string>('0');
+  
+  // Active question state
+  const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
+  const [answerText, setAnswerText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [answerSubmitted, setAnswerSubmitted] = useState(false);
 
   useEffect(() => {
     // Save points to localStorage whenever they change
     if (typeof window !== 'undefined') {
       localStorage.setItem('studentPoints', points.toString());
+      setPointsInput(points.toString());
     }
   }, [points]);
 
@@ -70,9 +83,23 @@ export default function StudentPage() {
             setClassQuestions(questions);
           });
           
+          // Set up listener for active question
+          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
+            console.log("Active question update:", question);
+            
+            // If the active question changes, reset the answer state
+            if (question?.id !== activeQuestion?.id) {
+              setAnswerText('');
+              setAnswerSubmitted(false);
+            }
+            
+            setActiveQuestion(question);
+          });
+          
           return () => {
             unsubscribePersonal();
             unsubscribeClass();
+            unsubscribeActiveQuestion();
           };
         } else {
           setIsLoading(false);
@@ -85,7 +112,7 @@ export default function StudentPage() {
     };
     
     checkJoinedClass();
-  }, [router]);
+  }, [router, activeQuestion]);
 
   const handleJoinSuccess = async () => {
     try {
@@ -104,6 +131,14 @@ export default function StudentPage() {
         // Set up listener for all class questions
         const unsubscribeClass = listenForQuestions(joinedClass, (questions) => {
           setClassQuestions(questions);
+        });
+        
+        // Set up listener for active question
+        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
+          console.log("Active question update:", question);
+          setActiveQuestion(question);
+          setAnswerText('');
+          setAnswerSubmitted(false);
         });
         
         // We don't need to return the unsubscribe function here since this isn't a useEffect
@@ -128,6 +163,7 @@ export default function StudentPage() {
         setJoined(false);
         setMyQuestions([]);
         setClassQuestions([]);
+        setActiveQuestion(null);
       }
     } catch (error) {
       console.error('Error leaving class:', error);
@@ -137,6 +173,48 @@ export default function StudentPage() {
 
   const handleAddPoint = () => {
     setPoints(prevPoints => prevPoints + 1);
+  };
+
+  const handleSubtractPoint = () => {
+    setPoints(prevPoints => Math.max(0, prevPoints - 1));
+  };
+
+  const handlePointsInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setPointsInput(value);
+    
+    // Update points if the input is a valid number
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue >= 0) {
+      setPoints(numValue);
+    }
+  };
+  
+  const handleSubmitAnswer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!answerText.trim() || !activeQuestion || !studentId || !className) {
+      console.error("Missing required fields for submitting answer");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const answerId = await addAnswer(activeQuestion.id, answerText, studentId, className);
+      
+      if (answerId) {
+        console.log("Answer submitted successfully with ID:", answerId);
+        setAnswerSubmitted(true);
+        // Add a point for answering
+        handleAddPoint();
+      }
+    } catch (error) {
+      console.error("Error submitting answer:", error);
+      setError("Failed to submit answer. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderQuestionsTab = () => (
@@ -229,17 +307,51 @@ export default function StudentPage() {
           <div className="py-8 text-center text-text-secondary dark:text-dark-text-secondary">
             Please join a class to answer questions and earn points
           </div>
+        ) : activeQuestion ? (
+          <div className="py-4">
+            <div className="mb-6 rounded-md bg-background-secondary p-4 dark:bg-dark-background">
+              <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
+              <p className="text-text dark:text-dark-text">{activeQuestion.text}</p>
+            </div>
+            
+            {answerSubmitted ? (
+              <div className="rounded-md bg-success-light/20 p-4 dark:bg-success-light/10">
+                <p className="text-success-dark dark:text-success-light">
+                  Your answer has been submitted! You earned 1 point.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitAnswer}>
+                <div className="mb-4">
+                  <label htmlFor="answerText" className="mb-2 block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
+                    Your Answer
+                  </label>
+                  <textarea
+                    id="answerText"
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    className="w-full rounded-md border border-border bg-background px-4 py-2 text-text focus:border-primary focus:outline-none dark:border-dark-border dark:bg-dark-background-secondary dark:text-dark-text dark:focus:border-dark-primary"
+                    rows={3}
+                    placeholder="Type your answer here..."
+                    required
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary disabled:opacity-50"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit Answer'}
+                </button>
+              </form>
+            )}
+          </div>
         ) : (
           <div className="py-8 text-center">
-            <p className="mb-6 text-text-secondary dark:text-dark-text-secondary">
-              This is a placeholder for the question answering feature. For now, you can manually add points.
+            <p className="text-text-secondary dark:text-dark-text-secondary">
+              No active question from your professor. Please wait for a question to be asked.
             </p>
-            <button
-              onClick={handleAddPoint}
-              className="rounded-md px-4 py-2 bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
-            >
-              Add Point
-            </button>
           </div>
         )}
       </div>
@@ -251,6 +363,30 @@ export default function StudentPage() {
           <div className="text-6xl font-bold text-primary dark:text-dark-primary mb-4">
             {points}
           </div>
+          
+          <div className="flex items-center space-x-4 mb-4">
+            <button
+              onClick={handleSubtractPoint}
+              className="rounded-md px-4 py-2 bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
+            >
+              -
+            </button>
+            
+            <textarea
+              value={pointsInput}
+              onChange={handlePointsInputChange}
+              className="form-input w-20 h-10 text-center text-lg"
+              rows={1}
+            />
+            
+            <button
+              onClick={handleAddPoint}
+              className="rounded-md px-4 py-2 bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
+            >
+              +
+            </button>
+          </div>
+          
           <p className="text-text-secondary dark:text-dark-text-secondary">
             Total points earned
           </p>

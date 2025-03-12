@@ -59,5 +59,33 @@ service cloud.firestore {
       // Anyone can read/write class sessions
       allow read, write: if true;
     }
+    
+    // Active questions collection - for the professor's current question
+    match /activeQuestions/{questionId} {
+      // Anyone can read active questions
+      allow read: if true;
+      
+      // Only professors can create/update/delete active questions
+      allow create: if request.resource.data.professorId != null && 
+                     request.resource.data.classCode != null &&
+                     request.resource.data.text != null;
+      
+      allow update, delete: if true;
+    }
+    
+    // Answers collection - for student answers to active questions
+    match /answers/{answerId} {
+      // Anyone can read answers
+      allow read: if true;
+      
+      // Students can create answers with valid data
+      allow create: if request.resource.data.activeQuestionId != null && 
+                     request.resource.data.studentId != null &&
+                     request.resource.data.classCode != null &&
+                     request.resource.data.text != null;
+      
+      // Students can only update/delete their own answers
+      allow update, delete: if resource.data.studentId == request.resource.data.studentId;
+    }
   }
 } 
