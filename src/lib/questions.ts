@@ -392,13 +392,7 @@ export const addActiveQuestion = async (
     // Create a timestamp
     const timestamp = Date.now();
     
-    // First, clear any existing active questions for this class
-    await clearActiveQuestions(classCode);
-    
-    // Also clear any existing answers for previous questions
-    await clearPreviousAnswers(classCode);
-    
-    // Add the new active question
+    // Add the new active question first to make it appear faster
     const questionRef = await addDoc(collection(db, ACTIVE_QUESTION_COLLECTION), {
       text,
       timestamp,
@@ -408,6 +402,16 @@ export const addActiveQuestion = async (
     });
     
     console.log(`Active question added with ID: ${questionRef.id}`);
+    
+    // Then clear existing active questions and previous answers in parallel
+    // This way the new question appears immediately while cleanup happens in background
+    Promise.all([
+      clearActiveQuestions(classCode, questionRef.id), // Skip the one we just added
+      clearPreviousAnswers(classCode)
+    ]).catch(error => {
+      console.error('Error in background cleanup:', error);
+    });
+    
     return questionRef.id;
   } catch (error) {
     console.error('Error adding active question:', error);
@@ -416,7 +420,7 @@ export const addActiveQuestion = async (
 };
 
 // Clear existing active questions for a class
-export const clearActiveQuestions = async (classCode: string): Promise<boolean> => {
+export const clearActiveQuestions = async (classCode: string, skipId?: string): Promise<boolean> => {
   if (!classCode) {
     console.error("No class code provided to clearActiveQuestions");
     return false;
@@ -433,9 +437,9 @@ export const clearActiveQuestions = async (classCode: string): Promise<boolean> 
     const querySnapshot = await getDocs(q);
     console.log(`Found ${querySnapshot.docs.length} active questions to clear`);
     
-    const deletePromises = querySnapshot.docs.map(doc => 
-      deleteDoc(doc.ref)
-    );
+    const deletePromises = querySnapshot.docs
+      .filter(doc => !skipId || doc.id !== skipId) // Skip the specified ID if provided
+      .map(doc => deleteDoc(doc.ref));
     
     await Promise.all(deletePromises);
     console.log("All active questions cleared");
@@ -530,6 +534,23 @@ export const listenForActiveQuestion = (
   console.log(`Setting up active question listener for class: ${classCode}`);
   
   try {
+    // First, do a direct fetch to get the current active question immediately
+    const fetchCurrentQuestion = async () => {
+      try {
+        const currentQuestion = await getActiveQuestion(classCode);
+        if (currentQuestion) {
+          console.log("Initial active question fetch:", currentQuestion);
+          callback(currentQuestion);
+        }
+      } catch (error) {
+        console.error("Error fetching initial active question:", error);
+      }
+    };
+    
+    // Start the fetch immediately
+    fetchCurrentQuestion();
+    
+    // Then set up the real-time listener for future updates
     const q = query(
       collection(db, ACTIVE_QUESTION_COLLECTION), 
       where('classCode', '==', classCode),

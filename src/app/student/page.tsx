@@ -50,6 +50,8 @@ export default function StudentPage() {
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [cooldownTime, setCooldownTime] = useState(0);
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
+  const lastQuestionCheckRef = useRef<number>(0);
 
   useEffect(() => {
     // Save points to localStorage whenever they change
@@ -160,7 +162,8 @@ export default function StudentPage() {
             setClassQuestions(questions);
           });
           
-          // Set up listener for active question
+          // Set up listener for active question with loading state
+          setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
             console.log("Active question update:", question);
             
@@ -171,6 +174,8 @@ export default function StudentPage() {
             }
             
             setActiveQuestion(question);
+            setIsLoadingQuestion(false);
+            lastQuestionCheckRef.current = Date.now();
           });
           
           return () => {
@@ -219,12 +224,15 @@ export default function StudentPage() {
           setClassQuestions(questions);
         });
         
-        // Set up listener for active question
+        // Set up listener for active question with loading state
+        setIsLoadingQuestion(true);
         const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
           console.log("Active question update:", question);
           setActiveQuestion(question);
           setAnswerText('');
           setAnswerSubmitted(false);
+          setIsLoadingQuestion(false);
+          lastQuestionCheckRef.current = Date.now();
         });
         
         // We don't need to return the unsubscribe function here since this isn't a useEffect
@@ -416,6 +424,15 @@ export default function StudentPage() {
         {!joined ? (
           <div className="py-8 text-center text-text-secondary dark:text-dark-text-secondary">
             Please join a class to answer questions and earn points
+          </div>
+        ) : isLoadingQuestion ? (
+          <div className="py-8 text-center">
+            <div className="flex flex-col items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary mb-2"></div>
+              <p className="text-text-secondary dark:text-dark-text-secondary">
+                Loading question...
+              </p>
+            </div>
           </div>
         ) : activeQuestion ? (
           <div className="py-4">
