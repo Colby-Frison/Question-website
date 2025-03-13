@@ -10,7 +10,8 @@ import {
   listenForQuestions, 
   deleteQuestion, 
   addActiveQuestion, 
-  listenForAnswers 
+  listenForAnswers,
+  updateStudentPoints
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -200,6 +201,17 @@ export default function ProfessorPage() {
     }
   };
   
+  const handleRewardPoints = async (studentId: string, points: number) => {
+    try {
+      await updateStudentPoints(studentId, points);
+      // Show success message or feedback
+      console.log(`Awarded ${points} points to student ${studentId}`);
+    } catch (error) {
+      console.error("Error awarding points:", error);
+      setError("Failed to award points. Please try again.");
+    }
+  };
+  
   const renderQuestionsTab = () => (
     <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
       <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Questions</h2>
@@ -214,56 +226,82 @@ export default function ProfessorPage() {
   );
   
   const renderPointsTab = () => (
-    <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask Students a Question</h2>
-      
-      <form onSubmit={handleAskQuestion} className="mb-8">
-        <div className="mb-4">
-          <label htmlFor="questionText" className="mb-2 block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
-            Question Text
-          </label>
-          <textarea
-            id="questionText"
-            value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-4 py-2 text-text focus:border-primary focus:outline-none dark:border-dark-border dark:bg-dark-background-secondary dark:text-dark-text dark:focus:border-dark-primary"
-            rows={3}
-            placeholder="Type your question here..."
-            required
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
-        >
-          Ask Question
-        </button>
-      </form>
-      
-      {activeQuestionId && (
-        <div className="mt-6">
-          <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
-          <div className="mb-4 rounded-md bg-background-secondary p-4 dark:bg-dark-background">
-            <p className="text-text dark:text-dark-text">{questionText}</p>
-          </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Left container - Class name and Ask Question */}
+      <div className="flex flex-col space-y-6">
+        <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
+          <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask Students a Question</h2>
           
-          <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Student Answers</h3>
-          {answers.length > 0 ? (
+          <form onSubmit={handleAskQuestion}>
+            <div className="mb-4">
+              <label htmlFor="questionText" className="mb-2 block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
+                Question Text
+              </label>
+              <textarea
+                id="questionText"
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-4 py-2 text-text focus:border-primary focus:outline-none dark:border-dark-border dark:bg-dark-background-secondary dark:text-dark-text dark:focus:border-dark-primary"
+                rows={3}
+                placeholder="Type your question here..."
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
+            >
+              Ask Question
+            </button>
+          </form>
+        </div>
+        
+        {activeQuestionId && (
+          <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
+            <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
+            <div className="rounded-md bg-background-secondary p-4 dark:bg-dark-background">
+              <p className="text-text dark:text-dark-text">{questionText}</p>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Right container - Student Answers */}
+      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
+        <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Answers</h2>
+        
+        {activeQuestionId ? (
+          answers.length > 0 ? (
             <ul className="space-y-4">
               {answers.map((answer) => (
-                <li key={answer.id} className="rounded-md bg-background-secondary p-4 dark:bg-dark-background">
+                <li key={answer.id} className="rounded-md bg-background-secondary p-4 dark:bg-dark-background relative">
                   <p className="text-text dark:text-dark-text">{answer.text}</p>
                   <p className="mt-1 text-xs text-text-secondary dark:text-dark-text-secondary">
                     Student ID: {answer.studentId.substring(0, 8)}...
                   </p>
+                  
+                  {/* Point reward buttons */}
+                  <div className="absolute bottom-4 right-4 flex space-x-2">
+                    {[1, 2, 3, 4, 5].map((points) => (
+                      <button
+                        key={points}
+                        onClick={() => handleRewardPoints(answer.studentId, points)}
+                        className="h-8 w-8 rounded-full bg-primary text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
+                      >
+                        {points}
+                      </button>
+                    ))}
+                  </div>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="text-text-secondary dark:text-dark-text-secondary">No answers yet.</p>
-          )}
-        </div>
-      )}
+          )
+        ) : (
+          <p className="text-text-secondary dark:text-dark-text-secondary">Ask a question to see student answers.</p>
+        )}
+      </div>
     </div>
   );
 
@@ -272,7 +310,7 @@ export default function ProfessorPage() {
       <Navbar userType="professor" onLogout={handleLogout} />
       
       <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex items-center justify-between">
             <h1 className="text-3xl font-bold text-text dark:text-dark-text">Professor Dashboard</h1>
             

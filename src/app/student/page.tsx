@@ -179,14 +179,21 @@ export default function StudentPage() {
     setPoints(prevPoints => Math.max(0, prevPoints - 1));
   };
 
-  const handlePointsInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handlePointsInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setPointsInput(value);
-    
-    // Update points if the input is a valid number
     const numValue = parseInt(value, 10);
     if (!isNaN(numValue) && numValue >= 0) {
       setPoints(numValue);
+    }
+  };
+
+  const handleSetPoints = () => {
+    const newPoints = window.prompt("Enter points:");
+    if (newPoints !== null) {
+      const numValue = parseInt(newPoints, 10);
+      if (!isNaN(numValue) && numValue >= 0) {
+        setPoints(numValue);
+      }
     }
   };
   
@@ -206,8 +213,7 @@ export default function StudentPage() {
       if (answerId) {
         console.log("Answer submitted successfully with ID:", answerId);
         setAnswerSubmitted(true);
-        // Add a point for answering
-        handleAddPoint();
+        // Remove the automatic point reward
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
@@ -357,40 +363,42 @@ export default function StudentPage() {
       </div>
       
       {/* Points Counter Section */}
-      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
+      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary relative">
         <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Points</h2>
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="text-6xl font-bold text-primary dark:text-dark-primary mb-4">
+        
+        <div className="flex flex-col items-center justify-center h-[300px]">
+          <div className="text-8xl font-bold text-primary dark:text-dark-primary mb-8">
             {points}
           </div>
           
-          <div className="flex items-center space-x-4 mb-4">
+          <div className="flex items-center space-x-6">
             <button
               onClick={handleSubtractPoint}
-              className="rounded-md px-4 py-2 bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
+              className="rounded-md w-12 h-12 flex items-center justify-center bg-error-light/20 text-error-dark text-2xl font-bold hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
             >
               -
             </button>
             
-            <textarea
-              value={pointsInput}
-              onChange={handlePointsInputChange}
-              className="form-input w-20 h-10 text-center text-lg"
-              rows={1}
-            />
-            
             <button
               onClick={handleAddPoint}
-              className="rounded-md px-4 py-2 bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
+              className="rounded-md w-12 h-12 flex items-center justify-center bg-primary text-white text-2xl font-bold hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
             >
               +
             </button>
           </div>
           
-          <p className="text-text-secondary dark:text-dark-text-secondary">
+          <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">
             Total points earned
           </p>
         </div>
+
+        {/* Set Points Button */}
+        <button
+          onClick={handleSetPoints}
+          className="absolute bottom-6 right-6 rounded-md px-4 py-2 text-sm bg-background-secondary text-text hover:bg-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:hover:bg-dark-background-tertiary"
+        >
+          Set Points
+        </button>
       </div>
     </div>
   );

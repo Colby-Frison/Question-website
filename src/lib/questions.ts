@@ -11,8 +11,11 @@ import {
   doc, 
   onSnapshot,
   updateDoc,
-  limit
+  limit,
+  getDoc,
+  setDoc
 } from 'firebase/firestore';
+import { getUserId } from '@/lib/auth';
 
 // Collection references
 const QUESTIONS_COLLECTION = 'questions';
@@ -644,4 +647,30 @@ export const listenForAnswers = (
     callback([]);
     return () => {};
   }
-}; 
+};
+
+export async function updateStudentPoints(studentId: string, points: number): Promise<void> {
+  try {
+    const studentRef = doc(db, 'students', studentId);
+    
+    // Get current points
+    const studentDoc = await getDoc(studentRef);
+    const currentPoints = studentDoc.exists() ? (studentDoc.data().points || 0) : 0;
+    
+    // Update points
+    await setDoc(studentRef, { points: currentPoints + points }, { merge: true });
+    
+    // Update localStorage if it's the current user
+    if (typeof window !== 'undefined') {
+      const currentUserId = getUserId();
+      if (currentUserId === studentId) {
+        const savedPoints = localStorage.getItem('studentPoints');
+        const localPoints = savedPoints ? parseInt(savedPoints, 10) : 0;
+        localStorage.setItem('studentPoints', (localPoints + points).toString());
+      }
+    }
+  } catch (error) {
+    console.error('Error updating student points:', error);
+    throw error;
+  }
+} 
