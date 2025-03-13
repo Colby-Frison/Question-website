@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { clearUserType, isProfessor, getUserId } from '@/lib/auth';
-import { runDatabaseMaintenance, cleanupInactiveClassSessions, cleanupOrphanedAnswers } from '@/lib/questions';
+import { forceRunMaintenance } from '@/lib/maintenance';
 
 export default function MaintenancePage() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function MaintenancePage() {
     setError(null);
     
     try {
-      const result = await runDatabaseMaintenance();
+      const result = await forceRunMaintenance();
       setResults({
         ...result,
         timestamp: Date.now()
@@ -56,9 +56,10 @@ export default function MaintenancePage() {
     setError(null);
     
     try {
-      const inactiveSessionsDeleted = await cleanupInactiveClassSessions();
+      // Use the forceRunMaintenance function but only show session results
+      const result = await forceRunMaintenance();
       setResults({
-        inactiveSessionsDeleted,
+        inactiveSessionsDeleted: result.inactiveSessionsDeleted,
         timestamp: Date.now()
       });
     } catch (error) {
@@ -74,9 +75,10 @@ export default function MaintenancePage() {
     setError(null);
     
     try {
-      const orphanedAnswersDeleted = await cleanupOrphanedAnswers();
+      // Use the forceRunMaintenance function but only show answers results
+      const result = await forceRunMaintenance();
       setResults({
-        orphanedAnswersDeleted,
+        orphanedAnswersDeleted: result.orphanedAnswersDeleted,
         timestamp: Date.now()
       });
     } catch (error) {
@@ -112,43 +114,16 @@ export default function MaintenancePage() {
               <p className="mt-2 text-text-secondary dark:text-dark-text-secondary">
                 This will clean up inactive class sessions and orphaned answers.
               </p>
+              <p className="mt-2 text-text-secondary dark:text-dark-text-secondary">
+                <strong>Note:</strong> Maintenance also runs automatically every hour in the background.
+              </p>
               <button
                 onClick={handleRunMaintenance}
                 disabled={isRunning}
                 className="mt-4 rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary disabled:opacity-50"
               >
-                {isRunning ? 'Running...' : 'Run All Tasks'}
+                {isRunning ? 'Running...' : 'Run All Tasks Now'}
               </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-                <h2 className="text-lg font-semibold text-text dark:text-dark-text">Clean Up Inactive Sessions</h2>
-                <p className="mt-2 text-sm text-text-secondary dark:text-dark-text-secondary">
-                  Deletes class sessions that have been inactive for 2+ hours.
-                </p>
-                <button
-                  onClick={handleCleanupSessions}
-                  disabled={isRunning}
-                  className="mt-4 rounded-md bg-background-secondary px-4 py-2 text-text hover:bg-background-tertiary focus:outline-none focus:ring-2 focus:ring-background-tertiary focus:ring-offset-2 dark:bg-dark-background-tertiary dark:text-dark-text dark:hover:bg-dark-background-secondary dark:focus:ring-dark-background-secondary disabled:opacity-50"
-                >
-                  {isRunning ? 'Running...' : 'Clean Up Sessions'}
-                </button>
-              </div>
-              
-              <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-                <h2 className="text-lg font-semibold text-text dark:text-dark-text">Clean Up Orphaned Answers</h2>
-                <p className="mt-2 text-sm text-text-secondary dark:text-dark-text-secondary">
-                  Deletes answers whose questions have been deleted.
-                </p>
-                <button
-                  onClick={handleCleanupAnswers}
-                  disabled={isRunning}
-                  className="mt-4 rounded-md bg-background-secondary px-4 py-2 text-text hover:bg-background-tertiary focus:outline-none focus:ring-2 focus:ring-background-tertiary focus:ring-offset-2 dark:bg-dark-background-tertiary dark:text-dark-text dark:hover:bg-dark-background-secondary dark:focus:ring-dark-background-secondary disabled:opacity-50"
-                >
-                  {isRunning ? 'Running...' : 'Clean Up Answers'}
-                </button>
-              </div>
             </div>
             
             {results && (

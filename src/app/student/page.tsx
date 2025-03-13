@@ -19,6 +19,7 @@ import {
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
+import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
 type TabType = 'questions' | 'points';
 
@@ -53,6 +54,7 @@ export default function StudentPage() {
   const [cooldownTime, setCooldownTime] = useState(0);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const lastQuestionCheckRef = useRef<number>(0);
+  const [maintenanceSetup, setMaintenanceSetup] = useState(false);
 
   useEffect(() => {
     // Save points to localStorage whenever they change
@@ -138,6 +140,19 @@ export default function StudentPage() {
 
     // This effect should only run once on mount and when router changes
   }, [router]);
+
+  // Set up automatic maintenance
+  useEffect(() => {
+    if (maintenanceSetup) return;
+    
+    // Only set up maintenance once
+    const cleanupMaintenance = setupAutomaticMaintenance();
+    setMaintenanceSetup(true);
+    
+    return () => {
+      cleanupMaintenance();
+    };
+  }, [maintenanceSetup]);
 
   // Separate effect for joined class to prevent excessive re-renders
   useEffect(() => {

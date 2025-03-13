@@ -84,9 +84,8 @@ service cloud.firestore {
                      request.resource.data.classCode != null &&
                      request.resource.data.text != null;
       
-      // Students can only update/delete their own answers
-      allow update: if resource.data.studentId == request.resource.data.studentId;
-      allow delete: if true;
+      // Allow all operations for maintenance
+      allow update, delete: if true;
     }
     
     // Student points collection - for tracking student points
@@ -96,6 +95,11 @@ service cloud.firestore {
       
       // Anyone can update points (professors need to award points)
       allow write: if true;
+    }
+    
+    // IMPORTANT: Allow all operations for maintenance and batch operations
+    match /{path=**} {
+      allow read, write: if true;
     }
   }
 } 

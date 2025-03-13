@@ -829,10 +829,12 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
     }
     
     // Delete inactive sessions in batches to avoid overwhelming Firestore
-    const batchSize = 100;
+    const batchSize = 20; // Use smaller batch size to avoid overwhelming Firestore
     let deletedCount = 0;
+    let batchFailed = false;
     
-    for (let i = 0; i < querySnapshot.docs.length; i += batchSize) {
+    // First try batch operations
+    for (let i = 0; i < querySnapshot.docs.length && !batchFailed; i += batchSize) {
       const batchDocs = querySnapshot.docs.slice(i, i + batchSize);
       try {
         // Use a writeBatch for better performance with multiple deletes
@@ -843,7 +845,28 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
         console.log(`Deleted batch of ${batchDocs.length} inactive sessions (${deletedCount}/${querySnapshot.docs.length} total)`);
       } catch (error) {
         console.error(`Error deleting batch of inactive sessions:`, error);
-        // Continue with other batches even if one fails
+        batchFailed = true;
+        console.log('Batch operations failed, falling back to individual deletions');
+      }
+    }
+    
+    // If batch operations failed, fall back to individual deletions
+    if (batchFailed) {
+      console.log('Attempting individual deletions for remaining inactive sessions');
+      const remainingSessions = querySnapshot.docs.slice(deletedCount);
+      
+      for (const sessionDoc of remainingSessions) {
+        try {
+          await deleteDoc(sessionDoc.ref);
+          deletedCount++;
+          
+          if (deletedCount % 10 === 0) {
+            console.log(`Deleted ${deletedCount}/${querySnapshot.docs.length} inactive sessions`);
+          }
+        } catch (error) {
+          console.error(`Error deleting individual session ${sessionDoc.id}:`, error);
+          // Continue with other sessions even if one fails
+        }
       }
     }
     
@@ -871,7 +894,7 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
     
     // For each answer, check if its question still exists
     const orphanedAnswers = [];
-    const batchSize = 100; // Process in batches to avoid overwhelming Firestore
+    const batchSize = 20; // Use smaller batch size to avoid overwhelming Firestore
     let processedCount = 0;
     
     for (const answerDoc of answersSnapshot.docs) {
@@ -894,7 +917,7 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
         
         // Log progress for large collections
         processedCount++;
-        if (processedCount % 50 === 0) {
+        if (processedCount % 20 === 0) {
           console.log(`Processed ${processedCount}/${answersSnapshot.docs.length} answers`);
         }
       } catch (error) {
@@ -911,7 +934,10 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
     
     // Delete orphaned answers in batches to avoid overwhelming Firestore
     let deletedCount = 0;
-    for (let i = 0; i < orphanedAnswers.length; i += batchSize) {
+    let batchFailed = false;
+    
+    // First try batch operations
+    for (let i = 0; i < orphanedAnswers.length && !batchFailed; i += batchSize) {
       const batchDocs = orphanedAnswers.slice(i, i + batchSize);
       try {
         // Use a writeBatch for better performance with multiple deletes
@@ -922,7 +948,28 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
         console.log(`Deleted batch of ${batchDocs.length} orphaned answers (${deletedCount}/${orphanedAnswers.length} total)`);
       } catch (error) {
         console.error(`Error deleting batch of orphaned answers:`, error);
-        // Continue with other batches even if one fails
+        batchFailed = true;
+        console.log('Batch operations failed, falling back to individual deletions');
+      }
+    }
+    
+    // If batch operations failed, fall back to individual deletions
+    if (batchFailed) {
+      console.log('Attempting individual deletions for remaining orphaned answers');
+      const remainingAnswers = orphanedAnswers.slice(deletedCount);
+      
+      for (const answerDoc of remainingAnswers) {
+        try {
+          await deleteDoc(answerDoc.ref);
+          deletedCount++;
+          
+          if (deletedCount % 10 === 0) {
+            console.log(`Deleted ${deletedCount}/${orphanedAnswers.length} orphaned answers`);
+          }
+        } catch (error) {
+          console.error(`Error deleting individual answer ${answerDoc.id}:`, error);
+          // Continue with other answers even if one fails
+        }
       }
     }
     

@@ -11,13 +11,13 @@ import {
   deleteQuestion, 
   addActiveQuestion, 
   listenForAnswers,
-  updateStudentPoints,
-  runDatabaseMaintenance
+  updateStudentPoints
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
 import { createClassSession } from '@/lib/classSession';
 import { Question } from '@/types';
+import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
 type TabType = 'questions' | 'points';
 
@@ -39,6 +39,7 @@ export default function ProfessorPage() {
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string, questionText?: string, activeQuestionId?: string}[]>([]);
   const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
+  const [maintenanceSetup, setMaintenanceSetup] = useState(false);
 
   useEffect(() => {
     // Check if user is a professor
@@ -67,15 +68,6 @@ export default function ProfessorPage() {
         if (userId) {
           await initializeClass(userId);
         }
-        
-        // Run database maintenance automatically
-        runDatabaseMaintenance()
-          .then(result => {
-            console.log("Automatic maintenance completed:", result);
-          })
-          .catch(error => {
-            console.error("Error during automatic maintenance:", error);
-          });
       } catch (error) {
         console.error("Connection check error:", error);
         setConnectionStatus('error');
@@ -86,6 +78,19 @@ export default function ProfessorPage() {
     
     checkConnection();
   }, [router]);
+
+  // Set up automatic maintenance
+  useEffect(() => {
+    if (maintenanceSetup) return;
+    
+    // Only set up maintenance once
+    const cleanupMaintenance = setupAutomaticMaintenance();
+    setMaintenanceSetup(true);
+    
+    return () => {
+      cleanupMaintenance();
+    };
+  }, [maintenanceSetup]);
 
   // Set up answers listener when activeQuestionId changes
   useEffect(() => {
