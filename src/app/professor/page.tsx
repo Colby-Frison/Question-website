@@ -36,7 +36,7 @@ export default function ProfessorPage() {
   // Points tab state
   const [questionText, setQuestionText] = useState('');
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string}[]>([]);
+  const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string, questionText?: string, activeQuestionId?: string}[]>([]);
   const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
 
   useEffect(() => {
@@ -204,24 +204,21 @@ export default function ProfessorPage() {
   
   const handleRewardPoints = async (studentId: string, points: number, answerId: string) => {
     try {
-      await updateStudentPoints(studentId, points);
-      // Show success message or feedback
-      console.log(`Awarded ${points} points to student ${studentId}`);
+      // Check if points were already awarded to this answer
+      const previousPoints = pointsAwarded[answerId] || 0;
+      const pointsDifference = points - previousPoints;
+      
+      // Only update if there's a change in points
+      if (pointsDifference !== 0) {
+        await updateStudentPoints(studentId, pointsDifference);
+        console.log(`Adjusted points for student ${studentId}: ${pointsDifference} points (new total: ${points})`);
+      }
       
       // Update the UI to show points were awarded
       setPointsAwarded(prev => ({
         ...prev,
         [answerId]: points
       }));
-      
-      // Clear the feedback after 3 seconds
-      setTimeout(() => {
-        setPointsAwarded(prev => {
-          const newState = {...prev};
-          delete newState[answerId];
-          return newState;
-        });
-      }, 3000);
     } catch (error) {
       console.error("Error awarding points:", error);
       setError("Failed to award points. Please try again.");
@@ -243,7 +240,7 @@ export default function ProfessorPage() {
   
   const renderPointsTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Left container - Class name and Ask Question */}
+      {/* Left container - Ask Question */}
       <div className="flex flex-col space-y-6">
         <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
           <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask Students a Question</h2>
@@ -271,58 +268,79 @@ export default function ProfessorPage() {
             </button>
           </form>
         </div>
-        
+      </div>
+      
+      {/* Right container - Current Question and Student Answers */}
+      <div className="flex flex-col space-y-6">
+        {/* Current Question - Moved above student answers */}
         {activeQuestionId && (
           <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
             <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
             <div className="rounded-md bg-background-secondary p-4 dark:bg-dark-background">
-              <p className="text-text dark:text-dark-text">{questionText}</p>
+              {answers.length > 0 && (
+                <div className="mb-2 text-xs text-text-secondary dark:text-dark-text-secondary">
+                  {answers.length} {answers.length === 1 ? 'answer' : 'answers'} received
+                </div>
+              )}
+              <p className="text-text dark:text-dark-text">
+                {answers.length > 0 && answers[0].questionText ? answers[0].questionText : questionText}
+              </p>
             </div>
           </div>
         )}
-      </div>
-      
-      {/* Right container - Student Answers */}
-      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-        <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Answers</h2>
         
-        {activeQuestionId ? (
-          answers.length > 0 ? (
-            <ul className="space-y-4">
-              {answers.map((answer) => (
-                <li key={answer.id} className="rounded-md bg-background-secondary p-4 dark:bg-dark-background relative">
-                  <p className="text-text dark:text-dark-text">{answer.text}</p>
-                  <p className="mt-1 text-xs text-text-secondary dark:text-dark-text-secondary">
-                    Student ID: {answer.studentId.substring(0, 8)}...
-                  </p>
-                  
-                  {/* Point reward buttons */}
-                  <div className="absolute bottom-4 right-4 flex space-x-2">
-                    {pointsAwarded[answer.id] ? (
-                      <div className="text-success-dark dark:text-success-light font-medium">
-                        Awarded {pointsAwarded[answer.id]} points!
+        {/* Student Answers */}
+        <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary flex-1">
+          <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Answers</h2>
+          
+          {activeQuestionId ? (
+            answers.length > 0 ? (
+              <ul className="space-y-4">
+                {answers.map((answer) => (
+                  <li key={answer.id} className="rounded-md bg-background-secondary p-4 dark:bg-dark-background relative">
+                    <p className="text-text dark:text-dark-text">{answer.text}</p>
+                    <p className="mt-1 text-xs text-text-secondary dark:text-dark-text-secondary">
+                      Student ID: {answer.studentId.substring(0, 8)}...
+                    </p>
+                    
+                    {/* Point reward component - redesigned */}
+                    <div className="absolute bottom-4 right-4">
+                      <div className="flex rounded-md overflow-hidden border border-border dark:border-dark-border">
+                        {[1, 2, 3, 4, 5].map((pointValue) => {
+                          const isSelected = pointsAwarded[answer.id] >= pointValue;
+                          const isCurrentValue = pointsAwarded[answer.id] === pointValue;
+                          return (
+                            <button
+                              key={pointValue}
+                              onClick={() => handleRewardPoints(answer.studentId, pointValue, answer.id)}
+                              className={`
+                                w-8 h-8 flex items-center justify-center text-sm font-medium transition-colors
+                                ${isSelected 
+                                  ? isCurrentValue 
+                                    ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text' 
+                                    : 'bg-primary/80 text-white dark:bg-dark-primary/80 dark:text-dark-text'
+                                  : 'bg-background-secondary hover:bg-background-tertiary text-text dark:bg-dark-background-secondary dark:text-dark-text dark:hover:bg-dark-background-tertiary'
+                                }
+                                ${pointValue > 1 ? 'border-l border-border/30 dark:border-dark-border/30' : ''}
+                              `}
+                              aria-label={`Award ${pointValue} point${pointValue > 1 ? 's' : ''}`}
+                            >
+                              {pointValue}
+                            </button>
+                          );
+                        })}
                       </div>
-                    ) : (
-                      [1, 2, 3, 4, 5].map((points) => (
-                        <button
-                          key={points}
-                          onClick={() => handleRewardPoints(answer.studentId, points, answer.id)}
-                          className="h-8 w-8 rounded-full bg-primary text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
-                        >
-                          {points}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-text-secondary dark:text-dark-text-secondary">No answers yet.</p>
+            )
           ) : (
-            <p className="text-text-secondary dark:text-dark-text-secondary">No answers yet.</p>
-          )
-        ) : (
-          <p className="text-text-secondary dark:text-dark-text-secondary">Ask a question to see student answers.</p>
-        )}
+            <p className="text-text-secondary dark:text-dark-text-secondary">Ask a question to see student answers.</p>
+          )}
+        </div>
       </div>
     </div>
   );

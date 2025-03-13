@@ -45,6 +45,8 @@ export default function StudentPage() {
   const [answerText, setAnswerText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
+  const [cooldownActive, setCooldownActive] = useState(false);
+  const [cooldownTime, setCooldownTime] = useState(0);
 
   useEffect(() => {
     // Save points to localStorage whenever they change
@@ -234,8 +236,8 @@ export default function StudentPage() {
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!answerText.trim() || !activeQuestion || !studentId || !className) {
-      console.error("Missing required fields for submitting answer");
+    if (!answerText.trim() || !activeQuestion || !studentId || !className || cooldownActive) {
+      console.error("Missing required fields for submitting answer or cooldown is active");
       return;
     }
     
@@ -247,7 +249,25 @@ export default function StudentPage() {
       if (answerId) {
         console.log("Answer submitted successfully with ID:", answerId);
         setAnswerSubmitted(true);
-        // Remove the automatic point reward
+        setAnswerText('');
+        
+        // Start cooldown
+        setCooldownActive(true);
+        setCooldownTime(10);
+        
+        // Set up cooldown timer
+        const cooldownInterval = setInterval(() => {
+          setCooldownTime(prevTime => {
+            const newTime = prevTime - 1;
+            if (newTime <= 0) {
+              clearInterval(cooldownInterval);
+              setCooldownActive(false);
+              setAnswerSubmitted(false);
+              return 0;
+            }
+            return newTime;
+          });
+        }, 1000);
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
@@ -374,16 +394,21 @@ export default function StudentPage() {
                     rows={3}
                     placeholder="Type your answer here..."
                     required
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || cooldownActive}
                   />
                 </div>
                 <button
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary disabled:opacity-50"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || cooldownActive}
                 >
-                  {isSubmitting ? 'Submitting...' : 'Submit Answer'}
+                  {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait (${cooldownTime}s)` : 'Submit Answer'}
                 </button>
+                {answerSubmitted && (
+                  <span className="ml-2 text-success-dark dark:text-success-light">
+                    Answer sent!
+                  </span>
+                )}
               </form>
             )}
           </div>

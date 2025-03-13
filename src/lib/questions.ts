@@ -639,7 +639,7 @@ export const getAnswers = async (activeQuestionId: string): Promise<{id: string,
 // Set up a real-time listener for answers to an active question
 export const listenForAnswers = (
   activeQuestionId: string, 
-  callback: (answers: {id: string, text: string, timestamp: number, studentId: string}[]) => void
+  callback: (answers: {id: string, text: string, timestamp: number, studentId: string, questionText?: string}[]) => void
 ) => {
   if (!activeQuestionId) {
     console.error("No active question ID provided to listenForAnswers");
@@ -657,8 +657,23 @@ export const listenForAnswers = (
     );
     
     const unsubscribe = onSnapshot(q, 
-      (querySnapshot) => {
+      async (querySnapshot) => {
         console.log(`Answers snapshot received with ${querySnapshot.docs.length} documents`);
+        
+        // Get the question text if there are answers
+        let questionText = "";
+        if (querySnapshot.docs.length > 0) {
+          try {
+            const activeQuestionRef = doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId);
+            const activeQuestionDoc = await getDoc(activeQuestionRef);
+            if (activeQuestionDoc.exists()) {
+              questionText = activeQuestionDoc.data().text || "";
+            }
+          } catch (error) {
+            console.error("Error getting active question text:", error);
+          }
+        }
+        
         const answers = querySnapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -666,6 +681,8 @@ export const listenForAnswers = (
             text: data.text || "No text provided",
             timestamp: data.timestamp || Date.now(),
             studentId: data.studentId || "unknown",
+            questionText,
+            activeQuestionId
           };
         });
         callback(answers);
@@ -693,13 +710,16 @@ export async function updateStudentPoints(studentId: string, points: number): Pr
     const pointsDoc = await getDoc(pointsRef);
     const currentPoints = pointsDoc.exists() ? (pointsDoc.data().total || 0) : 0;
     
+    // Calculate new total, ensuring it doesn't go below zero
+    const newTotal = Math.max(0, currentPoints + points);
+    
     // Update points in Firestore
     await setDoc(pointsRef, { 
-      total: currentPoints + points,
+      total: newTotal,
       lastUpdated: Date.now() 
     }, { merge: true });
     
-    console.log(`Points updated for student ${studentId}: ${points} points added, new total: ${currentPoints + points}`);
+    console.log(`Points updated for student ${studentId}: ${points} points adjusted, new total: ${newTotal}`);
   } catch (error) {
     console.error('Error updating student points:', error);
     throw error;
