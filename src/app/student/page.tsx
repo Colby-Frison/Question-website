@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import JoinClass from '@/components/JoinClass';
@@ -13,7 +13,8 @@ import {
   listenForQuestions, 
   listenForActiveQuestion,
   addAnswer,
-  listenForStudentPoints
+  listenForStudentPoints,
+  updateStudentPoints
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
@@ -39,6 +40,8 @@ export default function StudentPage() {
     return 0;
   });
   const [pointsInput, setPointsInput] = useState<string>('0');
+  const [isSavingPoints, setIsSavingPoints] = useState(false);
+  const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Active question state
   const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
@@ -53,8 +56,55 @@ export default function StudentPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('studentPoints', points.toString());
       setPointsInput(points.toString());
+      
+      // Set up debounced save to database
+      if (studentId) {
+        // Clear any existing timeout
+        if (pointsSaveTimeoutRef.current) {
+          clearTimeout(pointsSaveTimeoutRef.current);
+        }
+        
+        setIsSavingPoints(true);
+        
+        // Set a new timeout to save to database after 2 seconds of inactivity
+        pointsSaveTimeoutRef.current = setTimeout(async () => {
+          try {
+            console.log(`Saving points to database: ${points}`);
+            // Get current points from database
+            let currentPoints = 0;
+            
+            // Use a promise to get the current points value
+            await new Promise<void>((resolve) => {
+              const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
+                currentPoints = dbPoints;
+                unsubscribe();
+                resolve();
+              });
+            });
+            
+            // Calculate the difference to update
+            const pointsDifference = points - currentPoints;
+            
+            if (pointsDifference !== 0) {
+              await updateStudentPoints(studentId, pointsDifference);
+              console.log(`Points saved to database. Difference: ${pointsDifference}`);
+            }
+          } catch (error) {
+            console.error("Error saving points to database:", error);
+          } finally {
+            setIsSavingPoints(false);
+          }
+        }, 2000);
+      }
     }
-  }, [points]);
+    
+    // Cleanup function to clear timeout
+    return () => {
+      if (pointsSaveTimeoutRef.current) {
+        clearTimeout(pointsSaveTimeoutRef.current);
+      }
+    };
+  }, [points, studentId]);
 
   // Replace the event listener with Firestore listener for points
   useEffect(() => {
@@ -448,6 +498,7 @@ export default function StudentPage() {
           
           <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">
             Total points earned
+            {isSavingPoints && <span className="ml-2 text-xs italic">(saving...)</span>}
           </p>
         </div>
 

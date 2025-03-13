@@ -189,16 +189,20 @@ export default function ProfessorPage() {
       return;
     }
     
+    // Immediately update UI to show the new question
+    const tempQuestionId = `temp-${Date.now()}`;
+    setActiveQuestionId(tempQuestionId);
+    setAnswers([]); // Clear answers immediately
+    
     try {
       const newQuestionId = await addActiveQuestion(questionText, professorId, className);
       if (newQuestionId) {
         console.log("New active question created with ID:", newQuestionId);
         setActiveQuestionId(newQuestionId);
-        // Clear answers when a new question is asked
-        setAnswers([]);
       }
     } catch (error) {
       console.error("Error asking question:", error);
+      // If there's an error, we keep the temp ID so at least the UI shows something
     }
   };
   
@@ -208,19 +212,31 @@ export default function ProfessorPage() {
       const previousPoints = pointsAwarded[answerId] || 0;
       const pointsDifference = points - previousPoints;
       
-      // Only update if there's a change in points
-      if (pointsDifference !== 0) {
-        await updateStudentPoints(studentId, pointsDifference);
-        console.log(`Adjusted points for student ${studentId}: ${pointsDifference} points (new total: ${points})`);
-      }
-      
-      // Update the UI to show points were awarded
+      // Immediately update UI to show points were awarded
       setPointsAwarded(prev => ({
         ...prev,
         [answerId]: points
       }));
+      
+      // Only update if there's a change in points
+      if (pointsDifference !== 0) {
+        // Update database in the background
+        updateStudentPoints(studentId, pointsDifference)
+          .then(() => {
+            console.log(`Adjusted points for student ${studentId}: ${pointsDifference} points (new total: ${points})`);
+          })
+          .catch((error) => {
+            console.error("Error awarding points:", error);
+            // Revert UI if database update fails
+            setPointsAwarded(prev => ({
+              ...prev,
+              [answerId]: previousPoints
+            }));
+            setError("Failed to award points. Please try again.");
+          });
+      }
     } catch (error) {
-      console.error("Error awarding points:", error);
+      console.error("Error in handleRewardPoints:", error);
       setError("Failed to award points. Please try again.");
     }
   };
@@ -240,8 +256,21 @@ export default function ProfessorPage() {
   
   const renderPointsTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Left container - Ask Question */}
+      {/* Left container - Class Name and Ask Question */}
       <div className="flex flex-col space-y-6">
+        {/* Class Name Display - Moved from outside the tab */}
+        <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
+              <p className="mt-1 text-text-secondary dark:text-dark-text-secondary">
+                {className}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Ask Question */}
         <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
           <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Ask Students a Question</h2>
           
@@ -399,14 +428,16 @@ export default function ProfessorPage() {
             </div>
           )}
 
-          <div className="mb-8">
-            <ClassNameDisplay 
-              className={className} 
-              professorId={professorId}
-              sessionId={sessionId || 'fallback-session-id'}
-              onClassNameChange={handleClassNameChange}
-            />
-          </div>
+          {className && activeTab === 'questions' && (
+            <div className="mb-8">
+              <ClassNameDisplay 
+                className={className} 
+                professorId={professorId}
+                sessionId={sessionId || 'fallback-session-id'}
+                onClassNameChange={handleClassNameChange}
+              />
+            </div>
+          )}
 
           {className && (
             activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()

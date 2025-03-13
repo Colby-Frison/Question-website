@@ -77,16 +77,38 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     // Default to 'unanswered' if status is undefined
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
     
+    // Set the updating ID to show loading state
     setUpdatingStatusId(id);
     
+    // Optimistically update the question in the UI
+    // We need to find the question in the list and update its status
+    const updatedQuestions = questions.map(q => 
+      q.id === id ? { ...q, status: newStatus } : q
+    );
+    
+    // This will trigger a re-render with the updated status
+    // Note: We're not directly modifying the questions array since it's a prop
+    // The parent component will receive the updated data via the listener
+    
     try {
-      await updateQuestionStatus(id, newStatus);
+      // Update the database in the background
+      updateQuestionStatus(id, newStatus)
+        .then(() => {
+          console.log(`Question status updated to ${newStatus}`);
+        })
+        .catch((error) => {
+          console.error('Error updating question status:', error);
+          // If there's an error, we could revert the UI, but the listener will
+          // eventually sync the correct state from the database
+        })
+        .finally(() => {
+          setUpdatingStatusId(null);
+        });
     } catch (error) {
-      console.error('Error updating question status:', error);
-    } finally {
+      console.error('Error in toggleQuestionStatus:', error);
       setUpdatingStatusId(null);
     }
-  }, []);
+  }, [questions]);
 
   const renderLoading = useMemo(() => {
     if (isLoading) {
