@@ -30,12 +30,14 @@ const DEFAULT_ARCHIVE_SETTINGS: ClassArchiveSettings = {
 // Create a new class session
 export const createClassSession = async (code: string, professorId: string): Promise<string> => {
   try {
+    const currentTime = Date.now();
     const session: Omit<ClassSession, 'id'> = {
       code,
       professorId,
       status: 'active',
-      createdAt: Date.now(),
-      lastActiveAt: Date.now()
+      createdAt: currentTime,
+      lastActiveAt: currentTime,
+      lastActive: currentTime
     };
 
     const docRef = await addDoc(collection(db, CLASS_SESSIONS_COLLECTION), session);
@@ -51,7 +53,8 @@ export const updateLastActive = async (sessionId: string) => {
   try {
     const sessionRef = doc(db, CLASS_SESSIONS_COLLECTION, sessionId);
     await updateDoc(sessionRef, {
-      lastActiveAt: Date.now()
+      lastActiveAt: Date.now(),
+      lastActive: Date.now()
     });
   } catch (error) {
     console.error('Error updating last active timestamp:', error);

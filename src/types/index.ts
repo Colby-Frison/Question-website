@@ -16,6 +16,7 @@ export interface ClassSession {
   status: 'active' | 'archived' | 'closed';
   createdAt: number;
   lastActiveAt: number;
+  lastActive: number;
   archivedAt?: number;
 }
 

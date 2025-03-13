@@ -383,27 +383,37 @@ export default function ProfessorPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
             <h1 className="text-3xl font-bold text-text dark:text-dark-text mb-4 sm:mb-0">Professor Dashboard</h1>
             
-            {/* Tab Switcher - Updated to match student page */}
-            <div className="flex border-b border-background-tertiary dark:border-dark-background-tertiary">
+            <div className="flex items-center space-x-4">
+              {/* Tab Switcher */}
+              <div className="flex border-b border-background-tertiary dark:border-dark-background-tertiary">
+                <button
+                  onClick={() => handleTabChange('questions')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors ${
+                    activeTab === 'questions'
+                      ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
+                      : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
+                  }`}
+                >
+                  Questions
+                </button>
+                <button
+                  onClick={() => handleTabChange('points')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors ${
+                    activeTab === 'points'
+                      ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
+                      : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
+                  }`}
+                >
+                  Points
+                </button>
+              </div>
+              
+              {/* Maintenance Link */}
               <button
-                onClick={() => handleTabChange('questions')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  activeTab === 'questions'
-                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
-                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
-                }`}
+                onClick={() => router.push('/professor/maintenance')}
+                className="text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text text-sm font-medium"
               >
-                Questions
-              </button>
-              <button
-                onClick={() => handleTabChange('points')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  activeTab === 'points'
-                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
-                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
-                }`}
-              >
-                Points
+                Maintenance
               </button>
             </div>
           </div>

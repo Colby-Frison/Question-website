@@ -803,4 +803,105 @@ export function listenForStudentPoints(
     callback(0);
     return () => {};
   }
+}
+
+// Add a function to clean up inactive class sessions
+export async function cleanupInactiveClassSessions(inactiveHours: number = 2): Promise<number> {
+  try {
+    console.log(`Cleaning up class sessions inactive for ${inactiveHours} hours or more`);
+    
+    // Calculate the cutoff timestamp (current time - inactiveHours)
+    const cutoffTimestamp = Date.now() - (inactiveHours * 60 * 60 * 1000);
+    
+    // Query for sessions that haven't been updated since the cutoff time
+    const sessionsQuery = query(
+      collection(db, 'classSessions'),
+      where('lastActive', '<', cutoffTimestamp)
+    );
+    
+    const querySnapshot = await getDocs(sessionsQuery);
+    console.log(`Found ${querySnapshot.docs.length} inactive class sessions to clean up`);
+    
+    // Delete all inactive sessions
+    const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    console.log(`Successfully deleted ${querySnapshot.docs.length} inactive class sessions`);
+    return querySnapshot.docs.length;
+  } catch (error) {
+    console.error('Error cleaning up inactive class sessions:', error);
+    return 0;
+  }
+}
+
+// Add a function to clean up orphaned answers (answers whose questions have been deleted)
+export async function cleanupOrphanedAnswers(): Promise<number> {
+  try {
+    console.log('Cleaning up orphaned answers');
+    
+    // Get all answers
+    const answersSnapshot = await getDocs(collection(db, ANSWERS_COLLECTION));
+    console.log(`Found ${answersSnapshot.docs.length} total answers to check`);
+    
+    // For each answer, check if its question still exists
+    const orphanedAnswers = [];
+    
+    for (const answerDoc of answersSnapshot.docs) {
+      const answerData = answerDoc.data();
+      const questionId = answerData.activeQuestionId;
+      
+      if (!questionId) {
+        orphanedAnswers.push(answerDoc);
+        continue;
+      }
+      
+      // Check if the question exists
+      const questionRef = doc(db, ACTIVE_QUESTION_COLLECTION, questionId);
+      const questionDoc = await getDoc(questionRef);
+      
+      if (!questionDoc.exists()) {
+        orphanedAnswers.push(answerDoc);
+      }
+    }
+    
+    console.log(`Found ${orphanedAnswers.length} orphaned answers to delete`);
+    
+    // Delete all orphaned answers
+    const deletePromises = orphanedAnswers.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    console.log(`Successfully deleted ${orphanedAnswers.length} orphaned answers`);
+    return orphanedAnswers.length;
+  } catch (error) {
+    console.error('Error cleaning up orphaned answers:', error);
+    return 0;
+  }
+}
+
+// Add a function to run all maintenance tasks
+export async function runDatabaseMaintenance(): Promise<{
+  inactiveSessionsDeleted: number;
+  orphanedAnswersDeleted: number;
+}> {
+  try {
+    console.log('Starting database maintenance tasks');
+    
+    // Run all maintenance tasks in parallel
+    const [inactiveSessionsDeleted, orphanedAnswersDeleted] = await Promise.all([
+      cleanupInactiveClassSessions(),
+      cleanupOrphanedAnswers()
+    ]);
+    
+    console.log('Database maintenance completed successfully');
+    return {
+      inactiveSessionsDeleted,
+      orphanedAnswersDeleted
+    };
+  } catch (error) {
+    console.error('Error running database maintenance:', error);
+    return {
+      inactiveSessionsDeleted: 0,
+      orphanedAnswersDeleted: 0
+    };
+  }
 } 
