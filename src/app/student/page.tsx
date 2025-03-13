@@ -14,7 +14,8 @@ import {
   listenForActiveQuestion,
   addAnswer,
   listenForStudentPoints,
-  updateStudentPoints
+  updateStudentPoints,
+  runDatabaseMaintenance
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
@@ -235,7 +236,15 @@ export default function StudentPage() {
           lastQuestionCheckRef.current = Date.now();
         });
         
-        // We don't need to return the unsubscribe function here since this isn't a useEffect
+        // Run database maintenance in the background when a student joins
+        runDatabaseMaintenance()
+          .then(result => {
+            console.log("Automatic maintenance completed on student join:", result);
+          })
+          .catch(error => {
+            console.error("Error during automatic maintenance on student join:", error);
+            // Don't show error to student, just log it
+          });
       }
     } catch (error) {
       console.error('Error after joining class:', error);

@@ -85,7 +85,8 @@ service cloud.firestore {
                      request.resource.data.text != null;
       
       // Students can only update/delete their own answers
-      allow update, delete: if resource.data.studentId == request.resource.data.studentId;
+      allow update: if resource.data.studentId == request.resource.data.studentId;
+      allow delete: if true;
     }
     
     // Student points collection - for tracking student points

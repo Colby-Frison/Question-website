@@ -11,7 +11,8 @@ import {
   deleteQuestion, 
   addActiveQuestion, 
   listenForAnswers,
-  updateStudentPoints
+  updateStudentPoints,
+  runDatabaseMaintenance
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -66,6 +67,15 @@ export default function ProfessorPage() {
         if (userId) {
           await initializeClass(userId);
         }
+        
+        // Run database maintenance automatically
+        runDatabaseMaintenance()
+          .then(result => {
+            console.log("Automatic maintenance completed:", result);
+          })
+          .catch(error => {
+            console.error("Error during automatic maintenance:", error);
+          });
       } catch (error) {
         console.error("Connection check error:", error);
         setConnectionStatus('error');

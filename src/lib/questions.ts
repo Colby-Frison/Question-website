@@ -13,7 +13,8 @@ import {
   updateDoc,
   limit,
   getDoc,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { getUserId } from '@/lib/auth';
 
@@ -822,12 +823,32 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
     const querySnapshot = await getDocs(sessionsQuery);
     console.log(`Found ${querySnapshot.docs.length} inactive class sessions to clean up`);
     
-    // Delete all inactive sessions
-    const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
+    if (querySnapshot.empty) {
+      console.log('No inactive sessions to clean up');
+      return 0;
+    }
     
-    console.log(`Successfully deleted ${querySnapshot.docs.length} inactive class sessions`);
-    return querySnapshot.docs.length;
+    // Delete inactive sessions in batches to avoid overwhelming Firestore
+    const batchSize = 100;
+    let deletedCount = 0;
+    
+    for (let i = 0; i < querySnapshot.docs.length; i += batchSize) {
+      const batchDocs = querySnapshot.docs.slice(i, i + batchSize);
+      try {
+        // Use a writeBatch for better performance with multiple deletes
+        const batch = writeBatch(db);
+        batchDocs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        deletedCount += batchDocs.length;
+        console.log(`Deleted batch of ${batchDocs.length} inactive sessions (${deletedCount}/${querySnapshot.docs.length} total)`);
+      } catch (error) {
+        console.error(`Error deleting batch of inactive sessions:`, error);
+        // Continue with other batches even if one fails
+      }
+    }
+    
+    console.log(`Successfully deleted ${deletedCount}/${querySnapshot.docs.length} inactive class sessions`);
+    return deletedCount;
   } catch (error) {
     console.error('Error cleaning up inactive class sessions:', error);
     return 0;
@@ -843,35 +864,70 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
     const answersSnapshot = await getDocs(collection(db, ANSWERS_COLLECTION));
     console.log(`Found ${answersSnapshot.docs.length} total answers to check`);
     
+    if (answersSnapshot.empty) {
+      console.log('No answers to check, skipping cleanup');
+      return 0;
+    }
+    
     // For each answer, check if its question still exists
     const orphanedAnswers = [];
+    const batchSize = 100; // Process in batches to avoid overwhelming Firestore
+    let processedCount = 0;
     
     for (const answerDoc of answersSnapshot.docs) {
-      const answerData = answerDoc.data();
-      const questionId = answerData.activeQuestionId;
-      
-      if (!questionId) {
-        orphanedAnswers.push(answerDoc);
-        continue;
-      }
-      
-      // Check if the question exists
-      const questionRef = doc(db, ACTIVE_QUESTION_COLLECTION, questionId);
-      const questionDoc = await getDoc(questionRef);
-      
-      if (!questionDoc.exists()) {
-        orphanedAnswers.push(answerDoc);
+      try {
+        const answerData = answerDoc.data();
+        const questionId = answerData.activeQuestionId;
+        
+        if (!questionId) {
+          orphanedAnswers.push(answerDoc);
+          continue;
+        }
+        
+        // Check if the question exists
+        const questionRef = doc(db, ACTIVE_QUESTION_COLLECTION, questionId);
+        const questionDoc = await getDoc(questionRef);
+        
+        if (!questionDoc.exists()) {
+          orphanedAnswers.push(answerDoc);
+        }
+        
+        // Log progress for large collections
+        processedCount++;
+        if (processedCount % 50 === 0) {
+          console.log(`Processed ${processedCount}/${answersSnapshot.docs.length} answers`);
+        }
+      } catch (error) {
+        console.error(`Error checking answer ${answerDoc.id}:`, error);
+        // Continue with other answers even if one fails
       }
     }
     
     console.log(`Found ${orphanedAnswers.length} orphaned answers to delete`);
     
-    // Delete all orphaned answers
-    const deletePromises = orphanedAnswers.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
+    if (orphanedAnswers.length === 0) {
+      return 0;
+    }
     
-    console.log(`Successfully deleted ${orphanedAnswers.length} orphaned answers`);
-    return orphanedAnswers.length;
+    // Delete orphaned answers in batches to avoid overwhelming Firestore
+    let deletedCount = 0;
+    for (let i = 0; i < orphanedAnswers.length; i += batchSize) {
+      const batchDocs = orphanedAnswers.slice(i, i + batchSize);
+      try {
+        // Use a writeBatch for better performance with multiple deletes
+        const batch = writeBatch(db);
+        batchDocs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        deletedCount += batchDocs.length;
+        console.log(`Deleted batch of ${batchDocs.length} orphaned answers (${deletedCount}/${orphanedAnswers.length} total)`);
+      } catch (error) {
+        console.error(`Error deleting batch of orphaned answers:`, error);
+        // Continue with other batches even if one fails
+      }
+    }
+    
+    console.log(`Successfully deleted ${deletedCount}/${orphanedAnswers.length} orphaned answers`);
+    return deletedCount;
   } catch (error) {
     console.error('Error cleaning up orphaned answers:', error);
     return 0;
@@ -886,19 +942,34 @@ export async function runDatabaseMaintenance(): Promise<{
   try {
     console.log('Starting database maintenance tasks');
     
-    // Run all maintenance tasks in parallel
-    const [inactiveSessionsDeleted, orphanedAnswersDeleted] = await Promise.all([
-      cleanupInactiveClassSessions(),
-      cleanupOrphanedAnswers()
+    // Run all maintenance tasks in parallel with individual error handling
+    const results = await Promise.allSettled([
+      cleanupInactiveClassSessions().catch(error => {
+        console.error('Error cleaning up inactive sessions:', error);
+        return 0;
+      }),
+      cleanupOrphanedAnswers().catch(error => {
+        console.error('Error cleaning up orphaned answers:', error);
+        return 0;
+      })
     ]);
     
-    console.log('Database maintenance completed successfully');
+    // Extract results, defaulting to 0 if a task failed
+    const inactiveSessionsDeleted = results[0].status === 'fulfilled' ? results[0].value : 0;
+    const orphanedAnswersDeleted = results[1].status === 'fulfilled' ? results[1].value : 0;
+    
+    console.log('Database maintenance completed with results:', {
+      inactiveSessionsDeleted,
+      orphanedAnswersDeleted
+    });
+    
     return {
       inactiveSessionsDeleted,
       orphanedAnswersDeleted
     };
   } catch (error) {
     console.error('Error running database maintenance:', error);
+    // Return zeros instead of throwing, so the app continues to work
     return {
       inactiveSessionsDeleted: 0,
       orphanedAnswersDeleted: 0
