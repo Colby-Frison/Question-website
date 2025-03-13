@@ -11,7 +11,8 @@ import {
   deleteQuestion, 
   addActiveQuestion, 
   listenForAnswers,
-  updateStudentPoints
+  updateStudentPoints,
+  runDatabaseMaintenance
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -422,14 +423,6 @@ export default function ProfessorPage() {
                   Points
                 </button>
               </div>
-              
-              {/* Maintenance Link */}
-              <button
-                onClick={() => router.push('/professor/maintenance')}
-                className="text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text text-sm font-medium"
-              >
-                Maintenance
-              </button>
             </div>
           </div>
           
