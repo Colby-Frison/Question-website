@@ -37,6 +37,7 @@ export default function ProfessorPage() {
   const [questionText, setQuestionText] = useState('');
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string}[]>([]);
+  const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
 
   useEffect(() => {
     // Check if user is a professor
@@ -201,11 +202,26 @@ export default function ProfessorPage() {
     }
   };
   
-  const handleRewardPoints = async (studentId: string, points: number) => {
+  const handleRewardPoints = async (studentId: string, points: number, answerId: string) => {
     try {
       await updateStudentPoints(studentId, points);
       // Show success message or feedback
       console.log(`Awarded ${points} points to student ${studentId}`);
+      
+      // Update the UI to show points were awarded
+      setPointsAwarded(prev => ({
+        ...prev,
+        [answerId]: points
+      }));
+      
+      // Clear the feedback after 3 seconds
+      setTimeout(() => {
+        setPointsAwarded(prev => {
+          const newState = {...prev};
+          delete newState[answerId];
+          return newState;
+        });
+      }, 3000);
     } catch (error) {
       console.error("Error awarding points:", error);
       setError("Failed to award points. Please try again.");
@@ -282,15 +298,21 @@ export default function ProfessorPage() {
                   
                   {/* Point reward buttons */}
                   <div className="absolute bottom-4 right-4 flex space-x-2">
-                    {[1, 2, 3, 4, 5].map((points) => (
-                      <button
-                        key={points}
-                        onClick={() => handleRewardPoints(answer.studentId, points)}
-                        className="h-8 w-8 rounded-full bg-primary text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
-                      >
-                        {points}
-                      </button>
-                    ))}
+                    {pointsAwarded[answer.id] ? (
+                      <div className="text-success-dark dark:text-success-light font-medium">
+                        Awarded {pointsAwarded[answer.id]} points!
+                      </div>
+                    ) : (
+                      [1, 2, 3, 4, 5].map((points) => (
+                        <button
+                          key={points}
+                          onClick={() => handleRewardPoints(answer.studentId, points, answer.id)}
+                          className="h-8 w-8 rounded-full bg-primary text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary"
+                        >
+                          {points}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </li>
               ))}
@@ -311,26 +333,27 @@ export default function ProfessorPage() {
       
       <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-text dark:text-dark-text">Professor Dashboard</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+            <h1 className="text-3xl font-bold text-text dark:text-dark-text mb-4 sm:mb-0">Professor Dashboard</h1>
             
-            <div className="flex space-x-2 rounded-md bg-background-secondary p-1 dark:bg-dark-background-secondary">
+            {/* Tab Switcher - Updated to match student page */}
+            <div className="flex border-b border-background-tertiary dark:border-dark-background-tertiary">
               <button
                 onClick={() => handleTabChange('questions')}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
                   activeTab === 'questions'
-                    ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text'
-                    : 'text-text hover:bg-background-tertiary dark:text-dark-text dark:hover:bg-dark-background-tertiary'
+                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
+                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
                 }`}
               >
                 Questions
               </button>
               <button
                 onClick={() => handleTabChange('points')}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
                   activeTab === 'points'
-                    ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text'
-                    : 'text-text hover:bg-background-tertiary dark:text-dark-text dark:hover:bg-dark-background-tertiary'
+                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
+                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
                 }`}
               >
                 Points

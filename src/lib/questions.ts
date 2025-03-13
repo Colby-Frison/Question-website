@@ -651,17 +651,20 @@ export const listenForAnswers = (
 
 export async function updateStudentPoints(studentId: string, points: number): Promise<void> {
   try {
-    const studentRef = doc(db, 'students', studentId);
+    // Instead of using Firestore, we'll use a custom event to notify the student's browser
+    // Create a custom event with the student ID and points
+    const event = new CustomEvent('point-update', {
+      detail: {
+        studentId,
+        points
+      }
+    });
     
-    // Get current points
-    const studentDoc = await getDoc(studentRef);
-    const currentPoints = studentDoc.exists() ? (studentDoc.data().points || 0) : 0;
-    
-    // Update points
-    await setDoc(studentRef, { points: currentPoints + points }, { merge: true });
-    
-    // Update localStorage if it's the current user
+    // Dispatch the event
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(event);
+      
+      // For the current user, update localStorage directly
       const currentUserId = getUserId();
       if (currentUserId === studentId) {
         const savedPoints = localStorage.getItem('studentPoints');
@@ -669,6 +672,8 @@ export async function updateStudentPoints(studentId: string, points: number): Pr
         localStorage.setItem('studentPoints', (localPoints + points).toString());
       }
     }
+    
+    console.log(`Points update event dispatched for student ${studentId}: ${points} points`);
   } catch (error) {
     console.error('Error updating student points:', error);
     throw error;

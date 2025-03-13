@@ -53,6 +53,30 @@ export default function StudentPage() {
     }
   }, [points]);
 
+  // Add event listener for point updates
+  useEffect(() => {
+    if (typeof window === 'undefined' || !studentId) return;
+    
+    // Function to handle point update events
+    const handlePointUpdate = (event: CustomEvent) => {
+      const { studentId: targetStudentId, points: pointsToAdd } = event.detail;
+      
+      // Only update if this is the target student
+      if (targetStudentId === studentId) {
+        console.log(`Received ${pointsToAdd} points from professor`);
+        setPoints(prevPoints => prevPoints + pointsToAdd);
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('point-update', handlePointUpdate as EventListener);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('point-update', handlePointUpdate as EventListener);
+    };
+  }, [studentId]);
+
   useEffect(() => {
     // Check if user is a student
     if (!isStudent()) {
@@ -323,7 +347,7 @@ export default function StudentPage() {
             {answerSubmitted ? (
               <div className="rounded-md bg-success-light/20 p-4 dark:bg-success-light/10">
                 <p className="text-success-dark dark:text-success-light">
-                  Your answer has been submitted! You earned 1 point.
+                  Your answer has been submitted! The professor may award points for good answers.
                 </p>
               </div>
             ) : (
