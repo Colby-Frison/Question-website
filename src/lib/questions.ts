@@ -395,6 +395,9 @@ export const addActiveQuestion = async (
     // First, clear any existing active questions for this class
     await clearActiveQuestions(classCode);
     
+    // Also clear any existing answers for previous questions
+    await clearPreviousAnswers(classCode);
+    
     // Add the new active question
     const questionRef = await addDoc(collection(db, ACTIVE_QUESTION_COLLECTION), {
       text,
@@ -440,6 +443,38 @@ export const clearActiveQuestions = async (classCode: string): Promise<boolean> 
     return true;
   } catch (error) {
     console.error('Error clearing active questions:', error);
+    return false;
+  }
+};
+
+// Clear answers for previous questions
+export const clearPreviousAnswers = async (classCode: string): Promise<boolean> => {
+  if (!classCode) {
+    console.error("No class code provided to clearPreviousAnswers");
+    return false;
+  }
+
+  try {
+    console.log(`Clearing previous answers for class ${classCode}`);
+    
+    const q = query(
+      collection(db, ANSWERS_COLLECTION),
+      where('classCode', '==', classCode)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log(`Found ${querySnapshot.docs.length} answers to clear`);
+    
+    const deletePromises = querySnapshot.docs.map(doc => 
+      deleteDoc(doc.ref)
+    );
+    
+    await Promise.all(deletePromises);
+    console.log("All previous answers cleared");
+    
+    return true;
+  } catch (error) {
+    console.error('Error clearing previous answers:', error);
     return false;
   }
 };
@@ -651,31 +686,80 @@ export const listenForAnswers = (
 
 export async function updateStudentPoints(studentId: string, points: number): Promise<void> {
   try {
-    // Instead of using Firestore, we'll use a custom event to notify the student's browser
-    // Create a custom event with the student ID and points
-    const event = new CustomEvent('point-update', {
-      detail: {
-        studentId,
-        points
-      }
-    });
+    // Store points in a dedicated collection with minimal data
+    const pointsRef = doc(db, 'studentPoints', studentId);
     
-    // Dispatch the event
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(event);
-      
-      // For the current user, update localStorage directly
-      const currentUserId = getUserId();
-      if (currentUserId === studentId) {
-        const savedPoints = localStorage.getItem('studentPoints');
-        const localPoints = savedPoints ? parseInt(savedPoints, 10) : 0;
-        localStorage.setItem('studentPoints', (localPoints + points).toString());
-      }
-    }
+    // Get current points from Firestore
+    const pointsDoc = await getDoc(pointsRef);
+    const currentPoints = pointsDoc.exists() ? (pointsDoc.data().total || 0) : 0;
     
-    console.log(`Points update event dispatched for student ${studentId}: ${points} points`);
+    // Update points in Firestore
+    await setDoc(pointsRef, { 
+      total: currentPoints + points,
+      lastUpdated: Date.now() 
+    }, { merge: true });
+    
+    console.log(`Points updated for student ${studentId}: ${points} points added, new total: ${currentPoints + points}`);
   } catch (error) {
     console.error('Error updating student points:', error);
     throw error;
+  }
+}
+
+// Add a function to get student points
+export async function getStudentPoints(studentId: string): Promise<number> {
+  try {
+    const pointsRef = doc(db, 'studentPoints', studentId);
+    const pointsDoc = await getDoc(pointsRef);
+    
+    if (pointsDoc.exists()) {
+      return pointsDoc.data().total || 0;
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('Error getting student points:', error);
+    return 0;
+  }
+}
+
+// Add a function to listen for student points changes
+export function listenForStudentPoints(
+  studentId: string,
+  callback: (points: number) => void
+): () => void {
+  if (!studentId) {
+    console.error("No student ID provided to listenForStudentPoints");
+    callback(0);
+    return () => {};
+  }
+
+  console.log(`Setting up points listener for student: ${studentId}`);
+  
+  try {
+    const pointsRef = doc(db, 'studentPoints', studentId);
+    
+    const unsubscribe = onSnapshot(pointsRef, 
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const total = docSnapshot.data().total || 0;
+          console.log(`Points update received for student ${studentId}: ${total} points`);
+          callback(total);
+        } else {
+          console.log(`No points record found for student ${studentId}`);
+          callback(0);
+        }
+      }, 
+      (error) => {
+        console.error("Error in points listener:", error);
+        callback(0);
+      }
+    );
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("Error setting up points listener:", error);
+    callback(0);
+    return () => {};
   }
 } 

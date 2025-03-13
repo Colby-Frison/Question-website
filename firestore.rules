@@ -87,5 +87,14 @@ service cloud.firestore {
       // Students can only update/delete their own answers
       allow update, delete: if resource.data.studentId == request.resource.data.studentId;
     }
+    
+    // Student points collection - for tracking student points
+    match /studentPoints/{studentId} {
+      // Students can read their own points
+      allow read: if true;
+      
+      // Anyone can update points (professors need to award points)
+      allow write: if true;
+    }
   }
 } 

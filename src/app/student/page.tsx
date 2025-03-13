@@ -12,7 +12,8 @@ import {
   listenForUserQuestions, 
   listenForQuestions, 
   listenForActiveQuestion,
-  addAnswer
+  addAnswer,
+  listenForStudentPoints
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
@@ -53,30 +54,23 @@ export default function StudentPage() {
     }
   }, [points]);
 
-  // Add event listener for point updates
+  // Replace the event listener with Firestore listener for points
   useEffect(() => {
-    if (typeof window === 'undefined' || !studentId) return;
+    if (!studentId) return () => {};
     
-    // Function to handle point update events
-    const handlePointUpdate = (event: CustomEvent) => {
-      const { studentId: targetStudentId, points: pointsToAdd } = event.detail;
-      
-      // Only update if this is the target student
-      if (targetStudentId === studentId) {
-        console.log(`Received ${pointsToAdd} points from professor`);
-        setPoints(prevPoints => prevPoints + pointsToAdd);
-      }
-    };
+    console.log("Setting up points listener for student:", studentId);
+    const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
+      console.log("Received points update:", newPoints);
+      setPoints(newPoints);
+    });
     
-    // Add event listener
-    window.addEventListener('point-update', handlePointUpdate as EventListener);
-    
-    // Clean up
     return () => {
-      window.removeEventListener('point-update', handlePointUpdate as EventListener);
+      console.log("Cleaning up points listener");
+      unsubscribe();
     };
   }, [studentId]);
 
+  // Fix the dependency array to prevent excessive re-renders
   useEffect(() => {
     // Check if user is a student
     if (!isStudent()) {
@@ -87,17 +81,24 @@ export default function StudentPage() {
     const userId = getUserId();
     setStudentId(userId);
 
+    // This effect should only run once on mount and when router changes
+  }, [router]);
+
+  // Separate effect for joined class to prevent excessive re-renders
+  useEffect(() => {
+    if (!studentId) return;
+    
     const checkJoinedClass = async () => {
       try {
         // Check if student has already joined a class
-        const joinedClass = await getJoinedClass(userId);
+        const joinedClass = await getJoinedClass(studentId);
         
         if (joinedClass) {
           setClassName(joinedClass);
           setJoined(true);
           
           // Set up listener for student's questions
-          const unsubscribePersonal = listenForUserQuestions(userId, joinedClass, (questions) => {
+          const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass, (questions) => {
             setMyQuestions(questions);
             setIsLoading(false);
           });
@@ -136,7 +137,16 @@ export default function StudentPage() {
     };
     
     checkJoinedClass();
-  }, [router, activeQuestion]);
+  }, [studentId]);
+
+  // Add a separate effect to handle active question changes
+  useEffect(() => {
+    if (!activeQuestion || !studentId || !className) return;
+    
+    // This effect handles changes to the active question
+    console.log("Active question changed:", activeQuestion.id);
+    
+  }, [activeQuestion, studentId, className]);
 
   const handleJoinSuccess = async () => {
     try {
