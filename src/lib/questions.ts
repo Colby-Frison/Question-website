@@ -1,3 +1,16 @@
+/**
+ * Question Management Module
+ * 
+ * This module handles all question-related functionality including:
+ * - Managing student questions for professors to answer
+ * - Managing active questions that professors ask students 
+ * - Handling student answers to active questions
+ * - Tracking and updating student points
+ * - Database maintenance operations
+ * 
+ * The module uses Firebase Firestore for real-time data storage and updates.
+ */
+
 import { Question } from '@/types';
 import { db } from './firebase';
 import { 
@@ -18,13 +31,22 @@ import {
 } from 'firebase/firestore';
 import { getUserId } from '@/lib/auth';
 
-// Collection references
-const QUESTIONS_COLLECTION = 'questions';
-const USER_QUESTIONS_COLLECTION = 'userQuestions';
-const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
-const ANSWERS_COLLECTION = 'answers';
+// Collection references for Firestore database
+const QUESTIONS_COLLECTION = 'questions';          // Stores all student questions
+const USER_QUESTIONS_COLLECTION = 'userQuestions'; // Tracks questions by individual students
+const ACTIVE_QUESTION_COLLECTION = 'activeQuestions'; // Stores professor's active questions
+const ANSWERS_COLLECTION = 'answers';              // Stores student answers to active questions
+const STUDENT_POINTS_COLLECTION = 'studentPoints'; // Stores student point totals
 
-// Get all questions for a specific class code
+/**
+ * Get all questions for a specific class code
+ * 
+ * Retrieves all questions that have been asked by students in a particular class,
+ * ordered by timestamp (newest first).
+ * 
+ * @param classCode - The code of the class to get questions for
+ * @returns A promise that resolves to an array of Question objects
+ */
 export const getQuestions = async (classCode: string): Promise<Question[]> => {
   if (!classCode) {
     console.warn("getQuestions called without a class code");
@@ -54,7 +76,16 @@ export const getQuestions = async (classCode: string): Promise<Question[]> => {
   }
 };
 
-// Set up a real-time listener for questions
+/**
+ * Set up a real-time listener for questions in a class
+ * 
+ * Creates a Firestore listener that triggers the callback whenever there are changes
+ * to the questions in a specific class. The callback receives the updated list of questions.
+ * 
+ * @param classCode - The code of the class to listen for questions in
+ * @param callback - Function that receives the updated list of questions
+ * @returns An unsubscribe function to stop listening
+ */
 export const listenForQuestions = (
   classCode: string, 
   callback: (questions: Question[]) => void
@@ -102,7 +133,16 @@ export const listenForQuestions = (
   }
 };
 
-// Get questions for a specific user (student)
+/**
+ * Get questions for a specific user (student) in a class
+ * 
+ * Retrieves all questions that have been asked by a specific student in a particular class,
+ * ordered by timestamp (newest first).
+ * 
+ * @param userIdentifier - The ID of the user (student) to get questions for
+ * @param classCode - The code of the class to get questions from
+ * @returns A promise that resolves to an array of Question objects
+ */
 export const getUserQuestions = async (
   userIdentifier: string = 'student',
   classCode: string
@@ -139,7 +179,18 @@ export const getUserQuestions = async (
   }
 };
 
-// Set up a real-time listener for user questions
+/**
+ * Set up a real-time listener for a specific user's questions
+ * 
+ * Creates a Firestore listener that triggers the callback whenever there are changes
+ * to the questions asked by a specific student in a class. The callback receives 
+ * the updated list of questions.
+ * 
+ * @param userIdentifier - The ID of the user (student) to listen for questions from
+ * @param classCode - The code of the class to listen in
+ * @param callback - Function that receives the updated list of questions
+ * @returns An unsubscribe function to stop listening
+ */
 export const listenForUserQuestions = (
   userIdentifier: string = 'student',
   classCode: string,
@@ -189,7 +240,17 @@ export const listenForUserQuestions = (
   }
 };
 
-// Add a new question
+/**
+ * Add a new question from a student
+ * 
+ * Creates a new question in both the global questions collection and the
+ * user-specific questions collection for tracking purposes.
+ * 
+ * @param text - The text content of the question
+ * @param userIdentifier - The ID of the user (student) asking the question
+ * @param classCode - The code of the class the question is for
+ * @returns A promise that resolves to the created Question object, or null if failed
+ */
 export const addQuestion = async (
   text: string, 
   userIdentifier: string = 'student',
@@ -241,7 +302,17 @@ export const addQuestion = async (
   }
 };
 
-// Update an existing question
+/**
+ * Update an existing question
+ * 
+ * Updates the text of an existing question in both the global questions collection
+ * and the user-specific questions collection.
+ * 
+ * @param id - The ID of the question to update
+ * @param text - The new text content for the question
+ * @param userIdentifier - The ID of the user who owns the question
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const updateQuestion = async (
   id: string,
   text: string,
@@ -291,7 +362,15 @@ export const updateQuestion = async (
   }
 };
 
-// Delete a question
+/**
+ * Delete a question
+ * 
+ * Removes a question from both the global questions collection and all
+ * user-specific question references in the user questions collection.
+ * 
+ * @param id - The ID of the question to delete
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const deleteQuestion = async (id: string): Promise<boolean> => {
   if (!id) {
     console.error("No ID provided to deleteQuestion");
@@ -328,7 +407,16 @@ export const deleteQuestion = async (id: string): Promise<boolean> => {
   }
 };
 
-// Update question status
+/**
+ * Update the status of a question
+ * 
+ * Updates the status of a question (e.g., from 'unanswered' to 'answered')
+ * in both the global questions collection and all associated user question references.
+ * 
+ * @param id - The ID of the question to update
+ * @param status - The new status ('answered' or 'unanswered')
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const updateQuestionStatus = async (
   id: string,
   status: 'answered' | 'unanswered'
@@ -376,7 +464,18 @@ export const updateQuestionStatus = async (
   }
 };
 
-// Add a new active question (for professors)
+/**
+ * Add a new active question (for professors)
+ * 
+ * Creates a new active question that students can answer. This function
+ * also handles clearing previous active questions and their answers to avoid
+ * confusion with multiple questions.
+ * 
+ * @param text - The text content of the active question
+ * @param professorId - The ID of the professor asking the question
+ * @param classCode - The code of the class the question is for
+ * @returns A promise that resolves to the ID of the created active question, or null if failed
+ */
 export const addActiveQuestion = async (
   text: string,
   professorId: string,
@@ -420,7 +519,16 @@ export const addActiveQuestion = async (
   }
 };
 
-// Clear existing active questions for a class
+/**
+ * Clear existing active questions for a class
+ * 
+ * Removes all active questions for a class except for the one with the specified ID.
+ * This ensures only one active question exists at a time.
+ * 
+ * @param classCode - The code of the class to clear active questions for
+ * @param skipId - Optional ID of an active question to skip (usually the new one just created)
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const clearActiveQuestions = async (classCode: string, skipId?: string): Promise<boolean> => {
   if (!classCode) {
     console.error("No class code provided to clearActiveQuestions");
@@ -452,7 +560,15 @@ export const clearActiveQuestions = async (classCode: string, skipId?: string): 
   }
 };
 
-// Clear answers for previous questions
+/**
+ * Clear answers for previous questions
+ * 
+ * Removes all answers for a specific class. This is typically called
+ * when a new active question is created to avoid confusion with previous answers.
+ * 
+ * @param classCode - The code of the class to clear answers for
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const clearPreviousAnswers = async (classCode: string): Promise<boolean> => {
   if (!classCode) {
     console.error("No class code provided to clearPreviousAnswers");
@@ -484,7 +600,15 @@ export const clearPreviousAnswers = async (classCode: string): Promise<boolean> 
   }
 };
 
-// Get the current active question for a class
+/**
+ * Get the current active question for a class
+ * 
+ * Retrieves the most recent active question for a class.
+ * Only retrieves one question (the most recent one).
+ * 
+ * @param classCode - The code of the class to get the active question for
+ * @returns A promise that resolves to the active question object, or null if none found
+ */
 export const getActiveQuestion = async (classCode: string): Promise<{id: string, text: string, timestamp: number} | null> => {
   if (!classCode) {
     console.warn("getActiveQuestion called without a class code");
@@ -521,7 +645,18 @@ export const getActiveQuestion = async (classCode: string): Promise<{id: string,
   }
 };
 
-// Set up a real-time listener for the active question
+/**
+ * Set up a real-time listener for the active question in a class
+ * 
+ * Creates a Firestore listener that triggers the callback whenever there are changes
+ * to the active question in a class. The callback receives the updated active question.
+ * This function also immediately fetches the current active question to provide
+ * faster initial data loading.
+ * 
+ * @param classCode - The code of the class to listen for active questions in
+ * @param callback - Function that receives the updated active question or null if none exists
+ * @returns An unsubscribe function to stop listening
+ */
 export const listenForActiveQuestion = (
   classCode: string, 
   callback: (question: {id: string, text: string, timestamp: number} | null) => void
@@ -590,7 +725,17 @@ export const listenForActiveQuestion = (
   }
 };
 
-// Add an answer to the active question
+/**
+ * Add an answer to the active question
+ * 
+ * Creates a new answer from a student for an active question.
+ * 
+ * @param activeQuestionId - The ID of the active question being answered
+ * @param text - The text content of the answer
+ * @param studentId - The ID of the student providing the answer
+ * @param classCode - The code of the class the answer is for
+ * @returns A promise that resolves to the ID of the created answer, or null if failed
+ */
 export const addAnswer = async (
   activeQuestionId: string,
   text: string,
@@ -625,7 +770,15 @@ export const addAnswer = async (
   }
 };
 
-// Get answers for an active question
+/**
+ * Get answers for an active question
+ * 
+ * Retrieves all answers submitted for a specific active question,
+ * ordered by timestamp (oldest first).
+ * 
+ * @param activeQuestionId - The ID of the active question to get answers for
+ * @returns A promise that resolves to an array of answer objects
+ */
 export const getAnswers = async (activeQuestionId: string): Promise<{id: string, text: string, timestamp: number, studentId: string}[]> => {
   if (!activeQuestionId) {
     console.warn("getAnswers called without an active question ID");
@@ -658,7 +811,17 @@ export const getAnswers = async (activeQuestionId: string): Promise<{id: string,
   }
 };
 
-// Set up a real-time listener for answers to an active question
+/**
+ * Set up a real-time listener for answers to an active question
+ * 
+ * Creates a Firestore listener that triggers the callback whenever there are changes
+ * to the answers for an active question. The callback receives the updated list of answers.
+ * This function also fetches the question text and includes it with each answer.
+ * 
+ * @param activeQuestionId - The ID of the active question to listen for answers to
+ * @param callback - Function that receives the updated list of answers
+ * @returns An unsubscribe function to stop listening
+ */
 export const listenForAnswers = (
   activeQuestionId: string, 
   callback: (answers: {id: string, text: string, timestamp: number, studentId: string, questionText?: string}[]) => void
@@ -723,10 +886,20 @@ export const listenForAnswers = (
   }
 };
 
+/**
+ * Update a student's points
+ * 
+ * Updates the total points for a student, ensuring the total never goes below zero.
+ * This is used by professors to award points for good answers.
+ * 
+ * @param studentId - The ID of the student to update points for
+ * @param points - The number of points to add (or subtract if negative)
+ * @returns A promise that resolves when the points have been updated
+ */
 export async function updateStudentPoints(studentId: string, points: number): Promise<void> {
   try {
     // Store points in a dedicated collection with minimal data
-    const pointsRef = doc(db, 'studentPoints', studentId);
+    const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     
     // Get current points from Firestore
     const pointsDoc = await getDoc(pointsRef);
@@ -748,10 +921,17 @@ export async function updateStudentPoints(studentId: string, points: number): Pr
   }
 }
 
-// Add a function to get student points
+/**
+ * Get a student's current points total
+ * 
+ * Retrieves the current total points for a specific student.
+ * 
+ * @param studentId - The ID of the student to get points for
+ * @returns A promise that resolves to the student's current point total
+ */
 export async function getStudentPoints(studentId: string): Promise<number> {
   try {
-    const pointsRef = doc(db, 'studentPoints', studentId);
+    const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     const pointsDoc = await getDoc(pointsRef);
     
     if (pointsDoc.exists()) {
@@ -765,7 +945,16 @@ export async function getStudentPoints(studentId: string): Promise<number> {
   }
 }
 
-// Add a function to listen for student points changes
+/**
+ * Set up a real-time listener for a student's points
+ * 
+ * Creates a Firestore listener that triggers the callback whenever there are changes
+ * to a student's points. The callback receives the updated point total.
+ * 
+ * @param studentId - The ID of the student to listen for point changes
+ * @param callback - Function that receives the updated point total
+ * @returns An unsubscribe function to stop listening
+ */
 export function listenForStudentPoints(
   studentId: string,
   callback: (points: number) => void
@@ -779,7 +968,7 @@ export function listenForStudentPoints(
   console.log(`Setting up points listener for student: ${studentId}`);
   
   try {
-    const pointsRef = doc(db, 'studentPoints', studentId);
+    const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     
     const unsubscribe = onSnapshot(pointsRef, 
       (docSnapshot) => {
@@ -806,7 +995,15 @@ export function listenForStudentPoints(
   }
 }
 
-// Add a function to clean up inactive class sessions
+/**
+ * Clean up inactive class sessions
+ * 
+ * Removes class sessions that haven't been active for the specified number of hours.
+ * This helps keep the database clean and reduces storage costs.
+ * 
+ * @param inactiveHours - Number of hours of inactivity before a session is considered inactive (default: 2)
+ * @returns A promise that resolves to the number of sessions deleted
+ */
 export async function cleanupInactiveClassSessions(inactiveHours: number = 2): Promise<number> {
   try {
     console.log(`Cleaning up class sessions inactive for ${inactiveHours} hours or more`);
@@ -878,7 +1075,15 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
   }
 }
 
-// Add a function to clean up orphaned answers (answers whose questions have been deleted)
+/**
+ * Clean up orphaned answers
+ * 
+ * Removes answers whose associated active questions have been deleted.
+ * This helps keep the database clean and avoids showing answers to questions 
+ * that no longer exist.
+ * 
+ * @returns A promise that resolves to the number of orphaned answers deleted
+ */
 export async function cleanupOrphanedAnswers(): Promise<number> {
   try {
     console.log('Cleaning up orphaned answers');
@@ -981,7 +1186,15 @@ export async function cleanupOrphanedAnswers(): Promise<number> {
   }
 }
 
-// Add a function to run all maintenance tasks
+/**
+ * Run all database maintenance tasks
+ * 
+ * Executes all maintenance operations to keep the database clean and efficient.
+ * This includes cleaning up inactive sessions and orphaned answers.
+ * The function handles errors gracefully and will not fail if one task fails.
+ * 
+ * @returns A promise that resolves to an object containing the results of all maintenance tasks
+ */
 export async function runDatabaseMaintenance(): Promise<{
   inactiveSessionsDeleted: number;
   orphanedAnswersDeleted: number;

@@ -3,15 +3,30 @@
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
+/**
+ * In-line theme toggle button component
+ * 
+ * This component:
+ * - Provides a button that toggles between light and dark themes
+ * - Shows appropriate sun/moon icon based on current theme
+ * - Handles hydration mismatches by only rendering after client-side mount
+ * - Includes transition animations for a smooth user experience
+ * 
+ * @returns {JSX.Element|null} Rendered component or null before client-side hydration
+ */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration mismatch by only rendering after mount
+  /**
+   * Effect to handle client-side hydration
+   * Sets mounted state to true after component mounts to avoid hydration mismatch
+   */
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Return null during server-side rendering to avoid hydration mismatches
   if (!mounted) {
     return null;
   }

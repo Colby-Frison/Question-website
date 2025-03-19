@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Professor Dashboard Page
+ * 
+ * This component serves as the main dashboard for professors, allowing them to:
+ * - View and manage student questions
+ * - Create and manage active questions for students to answer
+ * - Award points to students for their answers
+ * - Switch between questions and points tabs
+ * 
+ * The page handles real-time updates through Firebase listeners and
+ * manages the professor's class session.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
@@ -20,10 +33,13 @@ import { createClassSession } from '@/lib/classSession';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
+// Define tab types for the dashboard
 type TabType = 'questions' | 'points';
 
 export default function ProfessorPage() {
   const router = useRouter();
+  
+  // State for class and session management
   const [className, setClassName] = useState('');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,17 +47,21 @@ export default function ProfessorPage() {
   const [sessionId, setSessionId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
-  
-  // Tab state
+
+  // Tab state to switch between questions and points views
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   
-  // Points tab state
+  // Points tab state for managing active questions and student answers
   const [questionText, setQuestionText] = useState('');
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string, questionText?: string, activeQuestionId?: string}[]>([]);
   const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
 
+  /**
+   * Initial setup effect - runs once when component mounts
+   * Checks if user is a professor, gets their ID, and initializes the class
+   */
   useEffect(() => {
     // Check if user is a professor
     if (!isProfessor()) {
@@ -80,7 +100,10 @@ export default function ProfessorPage() {
     checkConnection();
   }, [router]);
 
-  // Set up automatic maintenance
+  /**
+   * Set up automatic database maintenance
+   * This runs periodically to clean up orphaned data and inactive sessions
+   */
   useEffect(() => {
     if (maintenanceSetup) return;
     
@@ -93,7 +116,10 @@ export default function ProfessorPage() {
     };
   }, [maintenanceSetup]);
 
-  // Set up answers listener when activeQuestionId changes
+  /**
+   * Set up real-time listener for student answers when activeQuestionId changes
+   * This ensures we always have the latest answers for the current question
+   */
   useEffect(() => {
     if (!activeQuestionId) return () => {};
     
@@ -103,12 +129,20 @@ export default function ProfessorPage() {
       setAnswers(newAnswers);
     });
     
+    // Clean up listener when component unmounts or activeQuestionId changes
     return () => {
       console.log("Cleaning up answers listener");
       unsubscribe();
     };
   }, [activeQuestionId]);
 
+  /**
+   * Initialize the professor's class
+   * Gets existing class info, creates a session, and sets up question listeners
+   * 
+   * @param userId - The professor's user ID
+   * @returns A cleanup function to remove listeners
+   */
   const initializeClass = async (userId: string) => {
     try {
       console.log("Starting class initialization for user:", userId);
@@ -156,6 +190,11 @@ export default function ProfessorPage() {
     }
   };
 
+  /**
+   * Handle deleting a student question
+   * 
+   * @param id - The ID of the question to delete
+   */
   const handleDeleteQuestion = async (id: string) => {
     try {
       await deleteQuestion(id);
@@ -165,6 +204,12 @@ export default function ProfessorPage() {
     }
   };
 
+  /**
+   * Handle changing the class name
+   * Updates state and sets up new listeners for the new class
+   * 
+   * @param newClassName - The new class name
+   */
   const handleClassNameChange = (newClassName: string) => {
     setClassName(newClassName);
     
@@ -179,11 +224,19 @@ export default function ProfessorPage() {
     }
   };
 
+  /**
+   * Handle user logout
+   * Clears user type and redirects to home page
+   */
   const handleLogout = () => {
     clearUserType();
     router.push('/');
   };
 
+  /**
+   * Handle retry after connection error
+   * Resets error state and attempts to initialize class again
+   */
   const handleRetry = async () => {
     setError(null);
     setConnectionStatus('checking');
@@ -193,10 +246,21 @@ export default function ProfessorPage() {
     }
   };
   
+  /**
+   * Handle switching between tabs (questions/points)
+   * 
+   * @param tab - The tab to switch to
+   */
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
   };
   
+  /**
+   * Handle asking a new question to students
+   * Creates a new active question and clears previous answers
+   * 
+   * @param e - Form submit event
+   */
   const handleAskQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -222,16 +286,27 @@ export default function ProfessorPage() {
     }
   };
   
+  /**
+   * Handle awarding points to a student for their answer
+   * If the same point value is clicked again, it deselects (sets to 0)
+   * 
+   * @param studentId - The ID of the student to award points to
+   * @param points - The number of points to award
+   * @param answerId - The ID of the answer being awarded points
+   */
   const handleRewardPoints = async (studentId: string, points: number, answerId: string) => {
     try {
       // Check if points were already awarded to this answer
       const previousPoints = pointsAwarded[answerId] || 0;
-      const pointsDifference = points - previousPoints;
       
-      // Immediately update UI to show points were awarded
+      // If clicking the same point value again, deselect it (set to 0)
+      const newPoints = previousPoints === points ? 0 : points;
+      const pointsDifference = newPoints - previousPoints;
+      
+      // Immediately update UI to show points were awarded or deselected
       setPointsAwarded(prev => ({
         ...prev,
-        [answerId]: points
+        [answerId]: newPoints
       }));
       
       // Only update if there's a change in points
@@ -239,7 +314,7 @@ export default function ProfessorPage() {
         // Update database in the background
         updateStudentPoints(studentId, pointsDifference)
           .then(() => {
-            console.log(`Adjusted points for student ${studentId}: ${pointsDifference} points (new total: ${points})`);
+            console.log(`Adjusted points for student ${studentId}: ${pointsDifference} points (new total: ${newPoints})`);
           })
           .catch((error) => {
             console.error("Error awarding points:", error);
@@ -257,6 +332,10 @@ export default function ProfessorPage() {
     }
   };
   
+  /**
+   * Render the Questions tab content
+   * Shows a list of student questions with options to delete them
+   */
   const renderQuestionsTab = () => (
     <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
       <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Student Questions</h2>
@@ -270,6 +349,11 @@ export default function ProfessorPage() {
     </div>
   );
   
+  /**
+   * Render the Points tab content
+   * Shows the current class, allows asking questions, and displays student answers
+   * with options to award points
+   */
   const renderPointsTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       {/* Left container - Class Name and Ask Question */}
@@ -317,7 +401,7 @@ export default function ProfessorPage() {
       
       {/* Right container - Current Question and Student Answers */}
       <div className="flex flex-col space-y-6">
-        {/* Current Question - Moved above student answers */}
+        {/* Current Question - Displayed above student answers */}
         {activeQuestionId && (
           <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
             <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
@@ -348,7 +432,7 @@ export default function ProfessorPage() {
                       Student ID: {answer.studentId.substring(0, 8)}...
                     </p>
                     
-                    {/* Point reward component - redesigned */}
+                    {/* Point reward component - redesigned as a row of buttons */}
                     <div className="absolute bottom-4 right-4">
                       <div className="flex rounded-md overflow-hidden border border-border dark:border-dark-border">
                         {[1, 2, 3, 4, 5].map((pointValue) => {
@@ -390,6 +474,7 @@ export default function ProfessorPage() {
     </div>
   );
 
+  // Main component render
   return (
     <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
       <Navbar userType="professor" onLogout={handleLogout} />
@@ -424,8 +509,9 @@ export default function ProfessorPage() {
                 </button>
               </div>
             </div>
-          </div>
-          
+        </div>
+
+          {/* Loading indicator */}
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
@@ -433,30 +519,33 @@ export default function ProfessorPage() {
             </div>
           ) : null}
           
-          {error && (
+          {/* Error display */}
+        {error && (
             <div className="mb-8 rounded-lg bg-error-light/20 p-6 shadow-all-around dark:bg-error-light/10">
               <h2 className="mb-2 text-lg font-semibold text-error-dark dark:text-error-light">Error</h2>
               <p className="text-error-dark dark:text-error-light">{error}</p>
-              <button 
-                onClick={handleRetry}
+            <button 
+              onClick={handleRetry}
                 className="mt-4 rounded-md bg-error-dark px-4 py-2 text-sm font-medium text-white hover:bg-error-dark/90 dark:bg-error-light dark:text-error-dark dark:hover:bg-error-light/90"
-              >
-                Retry Connection
-              </button>
-            </div>
-          )}
+            >
+              Retry Connection
+            </button>
+          </div>
+        )}
 
+          {/* Class name display (only shown in questions tab) */}
           {className && activeTab === 'questions' && (
-            <div className="mb-8">
+        <div className="mb-8">
               <ClassNameDisplay 
                 className={className} 
-                professorId={professorId}
+            professorId={professorId}
                 sessionId={sessionId || 'fallback-session-id'}
                 onClassNameChange={handleClassNameChange}
-              />
-            </div>
+          />
+        </div>
           )}
 
+          {/* Render the active tab content */}
           {className && (
             activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()
           )}

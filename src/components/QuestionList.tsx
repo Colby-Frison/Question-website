@@ -4,6 +4,17 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Question } from '@/types';
 import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/questions';
 
+/**
+ * Interface for QuestionList component props
+ * @interface QuestionListProps
+ * @property {Question[]} questions - Array of question objects to display
+ * @property {boolean} [isProfessor] - Whether the current user is a professor
+ * @property {boolean} [isStudent] - Whether the current user is a student
+ * @property {string} [studentId] - ID of the current student, if applicable
+ * @property {function} [onDelete] - Optional callback for when a question is deleted
+ * @property {string} [emptyMessage] - Message to display when there are no questions
+ * @property {boolean} [isLoading] - Whether questions are currently loading
+ */
 interface QuestionListProps {
   questions: Question[];
   isProfessor?: boolean;
@@ -14,6 +25,18 @@ interface QuestionListProps {
   isLoading?: boolean;
 }
 
+/**
+ * Component for displaying a list of questions with different functionality based on user role
+ * 
+ * This component provides:
+ * - Different views and actions for professors and students
+ * - Question editing capabilities for students
+ * - Question status toggling and deletion for professors
+ * - Loading and empty state handling
+ * 
+ * @param {QuestionListProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 const QuestionList: React.FC<QuestionListProps> = React.memo(({
   questions,
   isProfessor = false,
@@ -29,6 +52,13 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
+  /**
+   * Handles the deletion of a question
+   * - Uses provided onDelete callback if available
+   * - Otherwise calls deleteQuestion directly
+   * 
+   * @param {string} id - ID of the question to delete
+   */
   const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     
@@ -45,16 +75,34 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     }
   }, [onDelete]);
 
+  /**
+   * Begins editing a question
+   * - Sets the editing ID and pre-fills the form with current text
+   * 
+   * @param {string} id - ID of the question to edit
+   * @param {string} text - Current text of the question
+   */
   const startEditing = useCallback((id: string, text: string) => {
     setEditingId(id);
     setEditText(text);
   }, []);
 
+  /**
+   * Cancels the current question edit
+   * - Resets the editing state
+   */
   const cancelEditing = useCallback(() => {
     setEditingId(null);
     setEditText('');
   }, []);
 
+  /**
+   * Saves the edited question
+   * - Calls updateQuestion API
+   * - Resets editing state on success
+   * 
+   * @param {string} id - ID of the question being edited
+   */
   const saveEdit = useCallback(async (id: string) => {
     if (!editText.trim()) return;
     
@@ -73,6 +121,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     }
   }, [editText, studentId]);
 
+  /**
+   * Toggles a question's status between answered and unanswered
+   * - Optimistically updates UI
+   * - Updates database in background
+   * 
+   * @param {string} id - ID of the question to update
+   * @param {('answered'|'unanswered'|undefined)} currentStatus - Current status of the question
+   */
   const toggleQuestionStatus = useCallback(async (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => {
     // Default to 'unanswered' if status is undefined
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
@@ -110,6 +166,10 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     }
   }, [questions]);
 
+  /**
+   * Renders the loading state when questions are being fetched
+   * @returns {JSX.Element|null} Loading UI or null
+   */
   const renderLoading = useMemo(() => {
     if (isLoading) {
       return (
@@ -122,6 +182,10 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     return null;
   }, [isLoading]);
 
+  /**
+   * Renders an empty state when no questions are available
+   * @returns {JSX.Element|null} Empty state UI or null
+   */
   const renderEmptyState = useMemo(() => {
     if (questions.length === 0) {
       return (
@@ -133,6 +197,10 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     return null;
   }, [questions.length, emptyMessage]);
 
+  /**
+   * Renders the list of question items with appropriate controls
+   * @returns {JSX.Element[]} Array of question item elements
+   */
   const questionItems = useMemo(() => {
     return questions.map((question) => (
       <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
@@ -259,21 +327,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         </div>
       </li>
     ));
-  }, [
-    questions, 
-    deletingId, 
-    isProfessor, 
-    isStudent, 
-    editingId, 
-    editText, 
-    isUpdating,
-    updatingStatusId,
-    handleDelete, 
-    startEditing, 
-    saveEdit, 
-    cancelEditing,
-    toggleQuestionStatus
-  ]);
+  }, [questions, isProfessor, isStudent, editingId, deletingId, updatingStatusId, startEditing, saveEdit, cancelEditing, handleDelete, toggleQuestionStatus, isUpdating, editText]);
 
   if (isLoading) return renderLoading;
   if (questions.length === 0) return renderEmptyState;

@@ -1,3 +1,19 @@
+/**
+ * Database Maintenance Module
+ * 
+ * This module manages the automatic database maintenance process, which helps keep
+ * the database clean, prevents orphaned data, and reduces storage costs.
+ * 
+ * It provides functionality to:
+ * - Set up automatic scheduled maintenance
+ * - Force run maintenance tasks on demand
+ * - Manage intervals between maintenance runs
+ * 
+ * The maintenance process includes:
+ * - Cleaning up inactive class sessions
+ * - Removing orphaned answers (answers to questions that no longer exist)
+ */
+
 import { runDatabaseMaintenance } from './questions';
 
 // Interval in milliseconds between maintenance runs (default: 1 hour)
@@ -12,6 +28,11 @@ let maintenanceIntervalId: NodeJS.Timeout | null = null;
 
 /**
  * Sets up automatic maintenance to run periodically
+ * 
+ * This function sets up a scheduled interval to automatically run
+ * database maintenance tasks. It ensures maintenance doesn't run
+ * too frequently and avoids setting up duplicate schedules.
+ * 
  * @returns A cleanup function to cancel the maintenance interval
  */
 export function setupAutomaticMaintenance(): () => void {
@@ -50,6 +71,10 @@ export function setupAutomaticMaintenance(): () => void {
 
 /**
  * Runs the maintenance task and updates the last run timestamp
+ * 
+ * This internal function handles the actual execution of maintenance tasks,
+ * while preventing runs that are too frequent. It also manages the 
+ * timestamp tracking for the last maintenance run.
  */
 async function runMaintenanceTask() {
   const now = Date.now();
@@ -73,6 +98,11 @@ async function runMaintenanceTask() {
 
 /**
  * Force runs maintenance immediately, regardless of when it last ran
+ * 
+ * This function bypasses the minimum interval check and runs
+ * maintenance immediately. Useful for manual maintenance triggers
+ * or when maintenance needs to be run outside the normal schedule.
+ * 
  * @returns The result of the maintenance operation
  */
 export async function forceRunMaintenance() {
@@ -87,7 +117,16 @@ export async function forceRunMaintenance() {
   }
 }
 
-// Function to manually trigger maintenance
+/**
+ * Manually trigger database maintenance
+ * 
+ * Legacy function that simply calls runDatabaseMaintenance.
+ * Kept for backward compatibility with the maintenance page.
+ * New code should use forceRunMaintenance instead.
+ * 
+ * @returns The result of the maintenance operation
+ * @deprecated Use forceRunMaintenance instead
+ */
 export async function triggerMaintenance(): Promise<{
   inactiveSessionsDeleted: number;
   orphanedAnswersDeleted: number;

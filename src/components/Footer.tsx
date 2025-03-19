@@ -2,6 +2,18 @@
 
 import { ThemeToggle } from './ThemeToggle';
 
+/**
+ * Footer component for the application
+ * 
+ * This component:
+ * - Displays copyright information with the current year
+ * - Provides access to the theme toggle
+ * - Includes a link to the project's GitHub repository
+ * - Is responsive with different layouts for mobile and desktop
+ * - Sticks to the bottom of the page with mt-auto
+ * 
+ * @returns {JSX.Element} Rendered component
+ */
 export function Footer() {
   return (
     <footer className="mt-auto border-t border-background-tertiary py-3 sm:py-4 dark:border-dark-background-tertiary">

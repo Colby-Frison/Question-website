@@ -3,16 +3,42 @@
 import { useState } from 'react';
 import { validateClass, joinClass } from '@/lib/classCode';
 
+/**
+ * Interface for JoinClass component props
+ * @interface JoinClassProps
+ * @property {function} onJoin - Callback function to execute when a student successfully joins a class
+ * @property {string} studentId - Unique identifier for the student
+ */
 interface JoinClassProps {
   onJoin: () => void;
   studentId: string;
 }
 
+/**
+ * Component for students to join a class
+ * 
+ * This component:
+ * - Provides a form for entering a class name
+ * - Validates the class name against the database
+ * - Handles the join process
+ * - Shows appropriate error messages
+ * - Executes a callback when join is successful
+ * 
+ * @param {JoinClassProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 export default function JoinClass({ onJoin, studentId }: JoinClassProps) {
   const [className, setClassName] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
+  /**
+   * Handles the class joining process
+   * - Validates the class name input
+   * - Checks if the class exists
+   * - Adds the student to the class
+   * - Shows appropriate error messages or triggers success callback
+   */
   const handleJoinClass = async () => {
     if (!className.trim()) {
       setError('Please enter a class name');

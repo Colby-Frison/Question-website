@@ -1,5 +1,19 @@
 'use client';
 
+/**
+ * Student Dashboard Page
+ * 
+ * This component serves as the main dashboard for students, allowing them to:
+ * - Join a class using a class code
+ * - Ask questions to the professor
+ * - View questions from other students
+ * - Answer active questions from the professor
+ * - Track and manage their points
+ * 
+ * The page handles real-time updates through Firebase listeners and
+ * manages the student's class session and points.
+ */
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
@@ -21,10 +35,13 @@ import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
+// Define tab types for the dashboard
 type TabType = 'questions' | 'points';
 
 export default function StudentPage() {
   const router = useRouter();
+  
+  // State for class and session management
   const [className, setClassName] = useState('');
   const [joined, setJoined] = useState(false);
   const [myQuestions, setMyQuestions] = useState<Question[]>([]);
@@ -33,6 +50,8 @@ export default function StudentPage() {
   const [studentId, setStudentId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
+  
+  // Points management state
   const [points, setPoints] = useState<number>(() => {
     // Initialize from localStorage if available
     if (typeof window !== 'undefined') {
@@ -45,7 +64,7 @@ export default function StudentPage() {
   const [isSavingPoints, setIsSavingPoints] = useState(false);
   const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Active question state
+  // Active question and answer state
   const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
   const [answerText, setAnswerText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,6 +75,10 @@ export default function StudentPage() {
   const lastQuestionCheckRef = useRef<number>(0);
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
 
+  /**
+   * Effect to save points to localStorage and database when they change
+   * Uses a debounce pattern to avoid excessive database writes
+   */
   useEffect(() => {
     // Save points to localStorage whenever they change
     if (typeof window !== 'undefined') {
@@ -111,7 +134,10 @@ export default function StudentPage() {
     };
   }, [points, studentId]);
 
-  // Replace the event listener with Firestore listener for points
+  /**
+   * Set up real-time listener for student points from Firestore
+   * Updates the points state when changes occur in the database
+   */
   useEffect(() => {
     if (!studentId) return () => {};
     
@@ -127,7 +153,10 @@ export default function StudentPage() {
     };
   }, [studentId]);
 
-  // Fix the dependency array to prevent excessive re-renders
+  /**
+   * Initial setup effect - runs once when component mounts
+   * Checks if user is a student and gets their ID
+   */
   useEffect(() => {
     // Check if user is a student
     if (!isStudent()) {
@@ -141,7 +170,10 @@ export default function StudentPage() {
     // This effect should only run once on mount and when router changes
   }, [router]);
 
-  // Set up automatic maintenance
+  /**
+   * Set up automatic database maintenance
+   * This runs periodically to clean up orphaned data and inactive sessions
+   */
   useEffect(() => {
     if (maintenanceSetup) return;
     
@@ -154,10 +186,13 @@ export default function StudentPage() {
     };
   }, [maintenanceSetup]);
 
-  // Separate effect for joined class to prevent excessive re-renders
+  /**
+   * Effect to check if student has joined a class and set up listeners
+   * for questions, class questions, and active questions
+   */
   useEffect(() => {
     if (!studentId) return;
-    
+
     const checkJoinedClass = async () => {
       try {
         // Check if student has already joined a class
@@ -208,11 +243,14 @@ export default function StudentPage() {
         setIsLoading(false);
       }
     };
-    
+
     checkJoinedClass();
   }, [studentId]);
 
-  // Add a separate effect to handle active question changes
+  /**
+   * Effect to handle active question changes
+   * This is separated from the main listener to avoid excessive re-renders
+   */
   useEffect(() => {
     if (!activeQuestion || !studentId || !className) return;
     
@@ -221,6 +259,10 @@ export default function StudentPage() {
     
   }, [activeQuestion, studentId, className]);
 
+  /**
+   * Handle successful class join
+   * Sets up listeners for questions and active questions
+   */
   const handleJoinSuccess = async () => {
     try {
       // Refresh joined class
@@ -259,7 +301,7 @@ export default function StudentPage() {
           .catch(error => {
             console.error("Error during automatic maintenance on student join:", error);
             // Don't show error to student, just log it
-          });
+        });
       }
     } catch (error) {
       console.error('Error after joining class:', error);
@@ -267,19 +309,27 @@ export default function StudentPage() {
     }
   };
 
+  /**
+   * Handle user logout
+   * Clears user type and redirects to home page
+   */
   const handleLogout = () => {
     clearUserType();
     router.push('/');
   };
 
+  /**
+   * Handle leaving a class
+   * Clears class state and removes the student from the class
+   */
   const handleLeaveClass = async () => {
     try {
       const success = await leaveClass(studentId);
       
       if (success) {
         setClassName('');
-        setJoined(false);
-        setMyQuestions([]);
+      setJoined(false);
+      setMyQuestions([]);
         setClassQuestions([]);
         setActiveQuestion(null);
       }
@@ -289,14 +339,27 @@ export default function StudentPage() {
     }
   };
 
+  /**
+   * Handle adding a point to the student's total
+   */
   const handleAddPoint = () => {
     setPoints(prevPoints => prevPoints + 1);
   };
 
+  /**
+   * Handle subtracting a point from the student's total
+   * Ensures points don't go below zero
+   */
   const handleSubtractPoint = () => {
     setPoints(prevPoints => Math.max(0, prevPoints - 1));
   };
 
+  /**
+   * Handle changes to the points input field
+   * Ensures only valid numbers are entered
+   * 
+   * @param e - Input change event
+   */
   const handlePointsInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     const numValue = parseInt(value, 10);
@@ -305,6 +368,10 @@ export default function StudentPage() {
     }
   };
 
+  /**
+   * Handle setting points via a prompt
+   * Shows a dialog to enter a specific number of points
+   */
   const handleSetPoints = () => {
     const newPoints = window.prompt("Enter points:");
     if (newPoints !== null) {
@@ -315,6 +382,12 @@ export default function StudentPage() {
     }
   };
   
+  /**
+   * Handle submitting an answer to the active question
+   * Adds the answer to the database and starts a cooldown timer
+   * 
+   * @param e - Form submit event
+   */
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -359,34 +432,38 @@ export default function StudentPage() {
     }
   };
 
+  /**
+   * Render the Questions tab content
+   * Shows join class form, question form, and lists of questions
+   */
   const renderQuestionsTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
       {/* Left container - Personal content */}
       <div className="lg:col-span-3">
         {!joined ? (
           <div className="mb-8">
-            <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
+          <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
           </div>
         ) : (
           <div className="mb-8 rounded-lg bg-white p-6 shadow-all-around dark:bg-dark-background-secondary">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
+                <div>
+                  <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
                 <p className="mt-1 text-text-secondary dark:text-dark-text-secondary">
                   {className}
                 </p>
-              </div>
-              <button
-                onClick={handleLeaveClass}
+                </div>
+                <button
+                  onClick={handleLeaveClass}
                 className="mt-4 rounded-md bg-error-light/20 px-4 py-2 text-sm font-medium text-error-dark transition-colors hover:bg-error-light/30 sm:mt-0 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
-              >
-                Leave Class
-              </button>
+                >
+                  Leave Class
+                </button>
+              </div>
             </div>
-          </div>
         )}
-        
-        <div className="mb-8">
+
+            <div className="mb-8">
           {!joined ? (
             <div className="rounded-lg bg-background-secondary p-6 dark:bg-dark-background-tertiary relative">
               <div className="absolute inset-0 flex items-center justify-center bg-background/50 dark:bg-dark-background/50 rounded-lg z-10">
@@ -399,19 +476,19 @@ export default function StudentPage() {
           ) : (
             <QuestionForm userIdentifier={studentId} classCode={className} />
           )}
-        </div>
-        
+            </div>
+
         <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-          <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
+              <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
           {!joined ? (
             <div className="py-8 text-center text-text-secondary dark:text-dark-text-secondary">
               Please join a class to see your questions
             </div>
           ) : (
-            <QuestionList 
-              questions={myQuestions} 
-              emptyMessage="You haven't asked any questions yet."
-              isLoading={isLoading}
+              <QuestionList 
+                questions={myQuestions} 
+                emptyMessage="You haven't asked any questions yet."
+                isLoading={isLoading}
               isStudent={true}
               studentId={studentId}
             />
@@ -440,6 +517,10 @@ export default function StudentPage() {
     </div>
   );
 
+  /**
+   * Render the Points tab content
+   * Shows active question answer form and points counter
+   */
   const renderPointsTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       {/* Answer Questions Section */}
@@ -554,6 +635,7 @@ export default function StudentPage() {
     </div>
   );
 
+  // Main component render
   return (
     <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
       <Navbar userType="student" onLogout={handleLogout} />
@@ -588,6 +670,7 @@ export default function StudentPage() {
             </div>
           </div>
           
+          {/* Loading indicator */}
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
@@ -595,6 +678,7 @@ export default function StudentPage() {
             </div>
           ) : null}
           
+          {/* Error display */}
           {error && (
             <div className="mb-8 rounded-lg bg-error-light/20 p-6 shadow-all-around dark:bg-error-light/10">
               <h2 className="mb-2 text-lg font-semibold text-error-dark dark:text-error-light">Error</h2>
@@ -602,6 +686,7 @@ export default function StudentPage() {
             </div>
           )}
           
+          {/* Render the active tab content */}
           {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
         </div>
       </main>

@@ -1,3 +1,15 @@
+/**
+ * Class Code Management Module
+ * 
+ * This module handles functionality related to class codes, which are used to:
+ * - Allow professors to create and manage classes
+ * - Enable students to join specific classes
+ * - Track which students have joined which classes
+ * 
+ * The module provides functions for generating, validating, and managing class codes,
+ * as well as tracking class enrollment.
+ */
+
 import { db } from './firebase';
 import { 
   collection, 
@@ -8,7 +20,8 @@ import {
   deleteDoc, 
   doc, 
   getDoc, 
-  setDoc 
+  setDoc,
+  updateDoc
 } from 'firebase/firestore';
 
 // Collection reference - keeping the same collection names for backward compatibility
@@ -27,36 +40,66 @@ export const formatClassName = (name: string): string => {
   return name.trim();
 };
 
-// Create a new class in Firestore
-export const createClass = async (className: string, professorId: string): Promise<boolean> => {
-  if (!className || !professorId) {
-    console.error("Missing parameters for createClass");
-    return false;
+/**
+ * Generate a unique class code
+ * 
+ * Creates a random 6-character alphanumeric code to use as a class identifier.
+ * This code is what students will use to join a professor's class.
+ * 
+ * @returns A randomly generated 6-character class code
+ */
+export const generateClassCode = (): string => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  
+  for (let i = 0; i < 6; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    result += characters.charAt(randomIndex);
+  }
+  
+  return result;
+};
+
+/**
+ * Create a new class code for a professor
+ * 
+ * Generates and stores a new class code associated with a specific professor.
+ * If the professor already has a class code, it returns the existing one.
+ * 
+ * @param professorId - The ID of the professor creating the class
+ * @returns A promise that resolves to the class code (either new or existing)
+ */
+export const createClassCode = async (professorId: string): Promise<string> => {
+  if (!professorId) {
+    console.error("No professor ID provided to createClassCode");
+    throw new Error("Professor ID is required");
   }
 
   try {
-    console.log(`Creating class "${className}" for professor ${professorId}`);
+    // Check if the professor already has a class code
+    const existingCode = await getClassForProfessor(professorId);
     
-    // Check if class name already exists
-    const existingClass = await getClassByName(className);
-    if (existingClass) {
-      console.warn(`Class name "${className}" already exists`);
-      return false;
+    if (existingCode) {
+      console.log(`Professor ${professorId} already has class code: ${existingCode}`);
+      return existingCode;
     }
     
-    // Add the class to Firestore
-    const docRef = await addDoc(collection(db, CLASS_CODES_COLLECTION), {
-      code: className, // Using 'code' field for backward compatibility
-      className: className,
+    // Generate a new class code
+    const newCode = generateClassCode();
+    console.log(`Generated new class code for professor ${professorId}: ${newCode}`);
+    
+    // Store the class code in Firestore
+    await addDoc(collection(db, CLASS_CODES_COLLECTION), {
       professorId,
+      code: newCode,
       createdAt: Date.now()
     });
     
-    console.log(`Class created with ID: ${docRef.id}`);
-    return true;
+    console.log(`Class code ${newCode} stored in database`);
+    return newCode;
   } catch (error) {
-    console.error('Error creating class:', error);
-    return false;
+    console.error("Error creating class code:", error);
+    throw error;
   }
 };
 
@@ -122,32 +165,42 @@ export const getClassCodeDoc = async (code: string) => {
   }
 };
 
-// Get a class for a professor
+/**
+ * Get the class code for a specific professor
+ * 
+ * Retrieves the class code associated with a professor, if one exists.
+ * 
+ * @param professorId - The ID of the professor to get the class code for
+ * @returns A promise that resolves to the class code or null if none exists
+ */
 export const getClassForProfessor = async (professorId: string): Promise<string | null> => {
   if (!professorId) {
-    console.error("No professor ID provided to getClassForProfessor");
+    console.warn("No professor ID provided to getClassForProfessor");
     return null;
   }
 
   try {
-    console.log(`Looking up class for professor: ${professorId}`);
+    console.log(`Looking up class code for professor: ${professorId}`);
     const q = query(
       collection(db, CLASS_CODES_COLLECTION),
       where('professorId', '==', professorId)
     );
     
     const querySnapshot = await getDocs(q);
+    
     if (querySnapshot.empty) {
-      console.log(`No class found for professor: ${professorId}`);
+      console.log(`No class code found for professor ${professorId}`);
       return null;
     }
     
-    // Return className if available, otherwise fall back to code
-    const className = querySnapshot.docs[0].data().className || querySnapshot.docs[0].data().code;
-    console.log(`Found class for professor: "${className}"`);
-    return className;
+    // Just return the first one if multiple exist
+    const doc = querySnapshot.docs[0];
+    const code = doc.data().code;
+    console.log(`Found class code for professor ${professorId}: ${code}`);
+    
+    return code;
   } catch (error) {
-    console.error('Error getting class for professor:', error);
+    console.error("Error getting class for professor:", error);
     return null;
   }
 };
@@ -155,43 +208,82 @@ export const getClassForProfessor = async (professorId: string): Promise<string 
 // For backward compatibility
 export const getClassCodeForProfessor = getClassForProfessor;
 
-// Join a class
-export const joinClass = async (className: string, studentId: string): Promise<boolean> => {
-  if (!className || !studentId) {
+/**
+ * Join a class as a student
+ * 
+ * Records that a student has joined a specific class by its class code.
+ * This allows tracking which students are in which classes.
+ * 
+ * @param classCode - The class code of the class to join
+ * @param studentId - The ID of the student joining the class
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
+export const joinClass = async (classCode: string, studentId: string): Promise<boolean> => {
+  if (!classCode || !studentId) {
     console.error("Missing parameters for joinClass");
     return false;
   }
 
   try {
-    console.log(`Student ${studentId} attempting to join class: "${className}"`);
+    console.log(`Student ${studentId} attempting to join class with code: ${classCode}`);
     
-    // Check if the class exists
-    const classDoc = await getClassByName(className) || await getClassCodeDoc(className);
-    if (!classDoc) {
-      console.warn(`Invalid class name: "${className}"`);
+    // First, check if the class code exists
+    const classCodeQuery = query(
+      collection(db, CLASS_CODES_COLLECTION),
+      where('code', '==', classCode)
+    );
+    
+    const classCodeSnapshot = await getDocs(classCodeQuery);
+    
+    if (classCodeSnapshot.empty) {
+      console.log(`Invalid class code: ${classCode}`);
       return false;
     }
     
-    // Add to joined classes
-    const docRef = await addDoc(collection(db, JOINED_CLASSES_COLLECTION), {
-      classCode: classDoc.code || className, // For backward compatibility
-      className: className,
-      studentId,
-      joinedAt: Date.now()
-    });
+    // Check if student has already joined this class
+    const joinedQuery = query(
+      collection(db, JOINED_CLASSES_COLLECTION),
+      where('studentId', '==', studentId)
+    );
     
-    console.log(`Student joined class. Document ID: ${docRef.id}`);
+    const joinedSnapshot = await getDocs(joinedQuery);
+    
+    // If student has already joined a class, update it
+    if (!joinedSnapshot.empty) {
+      const doc = joinedSnapshot.docs[0];
+      await updateDoc(doc.ref, {
+        classCode,
+        joinedAt: Date.now()
+      });
+      console.log(`Updated class for student ${studentId} to ${classCode}`);
+    } else {
+      // Otherwise, create a new join record
+      await addDoc(collection(db, JOINED_CLASSES_COLLECTION), {
+        studentId,
+        classCode,
+        joinedAt: Date.now()
+      });
+      console.log(`Student ${studentId} joined class ${classCode}`);
+    }
+    
     return true;
   } catch (error) {
-    console.error('Error joining class:', error);
+    console.error("Error joining class:", error);
     return false;
   }
 };
 
-// Get joined class for a student
+/**
+ * Get the class that a student has joined
+ * 
+ * Retrieves the class code of the class that a student has joined, if any.
+ * 
+ * @param studentId - The ID of the student to get the joined class for
+ * @returns A promise that resolves to the class code or null if none exists
+ */
 export const getJoinedClass = async (studentId: string): Promise<string | null> => {
   if (!studentId) {
-    console.error("No student ID provided to getJoinedClass");
+    console.warn("No student ID provided to getJoinedClass");
     return null;
   }
 
@@ -203,22 +295,32 @@ export const getJoinedClass = async (studentId: string): Promise<string | null> 
     );
     
     const querySnapshot = await getDocs(q);
+    
     if (querySnapshot.empty) {
-      console.log(`No joined class found for student: ${studentId}`);
+      console.log(`No joined class found for student ${studentId}`);
       return null;
     }
     
-    // Return className if available, otherwise fall back to classCode
-    const className = querySnapshot.docs[0].data().className || querySnapshot.docs[0].data().classCode;
-    console.log(`Found joined class for student: "${className}"`);
-    return className;
+    // Just return the first one if multiple exist
+    const doc = querySnapshot.docs[0];
+    const classCode = doc.data().classCode;
+    console.log(`Found joined class for student ${studentId}: ${classCode}`);
+    
+    return classCode;
   } catch (error) {
-    console.error('Error getting joined class:', error);
+    console.error("Error getting joined class:", error);
     return null;
   }
 };
 
-// Leave a class
+/**
+ * Leave a class as a student
+ * 
+ * Removes the record of a student having joined a class.
+ * 
+ * @param studentId - The ID of the student leaving the class
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
 export const leaveClass = async (studentId: string): Promise<boolean> => {
   if (!studentId) {
     console.error("No student ID provided to leaveClass");
@@ -226,30 +328,30 @@ export const leaveClass = async (studentId: string): Promise<boolean> => {
   }
 
   try {
-    console.log(`Student ${studentId} leaving class`);
+    console.log(`Student ${studentId} attempting to leave class`);
     const q = query(
       collection(db, JOINED_CLASSES_COLLECTION),
       where('studentId', '==', studentId)
     );
     
     const querySnapshot = await getDocs(q);
+    
     if (querySnapshot.empty) {
-      console.warn(`No joined class found for student: ${studentId}`);
+      console.log(`No joined class found for student ${studentId}`);
       return false;
     }
     
-    console.log(`Found ${querySnapshot.docs.length} joined class records to delete`);
-    
-    // Delete all joined classes for this student
+    // Delete all joined class records for this student
     const deletePromises = querySnapshot.docs.map(doc => 
       deleteDoc(doc.ref)
     );
     
     await Promise.all(deletePromises);
-    console.log("Student successfully left class");
+    console.log(`Student ${studentId} left class`);
+    
     return true;
   } catch (error) {
-    console.error('Error leaving class:', error);
+    console.error("Error leaving class:", error);
     return false;
   }
 };
@@ -275,4 +377,47 @@ export const validateClass = async (className: string): Promise<boolean> => {
 
 // For backward compatibility
 export const validateClassCode = validateClass;
-export const generateClassCode = (name: string): string => name; 
+
+/**
+ * Create a new class with a given name for a professor
+ * 
+ * This function:
+ * - Validates and formats the class name
+ * - Checks if a class with this name already exists
+ * - Creates a new class entry in the database
+ * 
+ * @param className - The name of the class to create
+ * @param professorId - The ID of the professor creating the class
+ * @returns A promise that resolves to a boolean indicating success/failure
+ */
+export const createClass = async (className: string, professorId: string): Promise<boolean> => {
+  if (!className || !professorId) {
+    console.error("Missing parameters for createClass");
+    return false;
+  }
+
+  try {
+    // Check if class name already exists
+    const existingClass = await getClassByName(className);
+    if (existingClass) {
+      console.log(`Class with name "${className}" already exists`);
+      return false;
+    }
+    
+    console.log(`Creating new class "${className}" for professor ${professorId}`);
+    
+    // Create the class entry in Firestore
+    await addDoc(collection(db, CLASS_CODES_COLLECTION), {
+      professorId,
+      className,
+      code: generateClassCode(),
+      createdAt: Date.now()
+    });
+    
+    console.log(`Class "${className}" created successfully`);
+    return true;
+  } catch (error) {
+    console.error("Error creating class:", error);
+    return false;
+  }
+}; 

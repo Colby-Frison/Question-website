@@ -3,11 +3,26 @@
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
+/**
+ * Floating theme toggle button component
+ * 
+ * This component:
+ * - Displays a fixed position button in the bottom-right corner of the screen
+ * - Toggles between light and dark themes
+ * - Uses appropriate icons based on current theme
+ * - Handles hydration mismatches by only rendering after mount
+ * - Provides visual feedback with hover effects and transitions
+ * 
+ * @returns {JSX.Element|null} Rendered component or null before client-side hydration
+ */
 export function FloatingThemeToggle() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration mismatch by only rendering after mount
+  /**
+   * Effect to handle client-side hydration
+   * Sets mounted state to true after component mounts to avoid hydration mismatch
+   */
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -15,6 +30,7 @@ export function FloatingThemeToggle() {
   // Use the resolved theme to determine the current theme
   const currentTheme = mounted ? resolvedTheme : null;
 
+  // Return null during server-side rendering to avoid hydration mismatches
   if (!mounted) {
     return null;
   }

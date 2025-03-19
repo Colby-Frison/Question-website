@@ -3,14 +3,35 @@
 import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
 
+/**
+ * Interface for Navbar component props
+ * @interface NavbarProps
+ * @property {'student' | 'professor'} userType - The type of user currently logged in
+ * @property {function} onLogout - Callback function to handle user logout/role change
+ */
 interface NavbarProps {
   userType: 'student' | 'professor';
   onLogout: () => void;
 }
 
+/**
+ * Navigation bar component for the application
+ * 
+ * This component:
+ * - Displays the application logo/name as a link to home
+ * - Provides a button to change user role (logout)
+ * - Is responsive with different layouts for mobile and desktop
+ * - Includes a collapsible menu for mobile view
+ * 
+ * @param {NavbarProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  /**
+   * Toggles the mobile menu open/closed state
+   */
   const toggleMenu = useCallback(() => {
     setIsMenuOpen(prev => !prev);
   }, []);

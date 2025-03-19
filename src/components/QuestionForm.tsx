@@ -3,11 +3,30 @@
 import { useState } from 'react';
 import { addQuestion } from '@/lib/questions';
 
+/**
+ * Interface for QuestionForm component props
+ * @interface QuestionFormProps
+ * @property {string} [userIdentifier] - Identifier for the user submitting the question, defaults to 'student'
+ * @property {string} classCode - The class code to associate the question with
+ */
 interface QuestionFormProps {
   userIdentifier?: string;
   classCode: string;
 }
 
+/**
+ * Form component for submitting questions
+ * 
+ * This component:
+ * - Provides a textarea for entering questions
+ * - Validates input length and prevents empty submissions
+ * - Shows character count and validation errors
+ * - Displays success message after submission
+ * - Handles the API call to submit questions
+ * 
+ * @param {QuestionFormProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 export default function QuestionForm({ 
   userIdentifier = 'student',
   classCode 
@@ -19,6 +38,15 @@ export default function QuestionForm({
   const [charCount, setCharCount] = useState(0);
   const MAX_CHARS = 1000;
 
+  /**
+   * Handles form submission
+   * - Validates the question input
+   * - Makes API call to add the question
+   * - Shows success message and resets form on success
+   * - Displays errors if submission fails
+   * 
+   * @param {React.FormEvent} e - Form event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -56,6 +84,13 @@ export default function QuestionForm({
     }
   };
 
+  /**
+   * Handles changes to the question input
+   * - Updates question state and character count
+   * - Clears error messages when user types
+   * 
+   * @param {React.ChangeEvent<HTMLTextAreaElement>} e - Input change event
+   */
   const handleQuestionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     setQuestion(text);

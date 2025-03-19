@@ -4,6 +4,14 @@ import { useState } from 'react';
 import { validateClassName, formatClassName, createClass } from '@/lib/classCode';
 import { archiveClassSession, closeClassSession } from '@/lib/classSession';
 
+/**
+ * Interface for the ClassNameDisplay component props
+ * @interface ClassNameDisplayProps
+ * @property {string} className - The current class name being displayed
+ * @property {string} professorId - The unique identifier for the professor
+ * @property {string} sessionId - The unique identifier for the class session
+ * @property {function} [onClassNameChange] - Optional callback function when the class name changes
+ */
 interface ClassNameDisplayProps {
   className: string;
   professorId: string;
@@ -11,6 +19,18 @@ interface ClassNameDisplayProps {
   onClassNameChange?: (newClassName: string) => void;
 }
 
+/**
+ * Component for displaying and managing class names for professors
+ * 
+ * This component allows professors to:
+ * - Create a new class with a validated name
+ * - View their current class name
+ * - Copy the class name to clipboard to share with students
+ * - Archive or close a class session
+ * 
+ * @param {ClassNameDisplayProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 export default function ClassNameDisplay({ 
   className, 
   professorId,
@@ -24,6 +44,13 @@ export default function ClassNameDisplay({
   const [isClosing, setIsClosing] = useState(false);
   const [error, setError] = useState('');
 
+  /**
+   * Handles the creation of a new class
+   * - Validates and formats the class name
+   * - Creates the class in the database
+   * - Updates the UI with the new class name
+   * @async
+   */
   const handleCreateClass = async () => {
     // Clear previous errors
     setError('');
@@ -56,6 +83,12 @@ export default function ClassNameDisplay({
     }
   };
 
+  /**
+   * Handles archiving a class session
+   * - Changes the session status to archived in the database
+   * - UI updates are handled by the parent component
+   * @async
+   */
   const handleArchiveClass = async () => {
     setIsArchiving(true);
     try {
@@ -68,6 +101,12 @@ export default function ClassNameDisplay({
     }
   };
 
+  /**
+   * Handles closing a class session
+   * - Changes the session status to closed in the database
+   * - UI updates are handled by the parent component
+   * @async
+   */
   const handleCloseClass = async () => {
     setIsClosing(true);
     try {
@@ -80,6 +119,10 @@ export default function ClassNameDisplay({
     }
   };
 
+  /**
+   * Handles copying the class name to clipboard
+   * - Shows a temporary confirmation UI
+   */
   const handleCopyClassName = () => {
     if (className) {
       navigator.clipboard.writeText(className);

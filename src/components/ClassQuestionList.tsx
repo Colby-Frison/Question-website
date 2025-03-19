@@ -3,15 +3,37 @@
 import React, { useMemo } from 'react';
 import { Question } from '@/types';
 
+/**
+ * Interface for ClassQuestionList component props
+ * @interface ClassQuestionListProps
+ * @property {Question[]} questions - Array of question objects to display in a class view
+ * @property {boolean} [isLoading] - Whether questions are currently loading
+ */
 interface ClassQuestionListProps {
   questions: Question[];
   isLoading?: boolean;
 }
 
+/**
+ * Component for displaying a read-only list of questions in a class view
+ * 
+ * This component:
+ * - Shows questions with their answered/unanswered status indicators
+ * - Displays timestamps for each question
+ * - Handles loading and empty states
+ * - Is optimized with memoization for better performance
+ * 
+ * @param {ClassQuestionListProps} props - Component props
+ * @returns {JSX.Element} Rendered component
+ */
 const ClassQuestionList: React.FC<ClassQuestionListProps> = React.memo(({
   questions,
   isLoading = false
 }) => {
+  /**
+   * Renders the loading state when questions are being fetched
+   * @returns {JSX.Element|null} Loading UI or null
+   */
   const renderLoading = useMemo(() => {
     if (isLoading) {
       return (
@@ -24,6 +46,10 @@ const ClassQuestionList: React.FC<ClassQuestionListProps> = React.memo(({
     return null;
   }, [isLoading]);
 
+  /**
+   * Renders an empty state when no questions are available
+   * @returns {JSX.Element|null} Empty state UI or null
+   */
   const renderEmptyState = useMemo(() => {
     if (questions.length === 0) {
       return (
@@ -35,6 +61,10 @@ const ClassQuestionList: React.FC<ClassQuestionListProps> = React.memo(({
     return null;
   }, [questions.length]);
 
+  /**
+   * Renders the list of question items with status indicators
+   * @returns {JSX.Element[]} Array of question item elements
+   */
   const questionItems = useMemo(() => {
     return questions.map((question) => (
       <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
