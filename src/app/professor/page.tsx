@@ -39,6 +39,7 @@ import {
 } from '@/lib/classSession';
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
+import JoinClass from '@/components/JoinClass';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
@@ -68,6 +69,10 @@ export default function ProfessorPage() {
   const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string, questionText?: string, activeQuestionId?: string}[]>([]);
   const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
+
+  // New state for student join handling
+  const [joined, setJoined] = useState(false);
+  const [studentId, setStudentId] = useState('');
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -570,111 +575,127 @@ export default function ProfessorPage() {
     <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
       <Navbar userType="professor" onLogout={handleLogout} />
       
-      <div className="p-4">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold mb-2">Professor Dashboard</h1>
-            {className && (
-              <h2 className="text-lg">Class: {className}</h2>
-            )}
-          </div>
-          
-          <div className="mt-4 md:mt-0">
-            {!sessionActive && !sessionId ? (
-              <div className="flex flex-col space-y-4">
-                <ClassNameDisplay 
-                  className={className} 
-                  onClassNameChange={handleClassNameChange}
-                />
-                <button
-                  onClick={handleStartSession}
-                  disabled={!className}
-                  className={`px-4 py-2 rounded ${
-                    className 
-                      ? 'bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700' 
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                  }`}
-                >
-                  Start Class Session
-                </button>
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row items-start gap-6 mb-6">
+          <div className="w-full lg:w-2/3">
+            <h1 className="text-2xl font-bold mb-4">Professor Dashboard</h1>
+            
+            {/* Main Content Area */}
+            {!sessionActive ? (
+              <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
+                <h2 className="text-xl font-bold mb-4">Welcome to Your Dashboard</h2>
+                <p className="mb-4">
+                  {className 
+                    ? "Click 'Start Class Session' to begin a new class with a randomly generated class code for students to join."
+                    : "First, set your class name. Then, you can start a class session."}
+                </p>
+                <p className="mb-2">Important notes:</p>
+                <ul className="list-disc ml-6 mb-4">
+                  <li>Each class session creates a unique code for students to join</li>
+                  <li>The session will automatically end after 3 hours of inactivity</li>
+                  <li>You can manually end the session at any time using the "End Class Session" button</li>
+                  <li>Once a session ends, students will need a new code to join the next session</li>
+                </ul>
+                
+                {className && (
+                  <button
+                    onClick={handleStartSession}
+                    disabled={!className}
+                    className="mt-4 px-6 py-2 rounded bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
+                  >
+                    Start Class Session
+                  </button>
+                )}
               </div>
             ) : (
-              <div className="flex flex-col space-y-4">
-                <div className="bg-white p-4 rounded-lg shadow dark:bg-gray-800">
-                  <h3 className="text-lg font-semibold mb-2">Active Session</h3>
-                  <p className="mb-2">
-                    <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded">{sessionCode}</span>
-                  </p>
-                  {sessionStartTime && (
-                    <p className="mb-2">
-                      <span className="font-medium">Duration:</span> {formatSessionDuration()}
-                    </p>
-                  )}
-                  <p className="mb-4">
-                    <span className="font-medium">Auto-end in:</span> {getSessionTimeRemaining()} minutes
-                  </p>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold">Active Session: {className}</h2>
                   <button
                     onClick={handleEndSession}
                     className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
                   >
-                    End Class Session
+                    End Session
                   </button>
+                </div>
+                
+                <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                    <div>
+                      <p className="mb-2">
+                        <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
+                      </p>
+                      {sessionStartTime && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Duration: {formatSessionDuration()} | Auto-end in: {getSessionTimeRemaining()} minutes
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-3 sm:mt-0">
+                      <p className="text-sm">Students join with this code</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="border-b dark:border-gray-700 mb-6">
+                  <div className="flex">
+                    <button
+                      className={`px-4 py-2 ${
+                        activeTab === 'questions' 
+                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      onClick={() => handleTabChange('questions')}
+                    >
+                      Student Questions
+                    </button>
+                    <button
+                      className={`px-4 py-2 ${
+                        activeTab === 'points' 
+                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      onClick={() => handleTabChange('points')}
+                    >
+                      Award Points
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
                 </div>
               </div>
             )}
           </div>
+          
+          {/* Sidebar - Class Management */}
+          <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
+            <div className="bg-white rounded-lg shadow-md p-6 dark:bg-gray-800">
+              <h2 className="text-xl font-bold mb-4">Class Management</h2>
+              
+              <ClassNameDisplay 
+                className={className} 
+                onClassNameChange={handleClassNameChange}
+              />
+              
+              {sessionActive && (
+                <div className="mt-6 pt-6 border-t dark:border-gray-700">
+                  <h3 className="text-lg font-semibold mb-2">Current Session Info</h3>
+                  <p className="mb-1">
+                    <span className="font-medium">Class:</span> {className}
+                  </p>
+                  <p className="mb-1">
+                    <span className="font-medium">Status:</span> {sessionActive ? "Active" : "Inactive"}
+                  </p>
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-2">
+                    You cannot change the class name during an active session
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-
-        {sessionActive && (
-          <div className="mb-6">
-            <div className="border-b dark:border-gray-700">
-              <div className="flex">
-                <button
-                  className={`px-4 py-2 ${
-                    activeTab === 'questions' 
-                      ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                      : 'text-gray-600 dark:text-gray-400'
-                  }`}
-                  onClick={() => handleTabChange('questions')}
-                >
-                  Student Questions
-                </button>
-                <button
-                  className={`px-4 py-2 ${
-                    activeTab === 'points' 
-                      ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                      : 'text-gray-600 dark:text-gray-400'
-                  }`}
-                  onClick={() => handleTabChange('points')}
-                >
-                  Award Points
-                </button>
-              </div>
-            </div>
-            
-            <div className="mt-4">
-              {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-            </div>
-          </div>
-        )}
-        
-        {!sessionActive && (
-          <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
-            <h2 className="text-xl font-bold mb-4">Welcome to Your Dashboard</h2>
-            <p className="mb-4">
-              {className 
-                ? "Click 'Start Class Session' to begin a new class with a randomly generated class code for students to join."
-                : "First, set your class name. Then, you can start a class session."}
-            </p>
-            <p className="mb-2">Important notes:</p>
-            <ul className="list-disc ml-6 mb-4">
-              <li>Each class session creates a unique code for students to join</li>
-              <li>The session will automatically end after 3 hours of inactivity</li>
-              <li>You can manually end the session at any time using the "End Class Session" button</li>
-              <li>Once a session ends, students will need a new code to join the next session</li>
-            </ul>
-          </div>
-        )}
       </div>
     </div>
   );

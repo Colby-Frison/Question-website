@@ -453,9 +453,8 @@ export default function StudentPage() {
       <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
         <h2 className="text-xl font-bold mb-4">Ask a Question</h2>
         <QuestionForm 
-          studentId={studentId} 
+          userIdentifier={studentId} 
           classCode={sessionCode}
-          className={className}
         />
       </div>
       
@@ -631,70 +630,120 @@ export default function StudentPage() {
     <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
       <Navbar userType="student" onLogout={handleLogout} />
       
-      <div className="p-4">
+      <div className="container mx-auto px-4 py-6">
         {!joined ? (
           <div className="max-w-md mx-auto">
             <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
+              <h1 className="text-2xl font-bold mb-4">Student Dashboard</h1>
               <h2 className="text-xl font-bold mb-4">Join a Class</h2>
               <p className="mb-4">
-                Enter the session code provided by your professor to join a class.
+                Enter the session code provided by your professor to join the current class session.
               </p>
               <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
             </div>
           </div>
         ) : (
-          <div>
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-              <div>
-                <h1 className="text-2xl font-bold mb-2">Student Dashboard</h1>
-                <h2 className="text-lg mb-2">
-                  Class: {className}
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Session Code: <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded">{sessionCode}</span>
-                </p>
+          <div className="flex flex-col lg:flex-row items-start gap-6">
+            {/* Main Content Area */}
+            <div className="w-full lg:w-2/3">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Student Dashboard</h1>
+                  <h2 className="text-lg mb-1">Class: {className}</h2>
+                </div>
               </div>
               
-              <div className="mt-4 md:mt-0">
-                <button
-                  onClick={handleLeaveClass}
-                  className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                >
-                  Leave Class
-                </button>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <div className="border-b dark:border-gray-700">
-                <div className="flex">
+              <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
+                  </div>
                   <button
-                    className={`px-4 py-2 ${
-                      activeTab === 'questions' 
-                        ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                        : 'text-gray-600 dark:text-gray-400'
-                    }`}
-                    onClick={() => setActiveTab('questions')}
+                    onClick={handleLeaveClass}
+                    className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
                   >
-                    Questions
-                  </button>
-                  <button
-                    className={`px-4 py-2 ${
-                      activeTab === 'points' 
-                        ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                        : 'text-gray-600 dark:text-gray-400'
-                    }`}
-                    onClick={() => setActiveTab('points')}
-                  >
-                    My Points
+                    Leave Class
                   </button>
                 </div>
               </div>
               
-              <div className="mt-4">
-                {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+              <div className="mb-6">
+                <div className="border-b dark:border-gray-700">
+                  <div className="flex">
+                    <button
+                      className={`px-4 py-2 ${
+                        activeTab === 'questions' 
+                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      onClick={() => setActiveTab('questions')}
+                    >
+                      Questions
+                    </button>
+                    <button
+                      className={`px-4 py-2 ${
+                        activeTab === 'points' 
+                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      onClick={() => setActiveTab('points')}
+                    >
+                      My Points
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+                </div>
               </div>
             </div>
+            
+            {/* Active Question Sidebar - only shown in questions tab */}
+            {activeTab === 'questions' && activeQuestion && (
+              <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
+                <div className="bg-yellow-50 shadow-md rounded-lg p-4 sticky top-4 dark:bg-yellow-900 dark:text-white">
+                  <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
+                  <div className="mb-4 p-3 bg-white rounded dark:bg-gray-800">
+                    {activeQuestion.text}
+                  </div>
+                  
+                  {answerSubmitted ? (
+                    <div className="bg-green-100 p-3 rounded dark:bg-green-800 dark:text-white">
+                      <p className="font-semibold">Your answer has been submitted!</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmitAnswer}>
+                      <div className="mb-4">
+                        <label htmlFor="answerText" className="block mb-1 font-semibold">
+                          Your Answer:
+                        </label>
+                        <textarea
+                          id="answerText"
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                          rows={3}
+                          disabled={cooldownActive}
+                          required
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className={`w-full px-4 py-2 rounded ${
+                          cooldownActive || isSubmitting
+                            ? 'bg-gray-400 cursor-not-allowed'
+                            : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
+                        }`}
+                        disabled={cooldownActive || isSubmitting}
+                      >
+                        {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
