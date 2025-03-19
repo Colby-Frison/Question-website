@@ -243,61 +243,57 @@ export const listenForUserQuestions = (
 /**
  * Add a new question from a student
  * 
- * Creates a new question in both the global questions collection and the
- * user-specific questions collection for tracking purposes.
+ * Adds a question to the database with the specified text and associated user/class information.
+ * Now works with session codes for temporary class sessions.
  * 
  * @param text - The text content of the question
- * @param userIdentifier - The ID of the user (student) asking the question
- * @param classCode - The code of the class the question is for
- * @returns A promise that resolves to the created Question object, or null if failed
+ * @param studentId - The ID of the student asking the question (defaults to 'student')
+ * @param sessionCode - The code for the session the question is being asked in
+ * @returns A Promise that resolves to the created Question object or null if creation failed
  */
 export const addQuestion = async (
   text: string, 
-  userIdentifier: string = 'student',
-  classCode: string
+  studentId: string = 'student',
+  sessionCode: string
 ): Promise<Question | null> => {
-  if (!text || !userIdentifier || !classCode) {
-    console.error("Missing parameters for addQuestion");
+  if (!text.trim() || !sessionCode) {
+    console.error("Missing question text or session code");
     return null;
   }
 
   try {
-    console.log(`Adding question for user ${userIdentifier} in class ${classCode}`);
+    console.log(`Adding question: "${text}" for session: ${sessionCode} by student: ${studentId}`);
     
-    // Create a timestamp
+    // Create timestamp for tracking
     const timestamp = Date.now();
     
-    // Add to global questions collection
-    const questionRef = await addDoc(collection(db, QUESTIONS_COLLECTION), {
-      text,
+    // Create the question object
+    const newQuestion: Omit<Question, "id"> = {
+      text: text.trim(),
       timestamp,
-      classCode,
-      userIdentifier, // Include userIdentifier for security rules
-      status: 'unanswered', // Default status
+      studentId,
+      sessionCode,  // Store the session code instead of class code
+      status: 'unanswered'
+    };
+    
+    // Add to Firestore
+    const docRef = await addDoc(collection(db, QUESTIONS_COLLECTION), newQuestion);
+    console.log(`Question added with ID: ${docRef.id}`);
+    
+    // Track in user questions for easier querying
+    await setDoc(doc(db, USER_QUESTIONS_COLLECTION, docRef.id), {
+      questionId: docRef.id,
+      studentId,
+      sessionCode,
+      timestamp
     });
-    
-    console.log(`Question added with ID: ${questionRef.id}`);
-    
-    // Add to user's questions collection (for tracking their own questions)
-    await addDoc(collection(db, USER_QUESTIONS_COLLECTION), {
-      questionId: questionRef.id, // Reference to the original question
-      text,
-      timestamp,
-      userIdentifier,
-      classCode,
-      status: 'unanswered', // Default status
-    });
-    
-    console.log("User question reference added");
     
     return {
-      id: questionRef.id,
-      text,
-      timestamp,
-      status: 'unanswered',
+      id: docRef.id,
+      ...newQuestion
     };
   } catch (error) {
-    console.error('Error adding question:', error);
+    console.error("Error adding question:", error);
     return null;
   }
 };
@@ -465,56 +461,42 @@ export const updateQuestionStatus = async (
 };
 
 /**
- * Add a new active question (for professors)
+ * Add an active question for students to answer
  * 
- * Creates a new active question that students can answer. This function
- * also handles clearing previous active questions and their answers to avoid
- * confusion with multiple questions.
+ * Creates a new active question from a professor in a specific class.
+ * Updated to work with session codes instead of class codes.
  * 
- * @param text - The text content of the active question
- * @param professorId - The ID of the professor asking the question
- * @param classCode - The code of the class the question is for
- * @returns A promise that resolves to the ID of the created active question, or null if failed
+ * @param sessionCode - The session code where the question is being asked
+ * @param text - The text of the question
+ * @returns A Promise that resolves to the ID of the added question or null if failed
  */
 export const addActiveQuestion = async (
-  text: string,
-  professorId: string,
-  classCode: string
+  sessionCode: string,
+  text: string
 ): Promise<string | null> => {
-  if (!text || !professorId || !classCode) {
-    console.error("Missing parameters for addActiveQuestion");
+  if (!text.trim() || !sessionCode) {
+    console.error("Missing required fields for active question");
     return null;
   }
 
   try {
-    console.log(`Adding active question for class ${classCode}`);
+    console.log(`Adding active question: "${text}" for session: ${sessionCode}`);
     
-    // Create a timestamp
-    const timestamp = Date.now();
+    // Clear any previous active questions and answers
+    await clearActiveQuestions(sessionCode);
+    await clearPreviousAnswers(sessionCode);
     
-    // Add the new active question first to make it appear faster
-    const questionRef = await addDoc(collection(db, ACTIVE_QUESTION_COLLECTION), {
-      text,
-      timestamp,
-      classCode,
-      professorId,
-      answers: [],
+    // Create the active question
+    const docRef = await addDoc(collection(db, ACTIVE_QUESTION_COLLECTION), {
+      text: text.trim(),
+      sessionCode,
+      timestamp: Date.now()
     });
     
-    console.log(`Active question added with ID: ${questionRef.id}`);
-    
-    // Then clear existing active questions and previous answers in parallel
-    // This way the new question appears immediately while cleanup happens in background
-    Promise.all([
-      clearActiveQuestions(classCode, questionRef.id), // Skip the one we just added
-      clearPreviousAnswers(classCode)
-    ]).catch(error => {
-      console.error('Error in background cleanup:', error);
-    });
-    
-    return questionRef.id;
+    console.log(`Active question added with ID: ${docRef.id}`);
+    return docRef.id;
   } catch (error) {
-    console.error('Error adding active question:', error);
+    console.error("Error adding active question:", error);
     return null;
   }
 };
@@ -726,46 +708,74 @@ export const listenForActiveQuestion = (
 };
 
 /**
- * Add an answer to the active question
+ * Add an answer to an active question
  * 
- * Creates a new answer from a student for an active question.
+ * Stores a student's answer to a currently active question.
+ * Updated to work with session codes and use a more structured input format.
  * 
- * @param activeQuestionId - The ID of the active question being answered
- * @param text - The text content of the answer
- * @param studentId - The ID of the student providing the answer
- * @param classCode - The code of the class the answer is for
- * @returns A promise that resolves to the ID of the created answer, or null if failed
+ * @param answerData - Object containing the answer data:
+ *   - text: The text of the answer
+ *   - activeQuestionId: The ID of the active question being answered
+ *   - studentId: The ID of the student providing the answer
+ *   - sessionCode: The session code for the class
+ *   - questionText: Optional text of the question being answered
+ * @returns A Promise that resolves to the ID of the added answer or null if failed
  */
 export const addAnswer = async (
-  activeQuestionId: string,
-  text: string,
-  studentId: string,
-  classCode: string
+  answerData: {
+    text: string,
+    activeQuestionId: string,
+    studentId: string,
+    sessionCode: string,
+    questionText?: string
+  }
 ): Promise<string | null> => {
-  if (!activeQuestionId || !text || !studentId || !classCode) {
-    console.error("Missing parameters for addAnswer");
+  const { text, activeQuestionId, studentId, sessionCode, questionText } = answerData;
+  
+  if (!text.trim() || !activeQuestionId || !studentId || !sessionCode) {
+    console.error("Missing required fields for answer");
     return null;
   }
 
   try {
-    console.log(`Adding answer for question ${activeQuestionId}`);
+    console.log(`Adding answer for question: ${activeQuestionId} by student: ${studentId}`);
     
-    // Create a timestamp
-    const timestamp = Date.now();
+    // Check if this student has already answered this question
+    const q = query(
+      collection(db, ANSWERS_COLLECTION),
+      where('activeQuestionId', '==', activeQuestionId),
+      where('studentId', '==', studentId)
+    );
     
-    // Add the answer
-    const answerRef = await addDoc(collection(db, ANSWERS_COLLECTION), {
+    const existingAnswers = await getDocs(q);
+    
+    // If student already answered, update their answer
+    if (!existingAnswers.empty) {
+      const existingAnswer = existingAnswers.docs[0];
+      await updateDoc(doc(db, ANSWERS_COLLECTION, existingAnswer.id), {
+        text: text.trim(),
+        timestamp: Date.now(),
+        updated: true
+      });
+      
+      console.log(`Updated existing answer with ID: ${existingAnswer.id}`);
+      return existingAnswer.id;
+    }
+    
+    // Create new answer
+    const docRef = await addDoc(collection(db, ANSWERS_COLLECTION), {
+      text: text.trim(),
       activeQuestionId,
-      text,
-      timestamp,
       studentId,
-      classCode,
+      sessionCode,
+      questionText,
+      timestamp: Date.now()
     });
     
-    console.log(`Answer added with ID: ${answerRef.id}`);
-    return answerRef.id;
+    console.log(`Answer added with ID: ${docRef.id}`);
+    return docRef.id;
   } catch (error) {
-    console.error('Error adding answer:', error);
+    console.error("Error adding answer:", error);
     return null;
   }
 };

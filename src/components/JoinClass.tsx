@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { validateClass, joinClass } from '@/lib/classCode';
+import { getSessionByCode } from '@/lib/classSession';
 
 /**
  * Interface for JoinClass component props
  * @interface JoinClassProps
- * @property {function} onJoin - Callback function to execute when a student successfully joins a class
+ * @property {function} onSuccess - Callback function to execute when a student successfully joins a class
  * @property {string} studentId - Unique identifier for the student
  */
 interface JoinClassProps {
-  onJoin: () => void;
+  onSuccess: (sessionCode: string) => void;
   studentId: string;
 }
 
@@ -18,8 +19,8 @@ interface JoinClassProps {
  * Component for students to join a class
  * 
  * This component:
- * - Provides a form for entering a class name
- * - Validates the class name against the database
+ * - Provides a form for entering a session code
+ * - Validates the session code against the database
  * - Handles the join process
  * - Shows appropriate error messages
  * - Executes a callback when join is successful
@@ -27,42 +28,43 @@ interface JoinClassProps {
  * @param {JoinClassProps} props - Component props
  * @returns {JSX.Element} Rendered component
  */
-export default function JoinClass({ onJoin, studentId }: JoinClassProps) {
-  const [className, setClassName] = useState('');
+export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
+  const [sessionCode, setSessionCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
   /**
    * Handles the class joining process
-   * - Validates the class name input
-   * - Checks if the class exists
+   * - Validates the session code input
+   * - Checks if the session exists
    * - Adds the student to the class
    * - Shows appropriate error messages or triggers success callback
    */
   const handleJoinClass = async () => {
-    if (!className.trim()) {
-      setError('Please enter a class name');
+    if (!sessionCode.trim()) {
+      setError('Please enter a session code');
       return;
     }
     
     setIsJoining(true);
     
     try {
-      // Validate the class name
-      const isValid = await validateClass(className);
+      // First check if it's a valid session
+      const session = await getSessionByCode(sessionCode);
       
-      if (isValid) {
-        // Join the class
-        const joined = await joinClass(className, studentId);
+      if (session) {
+        // Session exists, now join the class
+        const joined = await joinClass(sessionCode, studentId);
         
         if (joined) {
           setError('');
-          onJoin();
+          // Pass the session code to the callback
+          onSuccess(sessionCode);
         } else {
           setError('Failed to join class. Please try again.');
         }
       } else {
-        setError('Invalid class name. Please check the name and try again.');
+        setError('Invalid session code. The class may have ended or doesn\'t exist.');
       }
     } catch (error) {
       console.error('Error joining class:', error);
@@ -73,33 +75,34 @@ export default function JoinClass({ onJoin, studentId }: JoinClassProps) {
   };
 
   return (
-    <div className="rounded-lg bg-white p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
-      <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Join a Class</h2>
-      
+    <div className="rounded-lg bg-white p-6 shadow dark:bg-gray-800">
       {error && (
-        <div className="mb-4 rounded-md bg-error-light/20 p-4 text-sm text-error-dark dark:bg-error-light/10 dark:text-error-light">
+        <div className="mb-4 rounded-md bg-red-100 p-4 text-sm text-red-700 dark:bg-red-800/30 dark:text-red-400">
           {error}
         </div>
       )}
       
-      <div className="flex flex-col space-y-4 sm:flex-row sm:items-end sm:space-x-4 sm:space-y-0">
+      <div className="flex flex-col space-y-4">
         <div className="flex-1">
-          <label htmlFor="className" className="block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
-            Enter Class Name
+          <label htmlFor="sessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Enter Session Code
           </label>
           <input
             type="text"
-            id="className"
-            className="form-input"
-            placeholder="e.g. Math 101"
-            value={className}
-            onChange={(e) => setClassName(e.target.value)}
+            id="sessionCode"
+            className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+            placeholder="e.g. ABC123"
+            value={sessionCode}
+            onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
           />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            This is the code provided by your professor for the current class session.
+          </p>
         </div>
         <button
           onClick={handleJoinClass}
           disabled={isJoining}
-          className="btn-primary"
+          className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700"
         >
           {isJoining ? 'Joining...' : 'Join Class'}
         </button>

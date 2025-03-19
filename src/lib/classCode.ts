@@ -276,19 +276,20 @@ export const joinClass = async (classCode: string, studentId: string): Promise<b
 /**
  * Get the class that a student has joined
  * 
- * Retrieves the class code of the class that a student has joined, if any.
+ * Retrieves the class code a student has joined, if any.
+ * Updated to return class and session code information.
  * 
- * @param studentId - The ID of the student to get the joined class for
- * @returns A promise that resolves to the class code or null if none exists
+ * @param studentId - The ID of the student to check
+ * @returns A promise that resolves to an object with className and sessionCode, or null if not joined
  */
-export const getJoinedClass = async (studentId: string): Promise<string | null> => {
+export const getJoinedClass = async (studentId: string): Promise<{ className: string; sessionCode: string } | null> => {
   if (!studentId) {
     console.warn("No student ID provided to getJoinedClass");
     return null;
   }
 
   try {
-    console.log(`Looking up joined class for student: ${studentId}`);
+    console.log(`Checking if student ${studentId} has joined a class`);
     const q = query(
       collection(db, JOINED_CLASSES_COLLECTION),
       where('studentId', '==', studentId)
@@ -297,16 +298,27 @@ export const getJoinedClass = async (studentId: string): Promise<string | null> 
     const querySnapshot = await getDocs(q);
     
     if (querySnapshot.empty) {
-      console.log(`No joined class found for student ${studentId}`);
+      console.log(`Student ${studentId} has not joined any classes`);
       return null;
     }
     
-    // Just return the first one if multiple exist
-    const doc = querySnapshot.docs[0];
-    const classCode = doc.data().classCode;
-    console.log(`Found joined class for student ${studentId}: ${classCode}`);
+    // Get the most recent joined class
+    const sortedDocs = querySnapshot.docs.sort(
+      (a, b) => (b.data().joinedAt || 0) - (a.data().joinedAt || 0)
+    );
     
-    return classCode;
+    const joinedClass = sortedDocs[0].data();
+    
+    // Extract the class name and session code (if available)
+    const className = joinedClass.className || joinedClass.classCode;
+    const sessionCode = joinedClass.sessionCode || joinedClass.classCode;
+    
+    console.log(`Student ${studentId} has joined class: ${className} with session: ${sessionCode}`);
+    
+    return { 
+      className,
+      sessionCode
+    };
   } catch (error) {
     console.error("Error getting joined class:", error);
     return null;

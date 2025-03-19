@@ -4,7 +4,7 @@
  * Student Dashboard Page
  * 
  * This component serves as the main dashboard for students, allowing them to:
- * - Join a class using a class code
+ * - Join a class using a session code
  * - Ask questions to the professor
  * - View questions from other students
  * - Answer active questions from the professor
@@ -32,6 +32,7 @@ import {
   runDatabaseMaintenance
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
+import { getSessionByCode } from '@/lib/classSession';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
@@ -43,6 +44,7 @@ export default function StudentPage() {
   
   // State for class and session management
   const [className, setClassName] = useState('');
+  const [sessionCode, setSessionCode] = useState('');
   const [joined, setJoined] = useState(false);
   const [myQuestions, setMyQuestions] = useState<Question[]>([]);
   const [classQuestions, setClassQuestions] = useState<Question[]>([]);
@@ -198,24 +200,25 @@ export default function StudentPage() {
         // Check if student has already joined a class
         const joinedClass = await getJoinedClass(studentId);
         
-        if (joinedClass) {
-          setClassName(joinedClass);
+        if (joinedClass && joinedClass.sessionCode) {
+          setClassName(joinedClass.className);
+          setSessionCode(joinedClass.sessionCode);
           setJoined(true);
           
           // Set up listener for student's questions
-          const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass, (questions) => {
+          const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
             setMyQuestions(questions);
             setIsLoading(false);
           });
           
           // Set up listener for all class questions
-          const unsubscribeClass = listenForQuestions(joinedClass, (questions) => {
+          const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             setClassQuestions(questions);
           });
           
           // Set up listener for active question with loading state
           setIsLoadingQuestion(true);
-          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
+          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
             console.log("Active question update:", question);
             
             // If the active question changes, reset the answer state
@@ -245,67 +248,68 @@ export default function StudentPage() {
     };
 
     checkJoinedClass();
-  }, [studentId]);
-
-  /**
-   * Effect to handle active question changes
-   * This is separated from the main listener to avoid excessive re-renders
-   */
-  useEffect(() => {
-    if (!activeQuestion || !studentId || !className) return;
-    
-    // This effect handles changes to the active question
-    console.log("Active question changed:", activeQuestion.id);
-    
-  }, [activeQuestion, studentId, className]);
+  }, [studentId, activeQuestion?.id]);
 
   /**
    * Handle successful class join
-   * Sets up listeners for questions and active questions
+   * Sets up state and listeners for the joined class
+   * 
+   * @param code - The session code of the joined class
    */
-  const handleJoinSuccess = async () => {
+  const handleJoinSuccess = async (code: string) => {
     try {
-      // Refresh joined class
-      const joinedClass = await getJoinedClass(studentId);
+      setIsLoading(true);
       
-      if (joinedClass) {
-        setClassName(joinedClass);
-        setJoined(true);
-        
-        // Set up listener for student's questions
-        const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass, (questions) => {
-          setMyQuestions(questions);
-        });
-        
-        // Set up listener for all class questions
-        const unsubscribeClass = listenForQuestions(joinedClass, (questions) => {
-          setClassQuestions(questions);
-        });
-        
-        // Set up listener for active question with loading state
-        setIsLoadingQuestion(true);
-        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass, (question) => {
-          console.log("Active question update:", question);
-          setActiveQuestion(question);
+      // Verify the session code is valid
+      const session = await getSessionByCode(code);
+      
+      if (!session) {
+        setError("Invalid session code. The class may have ended or doesn't exist.");
+        setIsLoading(false);
+        return;
+      }
+      
+      // Set class and session info
+      setClassName(session.code); // Original class name
+      setSessionCode(code);       // Session code
+      setJoined(true);
+      
+      // Set up listener for student's questions
+      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
+        setMyQuestions(questions);
+      });
+      
+      // Set up listener for all class questions
+      const unsubscribeClass = listenForQuestions(code, (questions) => {
+        setClassQuestions(questions);
+      });
+      
+      // Set up listener for active question
+      setIsLoadingQuestion(true);
+      const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
+        // If the active question changes, reset the answer state
+        if (question?.id !== activeQuestion?.id) {
           setAnswerText('');
           setAnswerSubmitted(false);
-          setIsLoadingQuestion(false);
-          lastQuestionCheckRef.current = Date.now();
-        });
+        }
         
-        // Run database maintenance in the background when a student joins
-        runDatabaseMaintenance()
-          .then(result => {
-            console.log("Automatic maintenance completed on student join:", result);
-          })
-          .catch(error => {
-            console.error("Error during automatic maintenance on student join:", error);
-            // Don't show error to student, just log it
-        });
-      }
+        setActiveQuestion(question);
+        setIsLoadingQuestion(false);
+        lastQuestionCheckRef.current = Date.now();
+      });
+      
+      setIsLoading(false);
+      
+      // Return cleanup function
+      return () => {
+        unsubscribePersonal();
+        unsubscribeClass();
+        unsubscribeActiveQuestion();
+      };
     } catch (error) {
-      console.error('Error after joining class:', error);
-      setError('Failed to load questions. Please refresh the page.');
+      console.error('Error joining class:', error);
+      setError('Failed to join class. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -320,376 +324,380 @@ export default function StudentPage() {
 
   /**
    * Handle leaving a class
-   * Clears class state and removes the student from the class
+   * Removes student from the class and clears state
    */
   const handleLeaveClass = async () => {
+    if (!studentId || !sessionCode) return;
+    
     try {
-      const success = await leaveClass(studentId);
+      setIsLoading(true);
+      await leaveClass(studentId);
       
-      if (success) {
-        setClassName('');
+      // Reset state
+      setClassName('');
+      setSessionCode('');
       setJoined(false);
       setMyQuestions([]);
-        setClassQuestions([]);
-        setActiveQuestion(null);
-      }
+      setClassQuestions([]);
+      setActiveQuestion(null);
+      
+      setIsLoading(false);
     } catch (error) {
       console.error('Error leaving class:', error);
       setError('Failed to leave class. Please try again.');
+      setIsLoading(false);
     }
   };
 
   /**
-   * Handle adding a point to the student's total
+   * Handle adding a point to student's total
+   * Increments points by 1
    */
   const handleAddPoint = () => {
     setPoints(prevPoints => prevPoints + 1);
   };
 
   /**
-   * Handle subtracting a point from the student's total
-   * Ensures points don't go below zero
+   * Handle subtracting a point from student's total
+   * Decrements points by 1, but not below 0
    */
   const handleSubtractPoint = () => {
     setPoints(prevPoints => Math.max(0, prevPoints - 1));
   };
 
   /**
-   * Handle changes to the points input field
-   * Ensures only valid numbers are entered
+   * Handle input change for the points field
+   * Validates input to ensure it's a positive number
    * 
-   * @param e - Input change event
+   * @param e - The input change event
    */
   const handlePointsInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    const numValue = parseInt(value, 10);
-    if (!isNaN(numValue) && numValue >= 0) {
-      setPoints(numValue);
+    // Only allow digits
+    if (/^\d*$/.test(value)) {
+      setPointsInput(value);
     }
   };
 
   /**
-   * Handle setting points via a prompt
-   * Shows a dialog to enter a specific number of points
+   * Handle setting points to a specific value
+   * Validates input and updates points state
    */
   const handleSetPoints = () => {
-    const newPoints = window.prompt("Enter points:");
-    if (newPoints !== null) {
-      const numValue = parseInt(newPoints, 10);
-      if (!isNaN(numValue) && numValue >= 0) {
-        setPoints(numValue);
-      }
+    const newPoints = parseInt(pointsInput, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      setPoints(newPoints);
+    } else {
+      // Reset input to current points if invalid
+      setPointsInput(points.toString());
     }
   };
-  
+
   /**
-   * Handle submitting an answer to the active question
-   * Adds the answer to the database and starts a cooldown timer
+   * Handle submitting an answer to an active question
+   * Sends the answer to the database and updates UI
    * 
-   * @param e - Form submit event
+   * @param e - The form submit event
    */
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!answerText.trim() || !activeQuestion || !studentId || !className || cooldownActive) {
-      console.error("Missing required fields for submitting answer or cooldown is active");
+    if (!answerText.trim() || !activeQuestion || !studentId || !sessionCode) {
       return;
     }
     
-    setIsSubmitting(true);
-    
     try {
-      const answerId = await addAnswer(activeQuestion.id, answerText, studentId, className);
+      setIsSubmitting(true);
       
-      if (answerId) {
-        console.log("Answer submitted successfully with ID:", answerId);
-        setAnswerSubmitted(true);
-        setAnswerText('');
-        
-        // Start cooldown
-        setCooldownActive(true);
-        setCooldownTime(10);
-        
-        // Set up cooldown timer
-        const cooldownInterval = setInterval(() => {
-          setCooldownTime(prevTime => {
-            const newTime = prevTime - 1;
-            if (newTime <= 0) {
-              clearInterval(cooldownInterval);
-              setCooldownActive(false);
-              setAnswerSubmitted(false);
-              return 0;
-            }
-            return newTime;
-          });
-        }, 1000);
-      }
+      // Submit answer to the database
+      await addAnswer({
+        text: answerText.trim(),
+        activeQuestionId: activeQuestion.id,
+        studentId,
+        sessionCode,
+        questionText: activeQuestion.text
+      });
+      
+      // Update UI
+      setAnswerSubmitted(true);
+      setAnswerText('');
+      
+      // Set cooldown to prevent spam
+      setCooldownActive(true);
+      setCooldownTime(10); // 10 second cooldown
+      
+      const cooldownInterval = setInterval(() => {
+        setCooldownTime(prevTime => {
+          if (prevTime <= 1) {
+            clearInterval(cooldownInterval);
+            setCooldownActive(false);
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+      
+      setIsSubmitting(false);
     } catch (error) {
-      console.error("Error submitting answer:", error);
-      setError("Failed to submit answer. Please try again.");
-    } finally {
+      console.error('Error submitting answer:', error);
+      setError('Failed to submit answer. Please try again.');
       setIsSubmitting(false);
     }
   };
 
   /**
-   * Render the Questions tab content
-   * Shows join class form, question form, and lists of questions
+   * Render the questions tab content
    */
   const renderQuestionsTab = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-      {/* Left container - Personal content */}
-      <div className="lg:col-span-3">
+    <div className="p-4">
+      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4">Ask a Question</h2>
+        <QuestionForm 
+          studentId={studentId} 
+          classCode={sessionCode}
+          className={className}
+        />
+      </div>
+      
+      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4">My Questions</h2>
+        {myQuestions.length > 0 ? (
+          <QuestionList 
+            questions={myQuestions}
+            isProfessor={false}
+          />
+        ) : (
+          <p>You haven't asked any questions yet.</p>
+        )}
+      </div>
+      
+      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4">Class Questions</h2>
+        {classQuestions.length > 0 ? (
+          <QuestionList 
+            questions={classQuestions.filter(q => q.studentId !== studentId)}
+            isProfessor={false}
+          />
+        ) : (
+          <p>No questions from other students yet.</p>
+        )}
+      </div>
+      
+      {/* Active question from professor */}
+      {activeQuestion && (
+        <div className="bg-yellow-50 shadow-md rounded-lg p-4 mb-6 dark:bg-yellow-900 dark:text-white">
+          <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
+          <div className="mb-4 p-3 bg-white rounded dark:bg-gray-800">
+            {activeQuestion.text}
+          </div>
+          
+          {answerSubmitted ? (
+            <div className="bg-green-100 p-3 rounded dark:bg-green-800 dark:text-white">
+              <p className="font-semibold">Your answer has been submitted!</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitAnswer}>
+              <div className="mb-4">
+                <label htmlFor="answerText" className="block mb-1 font-semibold">
+                  Your Answer:
+                </label>
+                <textarea
+                  id="answerText"
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                  rows={3}
+                  disabled={cooldownActive}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className={`px-4 py-2 rounded ${
+                  cooldownActive || isSubmitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
+                }`}
+                disabled={cooldownActive || isSubmitting}
+              >
+                {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  /**
+   * Render the points tab content
+   */
+  const renderPointsTab = () => (
+    <div className="p-4">
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4">Your Points</h2>
+        
+        <div className="flex items-center justify-center mb-6">
+          <div className="text-center">
+            <div className="text-5xl font-bold mb-2">{points}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {isSavingPoints ? 'Saving...' : 'Total Points'}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex justify-center gap-4 mb-6">
+          <button
+            onClick={handleSubtractPoint}
+            className="px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-800 dark:text-red-100 dark:hover:bg-red-700"
+          >
+            -1
+          </button>
+          <button
+            onClick={handleAddPoint}
+            className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
+          >
+            +1
+          </button>
+        </div>
+        
+        <div className="flex items-center justify-center">
+          <input
+            type="text"
+            value={pointsInput}
+            onChange={handlePointsInputChange}
+            className="w-20 p-2 border rounded text-center mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+          />
+          <button
+            onClick={handleSetPoints}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+          >
+            Set Points
+          </button>
+        </div>
+      </div>
+      
+      <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4">How Points Work</h2>
+        <p className="mb-4">
+          You can earn points by answering questions from your professor.
+          The professor will award points based on the quality of your answers.
+        </p>
+        <p className="mb-4">
+          You can manually adjust your points for testing purposes, but in a real classroom
+          setting, only the professor would award points.
+        </p>
+      </div>
+    </div>
+  );
+
+  // Show error state if there's a problem
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+        <Navbar userType="student" />
+        <div className="flex-grow flex items-center justify-center p-4">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
+            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
+            <p className="mb-4">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+        <Navbar userType="student" />
+        <div className="flex-grow flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-lg">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+      <Navbar userType="student" onLogout={handleLogout} />
+      
+      <div className="p-4">
         {!joined ? (
-          <div className="mb-8">
-          <JoinClass onJoin={handleJoinSuccess} studentId={studentId} />
+          <div className="max-w-md mx-auto">
+            <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
+              <h2 className="text-xl font-bold mb-4">Join a Class</h2>
+              <p className="mb-4">
+                Enter the session code provided by your professor to join a class.
+              </p>
+              <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
+            </div>
           </div>
         ) : (
-          <div className="mb-8 rounded-lg bg-white p-6 shadow-all-around dark:bg-dark-background-secondary">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-text dark:text-dark-text">Current Class</h2>
-                <p className="mt-1 text-text-secondary dark:text-dark-text-secondary">
-                  {className}
+          <div>
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold mb-2">Student Dashboard</h1>
+                <h2 className="text-lg mb-2">
+                  Class: {className}
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Session Code: <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded">{sessionCode}</span>
                 </p>
-                </div>
+              </div>
+              
+              <div className="mt-4 md:mt-0">
                 <button
                   onClick={handleLeaveClass}
-                className="mt-4 rounded-md bg-error-light/20 px-4 py-2 text-sm font-medium text-error-dark transition-colors hover:bg-error-light/30 sm:mt-0 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
+                  className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
                 >
                   Leave Class
                 </button>
               </div>
             </div>
-        )}
-
-            <div className="mb-8">
-          {!joined ? (
-            <div className="rounded-lg bg-background-secondary p-6 dark:bg-dark-background-tertiary relative">
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 dark:bg-dark-background/50 rounded-lg z-10">
-                <p className="text-text-secondary dark:text-dark-text-secondary font-medium">Please join a class to ask questions</p>
-              </div>
-              <div className="opacity-50 pointer-events-none">
-                <QuestionForm userIdentifier={studentId} classCode="" />
-              </div>
-            </div>
-          ) : (
-            <QuestionForm userIdentifier={studentId} classCode={className} />
-          )}
-            </div>
-
-        <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-              <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Questions</h2>
-          {!joined ? (
-            <div className="py-8 text-center text-text-secondary dark:text-dark-text-secondary">
-              Please join a class to see your questions
-            </div>
-          ) : (
-              <QuestionList 
-                questions={myQuestions} 
-                emptyMessage="You haven't asked any questions yet."
-                isLoading={isLoading}
-              isStudent={true}
-              studentId={studentId}
-            />
-          )}
-        </div>
-      </div>
-      
-      {/* Right container - Class questions */}
-      <div className="lg:col-span-2">
-        <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary h-full">
-          {!joined ? (
-            <div className="h-full flex flex-col">
-              <h2 className="text-lg font-semibold mb-4 text-text dark:text-dark-text">Class Questions</h2>
-              <div className="flex-1 flex items-center justify-center text-text-secondary dark:text-dark-text-secondary">
-                Please join a class to see questions
-              </div>
-            </div>
-          ) : (
-            <ClassQuestionList
-              questions={classQuestions}
-              isLoading={isLoading}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  /**
-   * Render the Points tab content
-   * Shows active question answer form and points counter
-   */
-  const renderPointsTab = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Answer Questions Section */}
-      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary">
-        <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">Answer Questions</h2>
-        {!joined ? (
-          <div className="py-8 text-center text-text-secondary dark:text-dark-text-secondary">
-            Please join a class to answer questions and earn points
-          </div>
-        ) : isLoadingQuestion ? (
-          <div className="py-8 text-center">
-            <div className="flex flex-col items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary mb-2"></div>
-              <p className="text-text-secondary dark:text-dark-text-secondary">
-                Loading question...
-              </p>
-            </div>
-          </div>
-        ) : activeQuestion ? (
-          <div className="py-4">
-            <div className="mb-6 rounded-md bg-background-secondary p-4 dark:bg-dark-background">
-              <h3 className="mb-2 text-lg font-medium text-text dark:text-dark-text">Current Question</h3>
-              <p className="text-text dark:text-dark-text">{activeQuestion.text}</p>
-            </div>
             
-            {answerSubmitted ? (
-              <div className="rounded-md bg-success-light/20 p-4 dark:bg-success-light/10">
-                <p className="text-success-dark dark:text-success-light">
-                  Your answer has been submitted! The professor may award points for good answers.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmitAnswer}>
-                <div className="mb-4">
-                  <label htmlFor="answerText" className="mb-2 block text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
-                    Your Answer
-                  </label>
-                  <textarea
-                    id="answerText"
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.target.value)}
-                    className="w-full rounded-md border border-border bg-background px-4 py-2 text-text focus:border-primary focus:outline-none dark:border-dark-border dark:bg-dark-background-secondary dark:text-dark-text dark:focus:border-dark-primary"
-                    rows={3}
-                    placeholder="Type your answer here..."
-                    required
-                    disabled={isSubmitting || cooldownActive}
-                  />
+            <div className="mb-6">
+              <div className="border-b dark:border-gray-700">
+                <div className="flex">
+                  <button
+                    className={`px-4 py-2 ${
+                      activeTab === 'questions' 
+                        ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                    onClick={() => setActiveTab('questions')}
+                  >
+                    Questions
+                  </button>
+                  <button
+                    className={`px-4 py-2 ${
+                      activeTab === 'points' 
+                        ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                    onClick={() => setActiveTab('points')}
+                  >
+                    My Points
+                  </button>
                 </div>
-                <button
-                  type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-light dark:focus:ring-dark-primary disabled:opacity-50"
-                  disabled={isSubmitting || cooldownActive}
-                >
-                  {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait (${cooldownTime}s)` : 'Submit Answer'}
-                </button>
-                {answerSubmitted && (
-                  <span className="ml-2 text-success-dark dark:text-success-light">
-                    Answer sent!
-                  </span>
-                )}
-              </form>
-            )}
-          </div>
-        ) : (
-          <div className="py-8 text-center">
-            <p className="text-text-secondary dark:text-dark-text-secondary">
-              No active question from your professor. Please wait for a question to be asked.
-            </p>
+              </div>
+              
+              <div className="mt-4">
+                {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+              </div>
+            </div>
           </div>
         )}
       </div>
-      
-      {/* Points Counter Section */}
-      <div className="rounded-lg bg-white p-6 dark:bg-dark-background-secondary relative">
-        <h2 className="mb-4 text-xl font-semibold text-text dark:text-dark-text">My Points</h2>
-        
-        <div className="flex flex-col items-center justify-center h-[300px]">
-          <div className="text-8xl font-bold text-primary dark:text-dark-primary mb-8">
-            {points}
-          </div>
-          
-          <div className="flex items-center space-x-6">
-            <button
-              onClick={handleSubtractPoint}
-              className="rounded-md w-12 h-12 flex items-center justify-center bg-error-light/20 text-error-dark text-2xl font-bold hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20"
-            >
-              -
-            </button>
-            
-            <button
-              onClick={handleAddPoint}
-              className="rounded-md w-12 h-12 flex items-center justify-center bg-primary text-white text-2xl font-bold hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
-            >
-              +
-            </button>
-          </div>
-          
-          <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">
-            Total points earned
-            {isSavingPoints && <span className="ml-2 text-xs italic">(saving...)</span>}
-          </p>
-        </div>
-
-        {/* Set Points Button */}
-        <button
-          onClick={handleSetPoints}
-          className="absolute bottom-6 right-6 rounded-md px-4 py-2 text-sm bg-background-secondary text-text hover:bg-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:hover:bg-dark-background-tertiary"
-        >
-          Set Points
-        </button>
-      </div>
-    </div>
-  );
-
-  // Main component render
-  return (
-    <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
-      <Navbar userType="student" onLogout={handleLogout} />
-      
-      <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-            <h1 className="text-3xl font-bold text-text dark:text-dark-text mb-4 sm:mb-0">Student Dashboard</h1>
-            
-            {/* Tab Switcher */}
-            <div className="flex border-b border-background-tertiary dark:border-dark-background-tertiary">
-              <button
-                onClick={() => setActiveTab('questions')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  activeTab === 'questions'
-                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
-                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
-                }`}
-              >
-                Questions
-              </button>
-              <button
-                onClick={() => setActiveTab('points')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  activeTab === 'points'
-                    ? 'border-b-2 border-primary dark:border-dark-primary text-primary dark:text-dark-primary'
-                    : 'text-text-secondary dark:text-dark-text-secondary hover:text-text dark:hover:text-dark-text'
-                }`}
-              >
-                Points
-              </button>
-            </div>
-          </div>
-          
-          {/* Loading indicator */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
-              <span className="ml-2 text-text-secondary dark:text-dark-text-secondary">Loading...</span>
-            </div>
-          ) : null}
-          
-          {/* Error display */}
-          {error && (
-            <div className="mb-8 rounded-lg bg-error-light/20 p-6 shadow-all-around dark:bg-error-light/10">
-              <h2 className="mb-2 text-lg font-semibold text-error-dark dark:text-error-light">Error</h2>
-              <p className="text-error-dark dark:text-error-light">{error}</p>
-            </div>
-          )}
-          
-          {/* Render the active tab content */}
-          {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-        </div>
-      </main>
     </div>
   );
 } 
