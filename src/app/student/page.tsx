@@ -14,7 +14,7 @@
  * manages the student's class session and points.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import JoinClass from '@/components/JoinClass';
@@ -32,7 +32,7 @@ import {
   runDatabaseMaintenance
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
-import { getSessionByCode } from '@/lib/classSession';
+import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 
@@ -76,6 +76,8 @@ export default function StudentPage() {
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const lastQuestionCheckRef = useRef<number>(0);
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
+  const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
+  const [lastActivity, setLastActivity] = useState<number>(Date.now());
 
   /**
    * Effect to save points to localStorage and database when they change
@@ -232,10 +234,22 @@ export default function StudentPage() {
             lastQuestionCheckRef.current = Date.now();
           });
           
+          // Set up listener for session status changes
+          const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
+            console.log(`Session status update: ${status}`);
+            
+            // If session is closed or archived, automatically leave the class
+            if (status === 'closed' || status === 'archived' || status === null) {
+              setError("The class session has ended by the professor. You've been automatically removed from the class.");
+              handleLeaveClass(); // Leave the class automatically
+            }
+          });
+          
           return () => {
             unsubscribePersonal();
             unsubscribeClass();
             unsubscribeActiveQuestion();
+            unsubscribeSessionStatus();
           };
         } else {
           setIsLoading(false);
@@ -251,12 +265,95 @@ export default function StudentPage() {
   }, [studentId, activeQuestion?.id]);
 
   /**
+   * Handle leaving class - define first to avoid circular reference issues
+   */
+  const handleLeaveClass = useCallback(async () => {
+    if (!studentId || !sessionCode) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // leaveClass only takes studentId per its definition
+      await leaveClass(studentId);
+      
+      setClassName("");
+      setSessionCode("");
+      setJoined(false);
+      setMyQuestions([]);
+      setClassQuestions([]);
+      setActiveQuestion(null);
+      
+      // Cleanup session listener if it exists
+      if (sessionListener) {
+        sessionListener();
+        setSessionListener(null);
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error leaving class:", error);
+      setError("Failed to leave the class. Please try again.");
+      setIsLoading(false);
+    }
+  }, [studentId, sessionCode, setClassName, setSessionCode, setJoined, setMyQuestions, setClassQuestions, setActiveQuestion, setIsLoading, setError, sessionListener, setSessionListener]);
+
+  /**
+   * Record user activity
+   */
+  const recordActivity = useCallback(() => {
+    setLastActivity(Date.now());
+  }, []);
+
+  /**
+   * Check if session has been inactive
+   */
+  useEffect(() => {
+    // Setup activity listeners
+    window.addEventListener('click', recordActivity);
+    window.addEventListener('keypress', recordActivity);
+    window.addEventListener('scroll', recordActivity);
+    
+    // Check for inactivity every minute
+    const inactivityCheckInterval = setInterval(() => {
+      const currentTime = Date.now();
+      const inactivityThreshold = 30 * 60 * 1000; // 30 minutes
+      
+      if (currentTime - lastActivity > inactivityThreshold && sessionCode) {
+        console.log('Session inactive for 30 minutes, checking session status...');
+        
+        // Check if the session is still active
+        getSessionByCode(sessionCode)
+          .then(session => {
+            if (!session || session.status !== 'active') {
+              console.log('Session is no longer active, leaving class...');
+              handleLeaveClass();
+              // Use alert instead of toast since we don't have a toast component
+              alert('Session ended: You have been removed from the class due to inactivity.');
+            } else {
+              console.log('Session is still active');
+            }
+          })
+          .catch(error => {
+            console.error('Error checking session status:', error);
+          });
+      }
+    }, 60000); // Check every minute
+    
+    return () => {
+      window.removeEventListener('click', recordActivity);
+      window.removeEventListener('keypress', recordActivity);
+      window.removeEventListener('scroll', recordActivity);
+      clearInterval(inactivityCheckInterval);
+    };
+  }, [lastActivity, sessionCode, handleLeaveClass, recordActivity]);
+
+  /**
    * Handle successful class join
    * Sets up state and listeners for the joined class
    * 
    * @param code - The session code of the joined class
    */
-  const handleJoinSuccess = async (code: string) => {
+  const handleJoinSuccess = useCallback(async (code: string) => {
     try {
       setIsLoading(true);
       
@@ -298,6 +395,21 @@ export default function StudentPage() {
         lastQuestionCheckRef.current = Date.now();
       });
       
+      // Set up listener for session status changes
+      const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
+        console.log(`Session status changed to: ${status}`);
+        
+        // If the session is closed or archived, leave the class
+        if (!status || status === 'closed' || status === 'archived') {
+          console.log('Session ended by professor, leaving class...');
+          handleLeaveClass();
+          // Use alert instead of toast since we don't have a toast component
+          alert('Class ended: The professor has ended this class session.');
+        }
+      });
+      
+      setSessionListener(() => unsubscribeSessionStatus);
+      
       setIsLoading(false);
       
       // Return cleanup function
@@ -311,7 +423,7 @@ export default function StudentPage() {
       setError('Failed to join class. Please try again.');
       setIsLoading(false);
     }
-  };
+  }, [studentId, setClassName, setSessionCode, setJoined, setMyQuestions, setClassQuestions, setActiveQuestion, setAnswerText, setAnswerSubmitted, setIsLoadingQuestion, setError, handleLeaveClass, setSessionListener, setIsLoading]);
 
   /**
    * Handle user logout
@@ -320,33 +432,6 @@ export default function StudentPage() {
   const handleLogout = () => {
     clearUserType();
     router.push('/');
-  };
-
-  /**
-   * Handle leaving a class
-   * Removes student from the class and clears state
-   */
-  const handleLeaveClass = async () => {
-    if (!studentId || !sessionCode) return;
-    
-    try {
-      setIsLoading(true);
-      await leaveClass(studentId);
-      
-      // Reset state
-      setClassName('');
-      setSessionCode('');
-      setJoined(false);
-      setMyQuestions([]);
-      setClassQuestions([]);
-      setActiveQuestion(null);
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Error leaving class:', error);
-      setError('Failed to leave class. Please try again.');
-      setIsLoading(false);
-    }
   };
 
   /**

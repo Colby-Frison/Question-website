@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { clearUserType, isProfessor, getUserId } from '@/lib/auth';
 import { forceRunMaintenance } from '@/lib/maintenance';
+import { cleanupInactiveClassSessions } from '@/lib/classSession';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApps } from 'firebase/app';
+import { db } from '@/lib/firebase';
 
 export default function MaintenancePage() {
   const router = useRouter();
@@ -16,6 +20,9 @@ export default function MaintenancePage() {
     timestamp?: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
+  const [cleanupStats, setCleanupStats] = useState<any>(null);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   useEffect(() => {
     // Check if user is a professor
@@ -89,6 +96,56 @@ export default function MaintenancePage() {
     }
   };
 
+  /**
+   * Manually run local cleanup function for inactive sessions
+   */
+  const handleManualLocalCleanup = async () => {
+    try {
+      setIsCleaningUp(true);
+      setCleanupStatus('Running local cleanup function...');
+      
+      const result = await cleanupInactiveClassSessions(3); // 3-hour inactivity threshold
+      
+      setCleanupStatus(`Successfully cleaned up ${result} inactive sessions`);
+      setCleanupStats({ sessions: result });
+    } catch (error: any) {
+      console.error('Error running manual cleanup:', error);
+      setCleanupStatus(`Error: ${error.toString()}`);
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
+  /**
+   * Manually trigger cloud function for inactive session cleanup
+   */
+  const handleManualCloudCleanup = async () => {
+    try {
+      setIsCleaningUp(true);
+      setCleanupStatus('Triggering cloud function for cleanup...');
+      
+      // Get the existing Firebase app instance
+      const app = getApps()[0];
+      if (!app) {
+        throw new Error('Firebase app not initialized');
+      }
+      
+      const functions = getFunctions(app);
+      const cleanupFunction = httpsCallable(functions, 'manualCleanupInactiveSessions');
+      
+      const result = await cleanupFunction({ inactiveHours: 3 });
+      console.log('Cloud function result:', result.data);
+      
+      setCleanupStatus('Cloud function executed successfully');
+      setCleanupStats(result.data);
+    } catch (error: any) {
+      console.error('Error running cloud function:', error);
+      setCleanupStatus(`Error: ${error.toString()}`);
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background">
       <Navbar userType="professor" onLogout={handleLogout} />
@@ -140,6 +197,48 @@ export default function MaintenancePage() {
                     <li>• {results.orphanedAnswersDeleted} orphaned answers deleted</li>
                   )}
                 </ul>
+              </div>
+            )}
+          </div>
+          
+          <div className="bg-card p-4 rounded-lg shadow mb-8">
+            <h2 className="text-2xl font-semibold mb-4">Inactive Session Cleanup</h2>
+            <p className="mb-4">
+              Use these tools to manually clean up inactive class sessions. 
+              Sessions inactive for 3+ hours will be marked as closed and 
+              associated data will be removed.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <button 
+                onClick={handleManualLocalCleanup} 
+                disabled={isCleaningUp}
+                className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50"
+              >
+                Run Local Cleanup
+              </button>
+              
+              <button 
+                onClick={handleManualCloudCleanup} 
+                disabled={isCleaningUp}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+              >
+                Trigger Cloud Cleanup
+              </button>
+            </div>
+            
+            {cleanupStatus && (
+              <div className="mt-4 p-3 bg-muted rounded">
+                <p className="font-medium">{cleanupStatus}</p>
+                
+                {cleanupStats && (
+                  <div className="mt-2">
+                    <h3 className="font-semibold">Cleanup Results:</h3>
+                    <pre className="bg-card p-2 rounded mt-1 text-xs overflow-auto">
+                      {JSON.stringify(cleanupStats, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </div>

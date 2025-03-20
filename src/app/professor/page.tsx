@@ -41,6 +41,8 @@ import {
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
@@ -244,25 +246,89 @@ export default function ProfessorPage() {
    */
   const handleEndSession = async () => {
     if (!sessionId) {
+      console.log("No session ID found to end session");
+      
+      // Session ID is missing but we still want to reset the UI
+      setSessionActive(false);
+      setSessionId('');
+      setSessionCode('');
+      setQuestions([]);
+      setIsLoading(false);
       return;
     }
     
     try {
       setIsLoading(true);
-      const success = await endClassSession(sessionId);
+      console.log(`Attempting to end session with ID: ${sessionId}`);
       
-      if (success) {
-        setSessionActive(false);
-        setSessionId('');
-        setSessionCode('');
-        setQuestions([]);
-      } else {
-        setError("Failed to end class session. Please try again.");
+      try {
+        // First try with the stored session ID
+        const success = await endClassSession(sessionId);
+        
+        if (success) {
+          console.log("Successfully ended session with stored ID");
+          setSessionActive(false);
+          setSessionId('');
+          setSessionCode('');
+          setQuestions([]);
+          setIsLoading(false);
+          return;
+        }
+      } catch (endError) {
+        // If the session doesn't exist with this ID, try to find it by session code
+        console.error("Error ending session with stored ID:", endError);
+        console.log("Trying alternative method to end session...");
       }
+      
+      // Try to find the session by session code as a fallback
+      if (sessionCode) {
+        try {
+          console.log(`Looking up session by code: ${sessionCode}`);
+          const q = query(
+            collection(db, 'classSessions'),
+            where('sessionCode', '==', sessionCode),
+            where('status', '==', 'active'),
+            limit(1)
+          );
+          
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            const actualSessionId = querySnapshot.docs[0].id;
+            console.log(`Found session with ID: ${actualSessionId}`);
+            
+            // Try to end with the correct session ID
+            const success = await endClassSession(actualSessionId);
+            
+            if (success) {
+              console.log("Successfully ended session with looked up ID");
+              setSessionActive(false);
+              setSessionId('');
+              setSessionCode('');
+              setQuestions([]);
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            console.log("No active session found with this code");
+          }
+        } catch (lookupError) {
+          console.error("Error looking up session by code:", lookupError);
+        }
+      }
+      
+      // If we get here, we couldn't end the session through normal means
+      // Just reset the UI state anyway
+      console.log("Couldn't properly end session, but resetting UI state");
+      setError("Warning: Session data may not have been properly cleaned up in the database.");
+      setSessionActive(false);
+      setSessionId('');
+      setSessionCode('');
+      setQuestions([]);
       
       setIsLoading(false);
     } catch (error) {
-      console.error("Error ending class session:", error);
+      console.error("Error in overall end session process:", error);
       setError("Failed to end class session. Please try again.");
       setIsLoading(false);
     }
