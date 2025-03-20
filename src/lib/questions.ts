@@ -33,7 +33,7 @@ import {
 // Collection references for Firestore database
 const QUESTIONS_COLLECTION = 'questions';          // Student questions to professors
 const USER_QUESTIONS_COLLECTION = 'userQuestions'; // Links students to their questions
-const ACTIVE_QUESTION_COLLECTION = 'activeQuestions'; // Professor questions to students
+export const ACTIVE_QUESTION_COLLECTION = 'activeQuestions'; // Professor questions to students
 const ANSWERS_COLLECTION = 'answers';              // Student answers to active questions
 const STUDENT_POINTS_COLLECTION = 'studentPoints'; // Student point totals
 

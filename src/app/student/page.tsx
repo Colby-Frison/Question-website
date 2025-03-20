@@ -29,7 +29,8 @@ import {
   addAnswer,
   listenForStudentPoints,
   updateStudentPoints,
-  runDatabaseMaintenance
+  runDatabaseMaintenance,
+  ACTIVE_QUESTION_COLLECTION
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
@@ -38,9 +39,14 @@ import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
 import { runQuestionSystemTest } from '@/lib/qa-test';
 import { runFirebaseDiagnostics } from '@/lib/firebase-diagnostic';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
+
+// Add this to constant declarations near the top with other collection constants
+const STUDENT_POINTS_COLLECTION = 'studentPoints';
 
 export default function StudentPage() {
   const router = useRouter();
@@ -315,10 +321,17 @@ export default function StudentPage() {
           console.log("Setting up active question listener...");
           setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
-            console.log("Active question update:", question ? "received" : "none");
+            console.log("Active question update received:", question);
+            
+            if (question) {
+              console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+            } else {
+              console.log("No active question available");
+            }
             
             // If the active question changes, reset the answer state
             if (question?.id !== activeQuestion?.id) {
+              console.log("Question changed, resetting answer state");
               setAnswerText('');
               setAnswerSubmitted(false);
             }
@@ -709,6 +722,92 @@ export default function StudentPage() {
     }
   };
 
+  const refreshActiveQuestion = async () => {
+    if (!sessionCode) {
+      console.error("Cannot refresh: No active session code");
+      alert("No active session. Please join a class first.");
+      return;
+    }
+    
+    console.log(`Manually refreshing active question for session ${sessionCode}...`);
+    
+    // Create a direct query to check for active questions
+    try {
+      const q = query(
+        collection(db, ACTIVE_QUESTION_COLLECTION),
+        where('sessionCode', '==', sessionCode),
+        where('active', '==', true),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        console.log("No active questions found");
+        alert("No active questions found for this session");
+        return;
+      }
+      
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      
+      console.log(`Found active question: ${doc.id}`);
+      console.log(`Question text: ${data.text}`);
+      
+      // Update active question state
+      setActiveQuestion({
+        id: doc.id,
+        text: data.text || "No text provided",
+        timestamp: data.timestamp || Date.now()
+      });
+      
+      alert(`Active question refreshed: ${data.text}`);
+      
+    } catch (error) {
+      console.error("Error refreshing active question:", error);
+      alert("Error refreshing: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  // Add this function to manually check and refresh points
+  const refreshStudentPoints = async () => {
+    if (!studentId) {
+      console.error("Cannot refresh points: No student ID available");
+      alert("No student ID available");
+      return;
+    }
+    
+    console.log(`Manually refreshing points for student ${studentId}...`);
+    
+    try {
+      // Get the student points document
+      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      const pointsDoc = await getDoc(pointsRef);
+      
+      if (pointsDoc.exists()) {
+        const total = pointsDoc.data().total || 0;
+        console.log(`Retrieved points from Firestore: ${total}`);
+        setPoints(total);
+        setPointsInput(total.toString());
+        alert(`Points refreshed: ${total}`);
+      } else {
+        console.log(`No points record found for student ${studentId}`);
+        // Initialize with 0 if no record exists
+        await setDoc(pointsRef, { 
+          total: 0,
+          lastUpdated: Date.now() 
+        });
+        setPoints(0);
+        setPointsInput('0');
+        alert("No points record found. Initialized with 0 points.");
+      }
+    } catch (error) {
+      console.error("Error refreshing points:", error);
+      alert("Error refreshing points: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   /**
    * Render the questions tab content
    */
@@ -842,6 +941,16 @@ export default function StudentPage() {
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
           >
             Set Points
+          </button>
+        </div>
+        
+        {/* Add refresh button */}
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={refreshStudentPoints}
+            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+          >
+            Refresh Points from Database
           </button>
         </div>
       </div>
@@ -996,6 +1105,12 @@ export default function StudentPage() {
                           className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
                         >
                           Run Diagnostics
+                        </button>
+                        <button
+                          onClick={refreshActiveQuestion}
+                          className="px-4 py-2 rounded bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
+                        >
+                          Refresh Active Question
                         </button>
                       </>
                     )}

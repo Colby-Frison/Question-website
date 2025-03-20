@@ -42,8 +42,11 @@ import {
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+
+// Constants for Firebase collections
+const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
@@ -77,6 +80,9 @@ export default function ProfessorPage() {
   // New state for student join handling
   const [joined, setJoined] = useState(false);
   const [studentId, setStudentId] = useState('');
+
+  // Add this state declaration with the other states
+  const [activeQuestionText, setActiveQuestionText] = useState('');
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -172,6 +178,39 @@ export default function ProfessorPage() {
       console.log("Cleaning up answers listener");
       unsubscribe();
     };
+  }, [activeQuestionId]);
+
+  /**
+   * Set up an effect to retrieve the active question text when activeQuestionId changes
+   */
+  useEffect(() => {
+    if (!activeQuestionId) {
+      setActiveQuestionText('');
+      return;
+    }
+    
+    // Retrieve the active question from Firestore
+    const getActiveQuestionText = async () => {
+      try {
+        console.log(`Retrieving active question text for ID: ${activeQuestionId}`);
+        const docRef = doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setActiveQuestionText(data.text || 'No text available');
+          console.log(`Retrieved active question text: ${data.text}`);
+        } else {
+          console.error(`Active question document ${activeQuestionId} not found`);
+          setActiveQuestionText('Question not found');
+        }
+      } catch (error) {
+        console.error(`Error retrieving active question ${activeQuestionId}:`, error);
+        setActiveQuestionText('Error loading question');
+      }
+    };
+    
+    getActiveQuestionText();
   }, [activeQuestionId]);
 
   /**
@@ -548,6 +587,56 @@ export default function ProfessorPage() {
   };
 
   /**
+   * Add the test function near the handleAskQuestion function
+   */
+  const testActiveQuestion = async () => {
+    if (!sessionCode) {
+      alert("No active session. Start a session first.");
+      return;
+    }
+    
+    try {
+      console.log("Testing active question functionality...");
+      
+      // Step 1: Create a test question
+      const testText = `Test question ${Date.now()}`;
+      console.log(`Creating test question: "${testText}"`);
+      
+      // Add active question and get its ID back
+      const id = await addActiveQuestion(sessionCode, testText);
+      
+      if (!id) {
+        console.error("Failed to create test question");
+        alert("Failed to create test question. Check console for details.");
+        return;
+      }
+      
+      console.log(`Test question created with ID: ${id}`);
+      
+      // Step 2: Verify we can retrieve it
+      console.log("Retrieving the active question...");
+      const docRef = doc(db, ACTIVE_QUESTION_COLLECTION, id);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        console.log(`Retrieved question data:`, data);
+        alert(`Success! Created and retrieved test question:\n\nID: ${id}\nText: ${data.text}`);
+        
+        // Set as the active question
+        setActiveQuestionId(id);
+        setActiveQuestionText(data.text);
+      } else {
+        console.error(`Question ${id} not found!`);
+        alert(`Error: Created question ${id} but couldn't retrieve it!`);
+      }
+    } catch (error) {
+      console.error("Error testing active question:", error);
+      alert("Error: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  /**
    * Render the questions tab content
    */
   const renderQuestionsTab = () => (
@@ -577,6 +666,16 @@ export default function ProfessorPage() {
       <div className="mb-4">
         <h2 className="text-xl font-bold mb-2">Award Points</h2>
         
+        {/* Add the test button */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={testActiveQuestion}
+            className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+          >
+            Test Active Question
+          </button>
+        </div>
+        
         <form onSubmit={handleAskQuestion} className="mb-4">
           <div className="flex items-center">
             <input
@@ -600,7 +699,7 @@ export default function ProfessorPage() {
           <div>
             <h3 className="text-lg font-semibold mb-2">Active Question</h3>
             <div className="mb-4 p-3 bg-yellow-100 rounded dark:bg-yellow-800 dark:text-white">
-              {questions.find(q => q.id === activeQuestionId)?.text || "Loading question..."}
+              {activeQuestionText || answers[0]?.questionText || "Loading question..."}
             </div>
             
             <h3 className="text-lg font-semibold mb-2">Student Answers</h3>
