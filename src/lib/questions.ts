@@ -1031,17 +1031,29 @@ export const listenForStudentPoints = (
     // Set up listener for this student's points document
     const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     
+    // Use includeMetadataChanges for better real-time updates
     const unsubscribe = onSnapshot(
       pointsRef,
+      { includeMetadataChanges: true },
       (doc) => {
+        // Check if the data comes from cache or server
+        const source = doc.metadata.hasPendingWrites ? "local" : "server";
+        
         if (!doc.exists()) {
           console.log(`[listenForStudentPoints] No points record for student ${studentId}`);
+          // Initialize with 0 points if no record exists
+          setDoc(pointsRef, { 
+            total: 0,
+            lastUpdated: Date.now() 
+          }).catch(err => {
+            console.error("[listenForStudentPoints] Error initializing points record:", err);
+          });
           callback(0);
           return;
         }
         
         const total = doc.data().total || 0;
-        console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points`);
+        console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points (source: ${source})`);
         callback(total);
       },
       (error) => {

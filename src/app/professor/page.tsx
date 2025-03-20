@@ -44,6 +44,7 @@ import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
 import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 // Constants for Firebase collections
 const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
@@ -85,6 +86,9 @@ export default function ProfessorPage() {
 
   // Add this state declaration with the other states
   const [activeQuestionText, setActiveQuestionText] = useState('');
+
+  // Add this state declaration with the other states
+  const [studentJoinCount, setStudentJoinCount] = useState(0);
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -421,14 +425,19 @@ export default function ProfessorPage() {
    * 
    * @param newClassName - The new class name
    */
-  const handleClassNameChange = (newClassName: string) => {
-    // Can only change class name when no active session
-    if (sessionActive) {
-      setError("Cannot change class name during an active session. End the current session first.");
-      return;
+  const handleClassNameChange = () => {
+    try {
+      // Check if session is active
+      if (sessionCode) {
+        setError("Cannot change class name during an active session.");
+        return;
+      }
+      
+      console.log(`Updated class name to: ${className}`);
+    } catch (error) {
+      console.error("Error changing class name:", error);
+      setError("Failed to update class name. Please try again.");
     }
-    
-    setClassName(newClassName);
   };
 
   /**
@@ -463,13 +472,13 @@ export default function ProfessorPage() {
    * 
    * @param tab - The tab to switch to
    */
-  const handleTabChange = (tab: TabType) => {
+  const handleTabChange = (tab: 'questions' | 'points') => {
     setActiveTab(tab);
     
     // Clear the active question when switching back to questions tab
     if (tab === 'questions') {
       setActiveQuestionId(null);
-      setAnswers([]);
+      setActiveQuestionText('');
     }
   };
   
@@ -504,6 +513,38 @@ export default function ProfessorPage() {
   };
   
   /**
+   * Render the points awarding component with 1-5 scale
+   */
+  const renderPointsScale = (studentId: string, answerId: string) => {
+    const currentPoints = pointsAwarded[answerId] || 0;
+    const pointsOptions = [1, 2, 3, 4, 5];
+    
+    return (
+      <div className="flex w-full mt-2">
+        <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 w-full">
+          {pointsOptions.map((points) => (
+            <button
+              key={points}
+              onClick={() => handleRewardPoints(studentId, points, answerId)}
+              className={`flex-1 py-2 text-center font-medium border-r last:border-r-0 border-gray-300 dark:border-gray-600 transition-all ${
+                currentPoints === points 
+                  ? 'bg-green-500 text-white dark:bg-green-600 dark:text-white transform scale-105' 
+                  : currentPoints > 0 && points <= currentPoints
+                    ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-100'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+              }`}
+              aria-label={`Award ${points} point${points !== 1 ? 's' : ''}`}
+              title={currentPoints === points ? `Click to remove ${points} point${points !== 1 ? 's' : ''}` : `Award ${points} point${points !== 1 ? 's' : ''}`}
+            >
+              {points}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  /**
    * Award points to a student for their answer
    * 
    * @param studentId - The ID of the student to award points to
@@ -512,30 +553,67 @@ export default function ProfessorPage() {
    */
   const handleRewardPoints = async (studentId: string, points: number, answerId: string) => {
     try {
-      // First, check if we've already awarded points for this answer
-      if (pointsAwarded[answerId]) {
-        console.log(`Points already awarded for answer ${answerId}`);
-        return;
+      // Check if we've already awarded points for this answer
+      const previousPoints = pointsAwarded[answerId] || 0;
+      
+      // If clicking the same number, unselect and remove all points
+      if (previousPoints === points) {
+        // Remove all points
+        if (previousPoints > 0) {
+          // First update UI immediately for better user experience
+          setPointsAwarded(prev => {
+            const newPointsAwarded = { ...prev };
+            delete newPointsAwarded[answerId];
+            return newPointsAwarded;
+          });
+          
+          // Then update the database
+          const success = await updateStudentPoints(studentId, -previousPoints);
+          
+          if (!success) {
+            // Revert UI if database update failed
+            setPointsAwarded(prev => ({
+              ...prev,
+              [answerId]: previousPoints
+            }));
+            throw new Error("Failed to remove points");
+          }
+          
+          console.log(`Removed ${previousPoints} points from student ${studentId} for answer ${answerId}`);
+        }
+      } else {
+        // Clicking a different number
+        const pointsDifference = points - previousPoints;
+        
+        // Update UI immediately for better user experience
+        setPointsAwarded(prev => ({
+          ...prev,
+          [answerId]: points
+        }));
+        
+        // Then update the database
+        const success = await updateStudentPoints(studentId, pointsDifference);
+        
+        if (!success) {
+          // Revert UI if database update failed
+          setPointsAwarded(prev => ({
+            ...prev,
+            [answerId]: previousPoints
+          }));
+          throw new Error("Failed to update points");
+        }
+        
+        console.log(`Changed points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
       }
-      
-      // Award the points in the database
-      await updateStudentPoints(studentId, points);
-      
-      // Mark these points as awarded to prevent duplicates
-      setPointsAwarded(prev => ({
-        ...prev,
-        [answerId]: points
-      }));
       
       // Update session activity
       if (sessionId) {
         await updateSessionActivity(sessionId);
         setLastActivity(Date.now());
       }
-      
-      console.log(`Awarded ${points} points to student ${studentId} for answer ${answerId}`);
     } catch (error) {
-      console.error("Error rewarding points:", error);
+      console.error("Error managing reward points:", error);
+      setError("Failed to update student points. Please try again.");
     }
   };
 
@@ -558,17 +636,17 @@ export default function ProfessorPage() {
   /**
    * Format session duration as a readable string
    */
-  const formatSessionDuration = () => {
-    if (!sessionStartTime) return null;
+  const formatSessionDuration = (sessionStartTime: number | null) => {
+    if (!sessionStartTime) return "0 min";
     
-    const durationMs = Date.now() - sessionStartTime;
-    const hours = Math.floor(durationMs / (60 * 60 * 1000));
-    const minutes = Math.floor((durationMs % (60 * 60 * 1000)) / (60 * 1000));
-    
-    if (hours > 0) {
+    const duration = Math.floor((Date.now() - sessionStartTime) / 60000); // convert to minutes
+    if (duration < 60) {
+      return `${duration} min`;
+    } else {
+      const hours = Math.floor(duration / 60);
+      const minutes = duration % 60;
       return `${hours}h ${minutes}m`;
     }
-    return `${minutes}m`;
   };
 
   /**
@@ -609,8 +687,20 @@ export default function ProfessorPage() {
    */
   const renderQuestionsTab = () => (
     <div className="p-4">
-      <div className="mb-4">
-        <h2 className="text-xl font-bold mb-2">Student Questions</h2>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4 flex items-center">
+          <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Student Questions
+        </h2>
+        
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 dark:bg-blue-900/30 dark:border-blue-800">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            Questions from your students will appear here. You can mark them as answered or remove them if needed.
+          </p>
+        </div>
+        
         {questions.length > 0 ? (
           <QuestionList 
             questions={questions} 
@@ -620,7 +710,13 @@ export default function ProfessorPage() {
             emptyMessage="No questions yet. Students will be able to ask questions once they join."
           />
         ) : (
-          <p>No questions yet. Students will be able to ask questions once they join.</p>
+          <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
+            <svg className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-400">No questions yet</p>
+            <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Student questions will appear here once they join and ask questions.</p>
+          </div>
         )}
       </div>
     </div>
@@ -631,22 +727,33 @@ export default function ProfessorPage() {
    */
   const renderPointsTab = () => (
     <div className="p-4">
-      <div className="mb-4">
-        <h2 className="text-xl font-bold mb-2">Award Points</h2>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4 flex items-center">
+          <svg className="mr-2 h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Ask a Question
+        </h2>
+        
+        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 mb-4 dark:bg-purple-900/30 dark:border-purple-800">
+          <p className="text-sm text-purple-800 dark:text-purple-200">
+            Ask students a question and award points based on their answers. You can award from 1 to 5 points.
+          </p>
+        </div>
         
         <form onSubmit={handleAskQuestion} className="mb-4">
-          <div className="flex items-center">
+          <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
               placeholder="Enter a question for students to answer..."
-              className="flex-grow p-2 border rounded mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+              className="flex-grow p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
               required
             />
             <button
               type="submit"
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+              className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 font-medium"
             >
               Ask Question
             </button>
@@ -655,55 +762,88 @@ export default function ProfessorPage() {
         
         {activeQuestionId ? (
           <div>
-            <h3 className="text-lg font-semibold mb-2">Active Question</h3>
-            <div className="mb-4 p-3 bg-yellow-100 rounded dark:bg-yellow-800 dark:text-white">
-              {activeQuestionText || answers[0]?.questionText || "Loading question..."}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-2 flex items-center">
+                <svg className="mr-2 h-5 w-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Active Question
+              </h3>
+              <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200 dark:bg-yellow-900 dark:border-yellow-700 dark:text-white">
+                <p className="font-medium">{activeQuestionText || answers[0]?.questionText || "Loading question..."}</p>
+              </div>
             </div>
             
-            <h3 className="text-lg font-semibold mb-2">Student Answers</h3>
-            {answers.length > 0 ? (
-              <div className="space-y-2">
-                {answers.map(answer => (
-                  <div key={answer.id} className="p-3 border rounded dark:border-gray-600">
-                    <p className="mb-2">{answer.text}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        Student {answer.studentId.substring(0, 6)}
-                      </span>
-                      {pointsAwarded[answer.id] ? (
-                        <span className="text-green-500 font-semibold">
-                          Awarded {pointsAwarded[answer.id]} points
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center">
+                <svg className="mr-2 h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Student Answers
+              </h3>
+              
+              {answers.length > 0 ? (
+                <div className="space-y-4">
+                  {answers.map(answer => (
+                    <div key={answer.id} className="p-4 border rounded-lg dark:border-gray-600 bg-white dark:bg-gray-800">
+                      <p className="mb-2 font-medium">{answer.text}</p>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md">
+                          Student ID: {answer.studentId.substring(0, 6)}
                         </span>
-                      ) : (
-                        <div className="space-x-2">
-                          <button
-                            onClick={() => handleRewardPoints(answer.studentId, 1, answer.id)}
-                            className="px-2 py-1 bg-green-100 text-green-800 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
-                          >
-                            +1 Point
-                          </button>
-                          <button
-                            onClick={() => handleRewardPoints(answer.studentId, 2, answer.id)}
-                            className="px-2 py-1 bg-green-200 text-green-800 rounded hover:bg-green-300 dark:bg-green-700 dark:text-green-100 dark:hover:bg-green-600"
-                          >
-                            +2 Points
-                          </button>
-                        </div>
-                      )}
+                        
+                        {pointsAwarded[answer.id] ? (
+                          <span className="text-sm bg-green-100 dark:bg-green-900 px-3 py-1 rounded-full text-green-800 dark:text-green-100 font-medium">
+                            <span className="inline-flex items-center">
+                              <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {pointsAwarded[answer.id]} points awarded
+                            </span>
+                          </span>
+                        ) : null}
+                      </div>
+                      
+                      <div className="mt-3">
+                        <p className="text-sm mb-1 font-medium text-gray-700 dark:text-gray-300">Award points:</p>
+                        {renderPointsScale(answer.studentId, answer.id)}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No answers yet. Waiting for students to respond...</p>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p className="text-gray-600 dark:text-gray-400 mb-1">No answers yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500">Waiting for students to respond...</p>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
-          <p>Ask a question above to get student responses and award points.</p>
+          <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
+            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-400 mb-1">No active question</p>
+            <p className="text-sm text-gray-500 dark:text-gray-500">Ask a question using the form above to get student responses and award points.</p>
+          </div>
         )}
       </div>
     </div>
   );
+
+  /**
+   * Calculate remaining milliseconds until session timeout
+   */
+  const remainingMs = () => {
+    if (!lastActivity) return SESSION_INACTIVITY_TIMEOUT;
+    const elapsed = Date.now() - lastActivity;
+    return Math.max(0, SESSION_INACTIVITY_TIMEOUT - elapsed);
+  };
 
   // Show error state if there's a problem
   if (error) {
@@ -742,128 +882,191 @@ export default function ProfessorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-      <Navbar userType="professor" onLogout={handleLogout} />
-      
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row items-start gap-6 mb-6">
-          <div className="w-full lg:w-2/3">
-            <h1 className="text-2xl font-bold mb-4">Professor Dashboard</h1>
-            
-            {/* Main Content Area */}
-            {!sessionActive ? (
-              <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
-                <h2 className="text-xl font-bold mb-4">Welcome to Your Dashboard</h2>
-                <p className="mb-4">
-                  {className 
-                    ? "Click 'Start Class Session' to begin a new class with a randomly generated class code for students to join."
-                    : "First, set your class name. Then, you can start a class session."}
-                </p>
-                <p className="mb-2">Important notes:</p>
-                <ul className="list-disc ml-6 mb-4">
-                  <li>Each class session creates a unique code for students to join</li>
-                  <li>The session will automatically end after 3 hours of inactivity</li>
-                  <li>You can manually end the session at any time using the "End Class Session" button</li>
-                  <li>Once a session ends, students will need a new code to join the next session</li>
-                </ul>
-                
-                {className && (
-                  <button
-                    onClick={handleStartSession}
-                    disabled={!className}
-                    className="mt-4 px-6 py-2 rounded bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
-                  >
-                    Start Class Session
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold">Active Session: {className}</h2>
-                  <button
-                    onClick={handleEndSession}
-                    className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                  >
-                    End Session
-                  </button>
-                </div>
-                
-                <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                    <div>
-                      <p className="mb-2">
-                        <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
-                      </p>
-                      {sessionStartTime && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          Duration: {formatSessionDuration()} | Auto-end in: {getSessionTimeRemaining()} minutes
-                        </p>
-                      )}
-                    </div>
-                    <div className="mt-3 sm:mt-0">
-                      <p className="text-sm">Students join with this code</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="border-b dark:border-gray-700 mb-6">
-                  <div className="flex">
-                    <button
-                      className={`px-4 py-2 ${
-                        activeTab === 'questions' 
-                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}
-                      onClick={() => handleTabChange('questions')}
-                    >
-                      Student Questions
-                    </button>
-                    <button
-                      className={`px-4 py-2 ${
-                        activeTab === 'points' 
-                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}
-                      onClick={() => handleTabChange('points')}
-                    >
-                      Award Points
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="mt-4">
-                  {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-                </div>
-              </div>
-            )}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      {/* Navbar with theme toggle */}
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <h1 className="text-xl font-bold">Professor Dashboard</h1>
+            <ThemeToggle />
           </div>
-          
-          {/* Sidebar - Class Management */}
-          <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
-            <div className="bg-white rounded-lg shadow-md p-6 dark:bg-gray-800">
-              <h2 className="text-xl font-bold mb-4">Class Management</h2>
-              
-              <ClassNameDisplay 
-                className={className} 
-                onClassNameChange={handleClassNameChange}
-              />
-              
-              {sessionActive && (
-                <div className="mt-6 pt-6 border-t dark:border-gray-700">
-                  <h3 className="text-lg font-semibold mb-2">Current Session Info</h3>
-                  <p className="mb-1">
-                    <span className="font-medium">Class:</span> {className}
-                  </p>
-                  <p className="mb-1">
-                    <span className="font-medium">Status:</span> {sessionActive ? "Active" : "Inactive"}
-                  </p>
-                  <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-2">
-                    You cannot change the class name during an active session
-                  </p>
+        </div>
+      </nav>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Sidebar */}
+          <div className="w-full md:w-1/3 lg:w-1/4">
+            <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 sticky top-6">
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/30 dark:text-red-200">
+                  <p className="text-sm font-medium">{error}</p>
                 </div>
               )}
+
+              <h2 className="text-xl font-bold mb-4 flex items-center">
+                <svg className="mr-2 h-5 w-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Class Management
+              </h2>
+
+              <div className="space-y-4">
+                {/* Class Name Section */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
+                  <h3 className="font-medium mb-2 flex items-center">
+                    <svg className="mr-2 h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Class Name
+                  </h3>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      placeholder="Enter class name"
+                      className="flex-grow p-2 border rounded-md text-sm dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    />
+                    <button
+                      onClick={handleClassNameChange}
+                      className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+
+                {/* Session Management Section */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
+                  <h3 className="font-medium mb-2 flex items-center">
+                    <svg className="mr-2 h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Class Session
+                  </h3>
+                  
+                  {!sessionCode ? (
+                    <button
+                      onClick={handleStartSession}
+                      disabled={isLoading}
+                      className="w-full px-4 py-2 bg-green-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-green-600 transition-colors dark:bg-green-600 dark:hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
+                      <span>{isLoading ? "Starting..." : "Start New Session"}</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-center dark:bg-blue-900/30 dark:border-blue-800">
+                        <p className="font-medium text-blue-800 dark:text-blue-200">Session Code:</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600 dark:text-gray-400 px-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Active students:</span>
+                          <span className="font-medium">{studentJoinCount}</span>
+                        </div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Session duration:</span>
+                          <span className="font-medium">{formatSessionDuration(sessionStartTime)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Activity timeout:</span>
+                          <span className="font-medium">{Math.floor(remainingMs() / 60000)} min</span>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={handleEndSession}
+                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                        </svg>
+                        <span>End Session</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tab Navigation */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
+                  <h3 className="font-medium mb-2 flex items-center">
+                    <svg className="mr-2 h-4 w-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                    </svg>
+                    Dashboard Views
+                  </h3>
+                  
+                  <div className="flex border rounded-md overflow-hidden">
+                    <button
+                      onClick={() => setActiveTab('questions')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                        activeTab === 'questions'
+                          ? 'bg-indigo-500 text-white dark:bg-indigo-600'
+                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      Questions
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('points')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                        activeTab === 'points'
+                          ? 'bg-indigo-500 text-white dark:bg-indigo-600'
+                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      Points
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 flex items-center justify-center space-x-2"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="w-full md:w-2/3 lg:w-3/4">
+            {/* Welcome Message */}
+            <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center">
+                <svg className="mr-2 h-6 w-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Welcome, Professor!
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                {sessionCode 
+                  ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
+                  : "Start a new session to begin collecting questions and awarding points to your students."}
+              </p>
+            </div>
+
+            {/* Tabs Content */}
+            {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
           </div>
         </div>
       </div>

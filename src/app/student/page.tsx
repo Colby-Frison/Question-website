@@ -172,6 +172,43 @@ export default function StudentPage() {
   }, [studentId, sessionListener]);
 
   /**
+   * Set up real-time listener for student points from Firestore
+   * Updates the points state when changes occur in the database
+   */
+  useEffect(() => {
+    if (!studentId) return () => {};
+    
+    console.log("Setting up points listener for student:", studentId);
+    const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
+      console.log("Received points update:", newPoints);
+      
+      // Only update if the points have changed to avoid infinite loops
+      if (newPoints !== points) {
+        setPoints(newPoints);
+        setPointsInput(newPoints.toString());
+        
+        // Visual feedback for points change
+        const pointsDisplay = document.getElementById('points-display');
+        if (pointsDisplay) {
+          // Add a temporary scale effect to highlight changes
+          pointsDisplay.classList.add('scale-110');
+          pointsDisplay.classList.add(newPoints > points ? 'text-green-500' : 'text-red-500');
+          
+          setTimeout(() => {
+            pointsDisplay.classList.remove('scale-110');
+            pointsDisplay.classList.remove(newPoints > points ? 'text-green-500' : 'text-red-500');
+          }, 1000);
+        }
+      }
+    });
+    
+    return () => {
+      console.log("Cleaning up points listener");
+      unsubscribe();
+    };
+  }, [studentId, points]);
+
+  /**
    * Effect to save points to localStorage and database when they change
    * Uses a debounce pattern to avoid excessive database writes
    */
@@ -210,8 +247,11 @@ export default function StudentPage() {
             const pointsDifference = points - currentPoints;
             
             if (pointsDifference !== 0) {
+              console.log(`Updating database with points difference: ${pointsDifference}`);
               await updateStudentPoints(studentId, pointsDifference);
               console.log(`Points saved to database. Difference: ${pointsDifference}`);
+            } else {
+              console.log("No point difference to update");
             }
           } catch (error) {
             console.error("Error saving points to database:", error);
@@ -229,25 +269,6 @@ export default function StudentPage() {
       }
     };
   }, [points, studentId]);
-
-  /**
-   * Set up real-time listener for student points from Firestore
-   * Updates the points state when changes occur in the database
-   */
-  useEffect(() => {
-    if (!studentId) return () => {};
-    
-    console.log("Setting up points listener for student:", studentId);
-    const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
-      console.log("Received points update:", newPoints);
-      setPoints(newPoints);
-    });
-    
-    return () => {
-      console.log("Cleaning up points listener");
-      unsubscribe();
-    };
-  }, [studentId]);
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -660,7 +681,9 @@ export default function StudentPage() {
    * Decrements points by 1, but not below 0
    */
   const handleSubtractPoint = () => {
-    setPoints(prevPoints => Math.max(0, prevPoints - 1));
+    const newPoints = Math.max(0, points - 1);
+    setPoints(newPoints);
+    setPointsInput(newPoints.toString());
   };
 
   /**
@@ -743,16 +766,31 @@ export default function StudentPage() {
    */
   const renderQuestionsTab = () => (
     <div className="p-4">
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Ask a Question</h2>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4 flex items-center">
+          <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Ask a Question
+        </h2>
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 dark:bg-blue-900/30 dark:border-blue-800">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            Your question will be anonymous to other students, but you'll be able to track its status.
+          </p>
+        </div>
         <QuestionForm 
           studentId={studentId}
           sessionCode={sessionCode}
         />
       </div>
       
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">My Questions</h2>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
+        <h2 className="text-xl font-bold mb-4 flex items-center">
+          <svg className="mr-2 h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          My Questions
+        </h2>
         {myQuestions.length > 0 ? (
           <QuestionList 
             questions={myQuestions}
@@ -762,13 +800,36 @@ export default function StudentPage() {
             emptyMessage="You haven't asked any questions yet."
           />
         ) : (
-          <p>You haven't asked any questions yet.</p>
+          <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
+            <svg className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-400">You haven't asked any questions yet.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Your questions will appear here after you ask them.</p>
+          </div>
         )}
       </div>
-      
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Class Questions</h2>
-        {classQuestions.length > 0 ? (
+    </div>
+  );
+
+  /**
+   * Render class questions sidebar
+   */
+  const renderClassQuestionsSidebar = () => (
+    <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800 sticky top-4">
+      <h2 className="text-xl font-bold mb-4 flex items-center">
+        <svg className="mr-2 h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+        </svg>
+        Class Questions
+      </h2>
+      <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 mb-4 dark:bg-purple-900/30 dark:border-purple-800">
+        <p className="text-sm text-purple-800 dark:text-purple-200">
+          Questions from your classmates. All questions are anonymous.
+        </p>
+      </div>
+      {classQuestions.length > 0 ? (
+        <div className="max-h-[600px] overflow-y-auto pr-1 space-y-2">
           <QuestionList 
             questions={classQuestions}
             isProfessor={false}
@@ -776,10 +837,16 @@ export default function StudentPage() {
             studentId={studentId}
             emptyMessage="No questions from the class yet."
           />
-        ) : (
-          <p>No questions from other students yet.</p>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
+          <svg className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <p className="text-gray-600 dark:text-gray-400">No class questions yet</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Questions from your classmates will appear here.</p>
+        </div>
+      )}
     </div>
   );
 
@@ -789,49 +856,106 @@ export default function StudentPage() {
   const renderPointsTab = () => (
     <div className="p-4">
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Your Points: {points}</h2>
+        <h2 className="text-xl font-bold mb-4">Answer Professor's Question</h2>
         
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-center mb-4">
-          <div className="flex items-center justify-center">
-            <button
-              onClick={() => handleAddPoint()}
-              className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
-            >
-              +1
-            </button>
+        {activeQuestion ? (
+          <div>
+            <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200 dark:bg-yellow-900 dark:border-yellow-700 dark:text-white">
+              <h3 className="font-semibold mb-2">Current Question:</h3>
+              <p className="font-medium">{activeQuestion.text}</p>
+            </div>
+            
+            {answerSubmitted ? (
+              <div className="bg-green-100 p-4 rounded-lg border border-green-200 dark:bg-green-800 dark:border-green-700 dark:text-white">
+                <p className="font-semibold">Your answer has been submitted!</p>
+                <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleAnswerSubmit} className="mt-4">
+                <div className="mb-4">
+                  <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold">
+                    Your Answer:
+                  </label>
+                  <textarea
+                    id="pointsTabAnswerText"
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                    rows={4}
+                    disabled={cooldownActive}
+                    required
+                    placeholder="Type your answer here..."
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
+                    cooldownActive || isSubmittingAnswer
+                      ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-600'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
+                  }`}
+                  disabled={cooldownActive || isSubmittingAnswer}
+                >
+                  {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+                </button>
+              </form>
+            )}
           </div>
-          
-          <div className="flex items-center justify-center">
-            <input
-              type="text"
-              value={pointsInput}
-              onChange={handlePointsInputChange}
-              className="w-20 p-2 border rounded text-center mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
-            />
-            <button
-              onClick={handleSetPoints}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-            >
-              Set Points
-            </button>
+        ) : (
+          <div className="p-6 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-700 dark:border-gray-600 text-center">
+            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-400 mb-2">
+              No active question at the moment
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-500">
+              When your professor asks a question, it will appear here for you to answer.
+            </p>
           </div>
-          
-          {/* Removing refresh button */}
-        </div>
-      </div>
-      
-      <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">How Points Work</h2>
-        <p className="mb-4">
-          You can earn points by answering questions from your professor.
-          The professor will award points based on the quality of your answers.
-        </p>
-        <p className="mb-4">
-          Points are updated in real-time as your professor rewards your participation.
-        </p>
+        )}
       </div>
     </div>
   );
+
+  /**
+   * Function to manually refresh student points from the database
+   */
+  const refreshStudentPoints = async () => {
+    if (!studentId) {
+      console.log("Cannot refresh points: no student ID available");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log(`Manually refreshing points for student: ${studentId}`);
+      
+      // Get the points data from Firestore
+      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      const pointsDoc = await getDoc(pointsRef);
+      
+      if (pointsDoc.exists()) {
+        const pointsData = pointsDoc.data();
+        console.log(`Retrieved points data:`, pointsData);
+        setPoints(pointsData.total || 0);
+      } else {
+        console.log(`No points record found for student: ${studentId}, initializing with 0`);
+        // Initialize with 0 points if no record exists
+        await setDoc(pointsRef, { 
+          total: 0,
+          lastUpdated: Date.now() 
+        });
+        setPoints(0);
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error refreshing student points:", error);
+      setError("Failed to refresh points data. Please try again.");
+      setIsLoading(false);
+    }
+  };
 
   // Show network error if offline
   if (networkStatus === 'offline') {
@@ -974,51 +1098,108 @@ export default function StudentPage() {
               </div>
             </div>
             
-            {/* Active Question Sidebar - show in any tab when there's an active question */}
-            {activeQuestion && (
-              <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
-                <div className="bg-yellow-50 shadow-md rounded-lg p-4 sticky top-4 dark:bg-yellow-900 dark:text-white">
-                  <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
-                  <div className="mb-4 p-3 bg-white rounded dark:bg-gray-800">
-                    {activeQuestion.text}
+            {/* Sidebar - Show different content based on active tab */}
+            <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
+              {activeTab === 'questions' ? (
+                // Class Questions sidebar for Questions tab
+                renderClassQuestionsSidebar()
+              ) : (
+                // Points sidebar for Points tab
+                <div className="bg-white shadow-md rounded-lg p-6 sticky top-4 dark:bg-gray-800">
+                  <h2 className="text-xl font-bold mb-4 flex items-center">
+                    <svg className="mr-2 h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Your Points
+                  </h2>
+                  
+                  <div className="bg-green-50 rounded-lg p-6 mb-4 border border-green-100 dark:bg-green-900/30 dark:border-green-800">
+                    <div className="flex flex-col items-center">
+                      <div className="mb-4 flex items-center justify-center">
+                        <button 
+                          onClick={handleSubtractPoint}
+                          className="w-12 h-12 flex items-center justify-center bg-white border border-gray-300 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600"
+                          aria-label="Decrease points"
+                        >
+                          <svg className="h-6 w-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                          </svg>
+                        </button>
+                        
+                        <div className="relative mx-4">
+                          <div id="points-display" className="text-5xl font-bold text-green-600 dark:text-green-400 transition-all duration-300 transform">
+                            {points}
+                          </div>
+                          {isSavingPoints && (
+                            <div className="absolute -top-2 -right-2">
+                              <div className="animate-spin h-4 w-4 border-t-2 border-green-500 rounded-full"></div>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <button 
+                          onClick={handleAddPoint}
+                          className="w-12 h-12 flex items-center justify-center bg-white border border-gray-300 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600"
+                          aria-label="Increase points"
+                        >
+                          <svg className="h-6 w-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      <div className="text-sm text-green-800 dark:text-green-200 text-center">
+                        Total points earned in this class
+                      </div>
+                      
+                      {isSavingPoints && (
+                        <div className="mt-2 text-xs text-green-600 dark:text-green-300 flex items-center">
+                          <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Saving...
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
-                  {answerSubmitted ? (
-                    <div className="bg-green-100 p-3 rounded dark:bg-green-800 dark:text-white">
-                      <p className="font-semibold">Your answer has been submitted!</p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleAnswerSubmit}>
-                      <div className="mb-4">
-                        <label htmlFor="answerText" className="block mb-1 font-semibold">
-                          Your Answer:
-                        </label>
-                        <textarea
-                          id="answerText"
-                          value={answerText}
-                          onChange={(e) => setAnswerText(e.target.value)}
-                          className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                          rows={3}
-                          disabled={cooldownActive}
-                          required
-                        />
-                      </div>
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-100 mb-4 dark:bg-blue-900/30 dark:border-blue-800">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Points are awarded by your professor when you answer questions correctly. You can also adjust your points using the controls above.
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-col space-y-2">
+                    <button
+                      onClick={refreshStudentPoints}
+                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-blue-600 dark:hover:bg-blue-700"
+                    >
+                      <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh Points
+                    </button>
+                    
+                    <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                      <input 
+                        type="text" 
+                        value={pointsInput}
+                        onChange={handlePointsInputChange}
+                        className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-gray-700 dark:text-white"
+                        aria-label="Set points value"
+                      />
                       <button
-                        type="submit"
-                        className={`w-full px-4 py-2 rounded ${
-                          cooldownActive || isSubmittingAnswer
-                            ? 'bg-gray-400 cursor-not-allowed'
-                            : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
-                        }`}
-                        disabled={cooldownActive || isSubmittingAnswer}
+                        onClick={handleSetPoints}
+                        className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white transition-colors"
                       >
-                        {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+                        Set
                       </button>
-                    </form>
-                  )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </div>
