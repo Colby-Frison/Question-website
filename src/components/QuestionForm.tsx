@@ -6,12 +6,12 @@ import { addQuestion } from '@/lib/questions';
 /**
  * Interface for QuestionForm component props
  * @interface QuestionFormProps
- * @property {string} [userIdentifier] - Identifier for the user submitting the question, defaults to 'student'
- * @property {string} classCode - The class code to associate the question with
+ * @property {string} studentId - ID of the student submitting the question
+ * @property {string} sessionCode - The session code to associate the question with
  */
 interface QuestionFormProps {
-  userIdentifier?: string;
-  classCode: string;
+  studentId: string;
+  sessionCode: string;
 }
 
 /**
@@ -28,8 +28,8 @@ interface QuestionFormProps {
  * @returns {JSX.Element} Rendered component
  */
 export default function QuestionForm({ 
-  userIdentifier = 'student',
-  classCode 
+  studentId,
+  sessionCode 
 }: QuestionFormProps) {
   const [question, setQuestion] = useState('');
   const [error, setError] = useState('');
@@ -60,11 +60,20 @@ export default function QuestionForm({
       return;
     }
     
+    if (!studentId || !sessionCode) {
+      setError('Missing student ID or session code. Please refresh and try again.');
+      return;
+    }
+    
     setIsSubmitting(true);
     
     try {
-      // Add the question
-      await addQuestion(question, userIdentifier, classCode);
+      // Add the question using the new question system
+      const result = await addQuestion(question, studentId, sessionCode);
+      
+      if (!result) {
+        throw new Error('Failed to submit question');
+      }
       
       // Clear the form and show success message
       setQuestion('');

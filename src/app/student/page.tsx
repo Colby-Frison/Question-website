@@ -79,6 +79,28 @@ export default function StudentPage() {
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
 
+  // Define handleLeaveClass outside the component
+  const handleLeaveClass = useCallback(() => {
+    console.log('Student leaving class');
+    setJoined(false);
+    setClassName('');
+    setSessionCode('');
+    setMyQuestions([]);
+    setClassQuestions([]);
+    setActiveQuestion(null);
+
+    // Clean up Firebase data
+    if (studentId) {
+      leaveClass(studentId).catch(console.error);
+    }
+
+    // Clean up listeners
+    if (sessionListener) {
+      sessionListener();
+      setSessionListener(null);
+    }
+  }, [studentId, sessionListener]);
+
   /**
    * Effect to save points to localStorage and database when they change
    * Uses a debounce pattern to avoid excessive database writes
@@ -207,14 +229,18 @@ export default function StudentPage() {
           setSessionCode(joinedClass.sessionCode);
           setJoined(true);
           
+          console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
+          
           // Set up listener for student's questions
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
+            console.log(`Received ${questions.length} personal questions`);
             setMyQuestions(questions);
             setIsLoading(false);
           });
           
           // Set up listener for all class questions
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
+            console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
           });
           
@@ -236,66 +262,36 @@ export default function StudentPage() {
           
           // Set up listener for session status changes
           const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
-            console.log(`Session status update: ${status}`);
+            console.log(`Session status changed to: ${status}`);
             
-            // If session is closed or archived, automatically leave the class
-            if (status === 'closed' || status === 'archived' || status === null) {
-              setError("The class session has ended by the professor. You've been automatically removed from the class.");
-              handleLeaveClass(); // Leave the class automatically
+            // If the session is closed or archived, leave the class
+            if (!status || status === 'closed' || status === 'archived') {
+              console.log('Session ended by professor, leaving class...');
+              handleLeaveClass();
+              alert('Class ended: The professor has ended this class session.');
             }
           });
           
+          setSessionListener(() => unsubscribeSessionStatus);
+          
+          // Return cleanup function
           return () => {
+            console.log('Cleaning up question listeners');
             unsubscribePersonal();
             unsubscribeClass();
             unsubscribeActiveQuestion();
             unsubscribeSessionStatus();
           };
-        } else {
-          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error checking joined class:', error);
-        setError('Failed to check joined class. Please refresh the page.');
+        setError('Failed to check if you have joined a class. Please refresh the page.');
         setIsLoading(false);
       }
     };
-
-    checkJoinedClass();
-  }, [studentId, activeQuestion?.id]);
-
-  /**
-   * Handle leaving class - define first to avoid circular reference issues
-   */
-  const handleLeaveClass = useCallback(async () => {
-    if (!studentId || !sessionCode) return;
     
-    try {
-      setIsLoading(true);
-      
-      // leaveClass only takes studentId per its definition
-      await leaveClass(studentId);
-      
-      setClassName("");
-      setSessionCode("");
-      setJoined(false);
-      setMyQuestions([]);
-      setClassQuestions([]);
-      setActiveQuestion(null);
-      
-      // Cleanup session listener if it exists
-      if (sessionListener) {
-        sessionListener();
-        setSessionListener(null);
-      }
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error leaving class:", error);
-      setError("Failed to leave the class. Please try again.");
-      setIsLoading(false);
-    }
-  }, [studentId, sessionCode, setClassName, setSessionCode, setJoined, setMyQuestions, setClassQuestions, setActiveQuestion, setIsLoading, setError, sessionListener, setSessionListener]);
+    checkJoinedClass();
+  }, [studentId, activeQuestion, handleLeaveClass]);
 
   /**
    * Record user activity
@@ -371,19 +367,25 @@ export default function StudentPage() {
       setSessionCode(code);       // Session code
       setJoined(true);
       
+      console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
+      
       // Set up listener for student's questions
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
+        console.log(`Received ${questions.length} personal questions`);
         setMyQuestions(questions);
       });
       
       // Set up listener for all class questions
       const unsubscribeClass = listenForQuestions(code, (questions) => {
+        console.log(`Received ${questions.length} class questions`);
         setClassQuestions(questions);
       });
       
       // Set up listener for active question
       setIsLoadingQuestion(true);
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
+        console.log("Active question update:", question);
+        
         // If the active question changes, reset the answer state
         if (question?.id !== activeQuestion?.id) {
           setAnswerText('');
@@ -403,27 +405,27 @@ export default function StudentPage() {
         if (!status || status === 'closed' || status === 'archived') {
           console.log('Session ended by professor, leaving class...');
           handleLeaveClass();
-          // Use alert instead of toast since we don't have a toast component
           alert('Class ended: The professor has ended this class session.');
         }
       });
       
       setSessionListener(() => unsubscribeSessionStatus);
-      
       setIsLoading(false);
       
       // Return cleanup function
       return () => {
+        console.log('Cleaning up question listeners');
         unsubscribePersonal();
         unsubscribeClass();
         unsubscribeActiveQuestion();
+        unsubscribeSessionStatus();
       };
     } catch (error) {
       console.error('Error joining class:', error);
       setError('Failed to join class. Please try again.');
       setIsLoading(false);
     }
-  }, [studentId, setClassName, setSessionCode, setJoined, setMyQuestions, setClassQuestions, setActiveQuestion, setAnswerText, setAnswerSubmitted, setIsLoadingQuestion, setError, handleLeaveClass, setSessionListener, setIsLoading]);
+  }, [studentId, activeQuestion, handleLeaveClass]);
 
   /**
    * Handle user logout
@@ -538,8 +540,8 @@ export default function StudentPage() {
       <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
         <h2 className="text-xl font-bold mb-4">Ask a Question</h2>
         <QuestionForm 
-          userIdentifier={studentId} 
-          classCode={sessionCode}
+          studentId={studentId}
+          sessionCode={sessionCode}
         />
       </div>
       
