@@ -134,18 +134,18 @@ export const listenForQuestions = (
   const maxWaitTime = options?.maxWaitTime || 0;
   const useCache = options?.useCache !== false;
   
-  // Try to use cached data first for immediate response
-  if (useCache) {
-    const cachedData = cache.questions.get(sessionCode);
-    if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
-      console.log(`[listenForQuestions] Using cached data for session: ${sessionCode}`);
-      callback(cachedData.data);
-    }
-  }
-
-  console.log(`[listenForQuestions] Setting up listener for session: ${sessionCode} with maxWaitTime: ${maxWaitTime}ms`);
-  
   try {
+    // Try to use cached data first for immediate response
+    if (useCache) {
+      const cachedData = cache.questions.get(sessionCode);
+      if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
+        console.log(`[listenForQuestions] Using cached data for session: ${sessionCode}`);
+        callback(cachedData.data);
+      }
+    }
+
+    console.log(`[listenForQuestions] Setting up listener for session: ${sessionCode} with maxWaitTime: ${maxWaitTime}ms`);
+    
     // Query for all questions with this session code, newest first
     const q = query(
       collection(db, QUESTIONS_COLLECTION), 
@@ -160,57 +160,71 @@ export const listenForQuestions = (
     
     // Function to send updates to the callback
     const sendUpdate = (data: Question[]) => {
-      // Update cache
-      cache.questions.set(sessionCode, {
-        data,
-        timestamp: Date.now()
-      });
-      
-      callback(data);
-      lastUpdate = Date.now();
-      pendingData = null;
-      debounceTimer = null;
+      try {
+        console.log(`[listenForQuestions] Sending ${data.length} questions to callback`);
+        
+        // Update cache
+        cache.questions.set(sessionCode, {
+          data,
+          timestamp: Date.now()
+        });
+        
+        callback(data);
+        lastUpdate = Date.now();
+      } catch (error) {
+        console.error("[listenForQuestions] Error in sendUpdate:", error);
+      } finally {
+        pendingData = null;
+        debounceTimer = null;
+      }
     };
     
     // Set up real-time listener with debouncing
     const unsubscribe = onSnapshot(
       q, 
       (snapshot) => {
-        console.log(`[listenForQuestions] Received ${snapshot.docs.length} questions`);
-        
-        const questions = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            text: data.text || "No text provided",
-            timestamp: data.timestamp || Date.now(),
-            status: data.status || 'unanswered',
-            studentId: data.studentId || "unknown"
-          };
-        });
-        
-        // Store the pending update
-        pendingData = questions;
-        
-        // Clear any existing timer
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-        }
-        
-        const now = Date.now();
-        const timeSinceLastUpdate = now - lastUpdate;
-        
-        // If we've waited long enough, send the update immediately
-        if (timeSinceLastUpdate >= maxWaitTime) {
-          sendUpdate(questions);
-        } else {
-          // Otherwise, set a timer to send the update after the remaining wait time
-          const waitTime = Math.max(0, maxWaitTime - timeSinceLastUpdate);
-          debounceTimer = setTimeout(() => {
-            if (pendingData) {
-              sendUpdate(pendingData);
-            }
-          }, waitTime);
+        try {
+          console.log(`[listenForQuestions] Received ${snapshot.docs.length} questions`);
+          
+          const questions: Question[] = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              text: data.text || "No text provided",
+              timestamp: data.timestamp || Date.now(),
+              status: data.status || 'unanswered',
+              studentId: data.studentId || "unknown",
+              sessionCode: data.sessionCode || sessionCode
+            };
+          });
+          
+          // Store the pending update
+          pendingData = questions;
+          
+          // Clear any existing timer
+          if (debounceTimer) {
+            clearTimeout(debounceTimer);
+          }
+          
+          const now = Date.now();
+          const timeSinceLastUpdate = now - lastUpdate;
+          
+          // If we've waited long enough, send the update immediately
+          if (timeSinceLastUpdate >= maxWaitTime) {
+            sendUpdate(questions);
+          } else {
+            // Otherwise, set a timer to send the update after the remaining wait time
+            const waitTime = Math.max(0, maxWaitTime - timeSinceLastUpdate);
+            debounceTimer = setTimeout(() => {
+              if (pendingData) {
+                sendUpdate(pendingData);
+              }
+            }, waitTime);
+          }
+        } catch (error) {
+          console.error("[listenForQuestions] Error processing snapshot:", error);
+          // Still try to send empty results so UI doesn't get stuck
+          callback([]);
         }
       }, 
       (error) => {
@@ -221,10 +235,14 @@ export const listenForQuestions = (
     
     // Return a cleanup function that also clears any pending updates
     return () => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
+      try {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+        }
+        unsubscribe();
+      } catch (error) {
+        console.error("[listenForQuestions] Error during cleanup:", error);
       }
-      unsubscribe();
     };
   } catch (error) {
     console.error("[listenForQuestions] Error setting up listener:", error);
@@ -270,7 +288,7 @@ export const listenForUserQuestions = (
     );
     
     // For debouncing updates
-    let pendingOperation: (() => void) | null = null;
+    let pendingOperation: (() => Promise<void>) | null = null;
     let debounceTimer: NodeJS.Timeout | null = null;
     let lastUpdate = 0;
     
@@ -310,8 +328,9 @@ export const listenForUserQuestions = (
                       text: data.text || "No text provided",
                       timestamp: data.timestamp || Date.now(),
                       status: data.status || 'unanswered',
-                      studentId: data.studentId || studentId
-                    };
+                      studentId: data.studentId || studentId,
+                      sessionCode: data.sessionCode || sessionCode
+                    } as Question;
                   }
                   return null;
                 } catch (error) {
@@ -327,6 +346,7 @@ export const listenForUserQuestions = (
             
             // Sort by timestamp, newest first
             questions.sort((a, b) => b.timestamp - a.timestamp);
+            console.log("[listenForUserQuestions] Sending sorted questions to callback:", questions.length);
             callback(questions);
             lastUpdate = Date.now();
             pendingOperation = null;

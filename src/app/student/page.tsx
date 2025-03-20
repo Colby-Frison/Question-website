@@ -35,6 +35,8 @@ import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
+import { checkFirebaseConnection } from '@/lib/firebase';
+import { runQuestionSystemTest } from '@/lib/qa-test';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
@@ -190,6 +192,20 @@ export default function StudentPage() {
       return;
     }
 
+    // Verify Firebase connection on page load
+    checkFirebaseConnection()
+      .then(connected => {
+        if (!connected) {
+          console.error("Firebase connection failed. Check your Firebase configuration.");
+          setError("Unable to connect to database. Please refresh or try again later.");
+        } else {
+          console.log("Firebase connection verified successfully.");
+        }
+      })
+      .catch(error => {
+        console.error("Error checking Firebase connection:", error);
+      });
+
     const userId = getUserId();
     setStudentId(userId);
 
@@ -217,7 +233,9 @@ export default function StudentPage() {
    * for questions, class questions, and active questions
    */
   useEffect(() => {
-    if (!studentId) return;
+    if (!studentId) return () => {};
+    
+    let cleanup: (() => void) | undefined;
 
     const checkJoinedClass = async () => {
       try {
@@ -233,14 +251,14 @@ export default function StudentPage() {
           
           // Set up listener for student's questions - refresh every 10 seconds to reduce load
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} personal questions`);
+            console.log(`Received ${questions.length} personal questions:`, questions);
             setMyQuestions(questions);
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
           // Set up listener for all class questions - refresh every 15 seconds to reduce load
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} class questions`);
+            console.log(`Received ${questions.length} class questions:`, questions);
             setClassQuestions(questions);
           }, { maxWaitTime: 15000, useCache: true });
           
@@ -258,7 +276,7 @@ export default function StudentPage() {
             setActiveQuestion(question);
             setIsLoadingQuestion(false);
             lastQuestionCheckRef.current = Date.now();
-          });
+          }, { maxWaitTime: 5000 });
           
           // Set up listener for session status changes - no delay as this is critical
           const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
@@ -267,7 +285,18 @@ export default function StudentPage() {
             // If the session is closed or archived, leave the class
             if (!status || status === 'closed' || status === 'archived') {
               console.log('Session ended by professor, leaving class...');
-              handleLeaveClass();
+              // Call handleLeaveClass directly here
+              setJoined(false);
+              setClassName('');
+              setSessionCode('');
+              setMyQuestions([]);
+              setClassQuestions([]);
+              setActiveQuestion(null);
+              
+              if (studentId) {
+                leaveClass(studentId).catch(console.error);
+              }
+              
               alert('Class ended: The professor has ended this class session.');
             }
           });
@@ -275,7 +304,7 @@ export default function StudentPage() {
           setSessionListener(() => unsubscribeSessionStatus);
           
           // Return cleanup function
-          return () => {
+          cleanup = () => {
             console.log('Cleaning up question listeners');
             unsubscribePersonal();
             unsubscribeClass();
@@ -291,7 +320,12 @@ export default function StudentPage() {
     };
     
     checkJoinedClass();
-  }, [studentId, activeQuestion, handleLeaveClass]);
+    
+    // Return the cleanup function
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [studentId, activeQuestion]); // Remove handleLeaveClass from the dependency array
 
   /**
    * Record user activity
@@ -352,15 +386,19 @@ export default function StudentPage() {
   const handleJoinSuccess = useCallback(async (code: string) => {
     try {
       setIsLoading(true);
+      console.log(`Attempting to join class with session code: ${code}`);
       
       // Verify the session code is valid
       const session = await getSessionByCode(code);
       
       if (!session) {
+        console.error(`Invalid session code: ${code}. Session not found.`);
         setError("Invalid session code. The class may have ended or doesn't exist.");
         setIsLoading(false);
         return;
       }
+      
+      console.log(`Found valid session:`, session);
       
       // Set class and session info
       setClassName(session.code); // Original class name
@@ -370,18 +408,21 @@ export default function StudentPage() {
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
       // Set up listener for student's questions - refresh every 10 seconds
+      console.log(`Setting up personal questions listener...`);
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
-        console.log(`Received ${questions.length} personal questions`);
+        console.log(`Received ${questions.length} personal questions:`, questions);
         setMyQuestions(questions);
       }, { maxWaitTime: 10000 });
       
       // Set up listener for all class questions - refresh every 15 seconds
+      console.log(`Setting up class questions listener...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
-        console.log(`Received ${questions.length} class questions`);
+        console.log(`Received ${questions.length} class questions:`, questions);
         setClassQuestions(questions);
       }, { maxWaitTime: 15000, useCache: true });
       
       // Set up listener for active question - refresh every 5 seconds
+      console.log(`Setting up active question listener...`);
       setIsLoadingQuestion(true);
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
         console.log("Active question update:", question);
@@ -398,19 +439,37 @@ export default function StudentPage() {
       }, { maxWaitTime: 5000 });
       
       // Set up listener for session status changes
+      console.log(`Setting up session status listener...`);
       const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
         console.log(`Session status changed to: ${status}`);
         
         // If the session is closed or archived, leave the class
         if (!status || status === 'closed' || status === 'archived') {
           console.log('Session ended by professor, leaving class...');
-          handleLeaveClass();
+          // Call handleLeaveClass directly
+          setJoined(false);
+          setClassName('');
+          setSessionCode('');
+          setMyQuestions([]);
+          setClassQuestions([]);
+          setActiveQuestion(null);
+          
+          if (studentId) {
+            leaveClass(studentId).catch(console.error);
+          }
+          
+          if (sessionListener) {
+            sessionListener();
+            setSessionListener(null);
+          }
+          
           alert('Class ended: The professor has ended this class session.');
         }
       });
       
       setSessionListener(() => unsubscribeSessionStatus);
       setIsLoading(false);
+      console.log(`Join successful. All listeners set up.`);
       
       // Return cleanup function
       return () => {
@@ -425,7 +484,7 @@ export default function StudentPage() {
       setError('Failed to join class. Please try again.');
       setIsLoading(false);
     }
-  }, [studentId, activeQuestion, handleLeaveClass]);
+  }, [studentId, activeQuestion]); // Remove handleLeaveClass dependency
 
   /**
    * Handle user logout
@@ -529,6 +588,30 @@ export default function StudentPage() {
       console.error('Error submitting answer:', error);
       setError('Failed to submit answer. Please try again.');
       setIsSubmitting(false);
+    }
+  };
+
+  // Add this debug function to the component
+  const runDebugTest = async () => {
+    console.log("Running debug test...");
+    if (!studentId || !sessionCode) {
+      console.error("Cannot run test: Missing studentId or sessionCode");
+      alert("Please join a class first to run the test.");
+      return;
+    }
+    
+    try {
+      const result = await runQuestionSystemTest(studentId, sessionCode);
+      if (result) {
+        console.log("Debug test completed successfully!");
+        alert("Debug test passed! Check the browser console for details.");
+      } else {
+        console.error("Debug test failed. See console for details.");
+        alert("Debug test failed. Check the browser console for errors.");
+      }
+    } catch (error) {
+      console.error("Error running debug test:", error);
+      alert("Error running debug test. Check the browser console for details.");
     }
   };
 
@@ -751,12 +834,22 @@ export default function StudentPage() {
                   <div>
                     <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
                   </div>
-                  <button
-                    onClick={handleLeaveClass}
-                    className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                  >
-                    Leave Class
-                  </button>
+                  <div className="flex gap-2">
+                    {process.env.NODE_ENV === 'development' && (
+                      <button
+                        onClick={runDebugTest}
+                        className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+                      >
+                        Run Debug Test
+                      </button>
+                    )}
+                    <button
+                      onClick={handleLeaveClass}
+                      className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
+                    >
+                      Leave Class
+                    </button>
+                  </div>
                 </div>
               </div>
               

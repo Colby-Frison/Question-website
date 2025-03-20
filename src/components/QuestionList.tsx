@@ -18,13 +18,12 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  */
 interface QuestionListProps {
   questions: Question[];
-  isProfessor?: boolean;
+  isProfessor: boolean;
   isStudent?: boolean;
   studentId?: string;
-  onDelete?: (id: string) => void;
-  onToggleStatus?: (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => void;
   emptyMessage?: string;
-  isLoading?: boolean;
+  onDelete?: (questionId: string) => void;
+  onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
 }
 
 /**
@@ -41,153 +40,164 @@ interface QuestionListProps {
  */
 const QuestionList: React.FC<QuestionListProps> = React.memo(({
   questions,
-  isProfessor = false,
+  isProfessor,
   isStudent = false,
   studentId = '',
-  onDelete,
-  onToggleStatus,
   emptyMessage = "No questions yet.",
-  isLoading = false
+  onDelete,
+  onToggleStatus
 }) => {
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
-  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   /**
-   * Handles the deletion of a question
-   * - Uses provided onDelete callback if available
-   * - Otherwise calls deleteQuestion directly
-   * 
-   * @param {string} id - ID of the question to delete
+   * Format timestamp to a readable date/time
    */
-  const handleDelete = useCallback(async (id: string) => {
-    setDeletingId(id);
-    
-    try {
-      if (onDelete) {
-        await onDelete(id);
-      } else {
-        await deleteQuestion(id);
-      }
-    } catch (error) {
-      console.error('Error deleting question:', error);
-    } finally {
-      setDeletingId(null);
-    }
-  }, [onDelete]);
-
+  const formatTimestamp = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
+  
   /**
-   * Begins editing a question
-   * - Sets the editing ID and pre-fills the form with current text
-   * 
-   * @param {string} id - ID of the question to edit
-   * @param {string} text - Current text of the question
+   * Start editing a question
    */
-  const startEditing = useCallback((id: string, text: string) => {
-    setEditingId(id);
-    setEditText(text);
-  }, []);
-
+  const handleEdit = (question: Question) => {
+    setEditingId(question.id);
+    setEditText(question.text);
+    setError(null);
+  };
+  
   /**
-   * Cancels the current question edit
-   * - Resets the editing state
+   * Cancel editing a question
    */
-  const cancelEditing = useCallback(() => {
+  const handleCancelEdit = () => {
     setEditingId(null);
     setEditText('');
-  }, []);
-
+    setError(null);
+  };
+  
   /**
-   * Saves the edited question
-   * - Calls updateQuestion API
-   * - Resets editing state on success
-   * 
-   * @param {string} id - ID of the question being edited
+   * Save edited question
    */
-  const saveEdit = useCallback(async (id: string) => {
-    if (!editText.trim()) return;
+  const handleSaveEdit = async (questionId: string) => {
+    if (!editText.trim()) {
+      setError('Question cannot be empty');
+      return;
+    }
+    
+    if (!studentId) {
+      setError('Cannot edit: Student ID is missing');
+      return;
+    }
     
     setIsUpdating(true);
+    setError(null);
     
     try {
-      const success = await updateQuestion(id, editText, studentId);
+      const success = await updateQuestion(questionId, editText, studentId);
+      
       if (success) {
         setEditingId(null);
         setEditText('');
+      } else {
+        setError('Failed to update question');
       }
     } catch (error) {
       console.error('Error updating question:', error);
+      setError('An error occurred while updating the question');
     } finally {
       setIsUpdating(false);
     }
-  }, [editText, studentId]);
-
+  };
+  
   /**
-   * Toggles a question's status between answered and unanswered
-   * - Optimistically updates UI
-   * - Updates database in background
-   * 
-   * @param {string} id - ID of the question to update
-   * @param {('answered'|'unanswered'|undefined)} currentStatus - Current status of the question
+   * Delete a question
    */
-  const toggleQuestionStatus = useCallback(async (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => {
-    // Use the provided callback if available
-    if (onToggleStatus) {
-      setUpdatingStatusId(id);
+  const handleDelete = async (questionId: string) => {
+    if (window.confirm('Are you sure you want to delete this question?')) {
       try {
-        await onToggleStatus(id, currentStatus);
+        // If a custom delete handler is provided, use it
+        if (onDelete) {
+          onDelete(questionId);
+          return;
+        }
+        
+        // Otherwise use the default implementation
+        const success = await deleteQuestion(questionId);
+        
+        if (!success) {
+          setError('Failed to delete question');
+        }
       } catch (error) {
-        console.error('Error in toggleQuestionStatus:', error);
+        console.error('Error deleting question:', error);
+        setError('An error occurred while deleting the question');
+      }
+    }
+  };
+  
+  /**
+   * Toggle a question's answered/unanswered status
+   */
+  const toggleQuestionStatus = async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
+    // If a custom toggle handler is provided, use it
+    if (onToggleStatus) {
+      try {
+        setUpdatingStatusId(questionId);
+        onToggleStatus(questionId, currentStatus);
+      } catch (error) {
+        console.error('Error toggling question status:', error);
+        setError('Failed to update question status');
       } finally {
+        // Update UI optimistically
         setUpdatingStatusId(null);
       }
       return;
     }
-
-    // Default to 'unanswered' if status is undefined
-    const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
     
-    // Set the updating ID to show loading state
-    setUpdatingStatusId(id);
-    
-    // Optimistically update the question in the UI
-    // We need to find the question in the list and update its status
-    const updatedQuestions = questions.map(q => 
-      q.id === id ? { ...q, status: newStatus } : q
-    );
-    
-    // This will trigger a re-render with the updated status
-    // Note: We're not directly modifying the questions array since it's a prop
-    // The parent component will receive the updated data via the listener
+    // Otherwise use the default implementation
+    setUpdatingStatusId(questionId);
+    setError(null);
     
     try {
-      // Update the database in the background
-      updateQuestionStatus(id, newStatus)
-        .then(() => {
-          console.log(`Question status updated to ${newStatus}`);
-        })
-        .catch((error) => {
-          console.error('Error updating question status:', error);
-          // If there's an error, we could revert the UI, but the listener will
-          // eventually sync the correct state from the database
-        })
-        .finally(() => {
-          setUpdatingStatusId(null);
-        });
+      const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
+      const success = await updateQuestionStatus(questionId, newStatus);
+      
+      if (!success) {
+        setError('Failed to update question status');
+      }
     } catch (error) {
-      console.error('Error in toggleQuestionStatus:', error);
+      console.error('Error updating question status:', error);
+      setError('An error occurred while updating the question status');
+    } finally {
       setUpdatingStatusId(null);
     }
-  }, [questions, onToggleStatus]);
+  };
+  
+  /**
+   * Check if user can edit the question
+   */
+  const canEditQuestion = (question: Question): boolean => {
+    // Only students can edit their own questions
+    return isStudent && studentId === question.studentId;
+  };
+  
+  /**
+   * Check if user can delete the question
+   */
+  const canDeleteQuestion = (question: Question): boolean => {
+    // Professors can delete any question, students can only delete their own
+    return isProfessor || (isStudent && studentId === question.studentId);
+  };
 
   /**
    * Renders the loading state when questions are being fetched
    * @returns {JSX.Element|null} Loading UI or null
    */
   const renderLoading = useMemo(() => {
-    if (isLoading) {
+    if (questions.length === 0) {
       return (
         <div className="flex items-center justify-center py-6 sm:py-8">
           <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
@@ -196,7 +206,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       );
     }
     return null;
-  }, [isLoading]);
+  }, [questions.length]);
 
   /**
    * Renders an empty state when no questions are available
@@ -248,14 +258,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   />
                   <div className="flex space-x-2">
                     <button
-                      onClick={() => saveEdit(question.id)}
+                      onClick={() => handleSaveEdit(question.id)}
                       disabled={isUpdating}
                       className="rounded-md px-2 py-1 text-xs font-medium bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
                     >
                       {isUpdating ? 'Saving...' : 'Save'}
                     </button>
                     <button
-                      onClick={cancelEditing}
+                      onClick={handleCancelEdit}
                       disabled={isUpdating}
                       className="rounded-md px-2 py-1 text-xs font-medium bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary"
                     >
@@ -285,7 +295,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                 {isProfessor && (
                   <div className="flex items-center">
                     <button
-                      onClick={() => toggleQuestionStatus(question.id, question.status)}
+                      onClick={() => toggleQuestionStatus(question.id, question.status || 'unanswered')}
                       disabled={updatingStatusId === question.id}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         updatingStatusId === question.id
@@ -306,14 +316,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                     </span>
                     <button
                       onClick={() => handleDelete(question.id)}
-                      disabled={deletingId === question.id}
+                      disabled={updatingStatusId === question.id}
                       className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        deletingId === question.id
+                        updatingStatusId === question.id
                           ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
                           : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
                       }`}
                     >
-                      {deletingId === question.id ? 'Deleting...' : 'Delete'}
+                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
                     </button>
                   </div>
                 )}
@@ -322,21 +332,21 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                 {isOwnQuestion && (
                   <>
                     <button
-                      onClick={() => startEditing(question.id, question.text)}
+                      onClick={() => handleEdit(question)}
                       className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(question.id)}
-                      disabled={deletingId === question.id}
+                      disabled={updatingStatusId === question.id}
                       className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        deletingId === question.id
+                        updatingStatusId === question.id
                           ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
                           : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
                       }`}
                     >
-                      {deletingId === question.id ? 'Deleting...' : 'Delete'}
+                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
                     </button>
                   </>
                 )}
@@ -346,9 +356,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         </li>
       );
     });
-  }, [questions, isProfessor, isStudent, studentId, editingId, deletingId, updatingStatusId, startEditing, saveEdit, cancelEditing, handleDelete, toggleQuestionStatus, isUpdating, editText]);
+  }, [questions, isProfessor, isStudent, studentId, editingId, updatingStatusId, handleEdit, handleSaveEdit, handleCancelEdit, handleDelete, toggleQuestionStatus, isUpdating, editText]);
 
-  if (isLoading) return renderLoading;
   if (questions.length === 0) return renderEmptyState;
 
   return (
