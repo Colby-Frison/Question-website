@@ -575,6 +575,7 @@ export const listenForActiveQuestion = (
   callback: (question: {id: string, text: string, timestamp: number} | null) => void,
   options?: {
     maxWaitTime?: number; // Maximum time to wait between updates (in ms)
+    useCache?: boolean;   // Whether to use cache for initial data
   }
 ): (() => void) => {
   if (!sessionCode) {
@@ -584,10 +585,32 @@ export const listenForActiveQuestion = (
   }
 
   const maxWaitTime = options?.maxWaitTime || 0;
+  const useCache = options?.useCache !== false;
 
-  console.log(`[listenForActiveQuestion] Setting up listener for session: ${sessionCode} with maxWaitTime: ${maxWaitTime}ms`);
+  console.log(`[listenForActiveQuestion] Setting up listener for session: ${sessionCode} with maxWaitTime: ${maxWaitTime}ms, useCache: ${useCache}`);
   
   try {
+    // Cache key for active questions
+    const cacheKey = `active_${sessionCode}`;
+    
+    // Try to use cached data first for immediate response
+    if (useCache) {
+      const cachedData = cache.questions.get(cacheKey);
+      if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
+        console.log(`[listenForActiveQuestion] Using cached active question for session: ${sessionCode}`);
+        if (cachedData.data.length > 0) {
+          const question = cachedData.data[0] as any;
+          callback({
+            id: question.id,
+            text: question.text || "No text provided",
+            timestamp: question.timestamp || Date.now()
+          });
+        } else {
+          callback(null);
+        }
+      }
+    }
+    
     // Query for the most recent active question in this session
     const q = query(
       collection(db, ACTIVE_QUESTION_COLLECTION),
@@ -604,6 +627,24 @@ export const listenForActiveQuestion = (
     
     // Function to send updates to the callback
     const sendUpdate = (data: {id: string, text: string, timestamp: number} | null) => {
+      // Update cache if we have data
+      if (data) {
+        cache.questions.set(cacheKey, {
+          data: [{
+            id: data.id,
+            text: data.text,
+            timestamp: data.timestamp
+          }],
+          timestamp: Date.now()
+        });
+      } else {
+        // Clear cache for this session if no active question
+        cache.questions.set(cacheKey, {
+          data: [],
+          timestamp: Date.now()
+        });
+      }
+      
       callback(data);
       lastUpdate = Date.now();
       pendingData = null;

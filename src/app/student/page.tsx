@@ -48,6 +48,63 @@ type TabType = 'questions' | 'points';
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
 
+/**
+ * Utility function to notify the user about a new active question
+ * Provides both audio and visual notifications with fallbacks
+ */
+const notifyNewQuestion = (questionText: string) => {
+  console.log("Notifying user of new question:", questionText);
+  
+  // Try to play a notification sound
+  try {
+    // Try to create a sound programmatically as fallback
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioContext) {
+      // Create a simple beep sound
+      const oscillator = audioContext.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5 note
+      
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 1);
+      
+      console.log("Played synthesized notification sound");
+    }
+  } catch (e) {
+    console.log('Error creating audio notification:', e);
+    // Fallback to alert only if we couldn't play a sound
+    alert(`New question from professor: ${questionText}`);
+  }
+  
+  // Flash the title bar to get user attention
+  let originalTitle = document.title;
+  let notificationCount = 0;
+  const maxFlashes = 5;
+  
+  const flashTitle = () => {
+    if (notificationCount > maxFlashes * 2) {
+      document.title = originalTitle;
+      return;
+    }
+    
+    document.title = notificationCount % 2 === 0 
+      ? '🔔 NEW QUESTION!'
+      : originalTitle;
+    
+    notificationCount++;
+    setTimeout(flashTitle, 500);
+  };
+  
+  flashTitle();
+};
+
 export default function StudentPage() {
   const router = useRouter();
   
@@ -92,6 +149,7 @@ export default function StudentPage() {
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
+  const isFirstLoad = useRef(true);
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -317,29 +375,52 @@ export default function StudentPage() {
             setClassQuestions(questions);
           }, { maxWaitTime: 15000, useCache: true });
           
-          // Set up listener for active question with loading state - refresh every 5 seconds since it's more critical
-          console.log("Setting up active question listener...");
+          // Set up listener for active question with loading state and add caching to reduce server calls
+          console.log("Setting up active question listener with debouncing and caching...");
           setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
-            console.log("Active question update received:", question);
+            console.log("Active question update received:", question ? "yes" : "no");
             
             if (question) {
               console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+              
+              // Check if this is a new question that we haven't seen before
+              const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
+              
+              if (isNewQuestion) {
+                console.log("New active question detected!");
+                
+                // Reset answer state for the new question
+                setAnswerText('');
+                setAnswerSubmitted(false);
+                
+                // Notify user of new question (but only if not first load)
+                if (!isFirstLoad.current) {
+                  notifyNewQuestion(question.text);
+                }
+              } else {
+                console.log("Received update for existing active question");
+              }
             } else {
               console.log("No active question available");
+              
+              // If we had an active question before but not anymore, it's been removed
+              if (activeQuestion) {
+                console.log("Active question was removed");
+              }
             }
             
-            // If the active question changes, reset the answer state
-            if (question?.id !== activeQuestion?.id) {
-              console.log("Question changed, resetting answer state");
-              setAnswerText('');
-              setAnswerSubmitted(false);
-            }
+            // Mark as no longer first load after first update
+            isFirstLoad.current = false;
             
+            // Update the state
             setActiveQuestion(question);
             setIsLoadingQuestion(false);
             lastQuestionCheckRef.current = Date.now();
-          }, { maxWaitTime: 5000 });
+          }, { 
+            maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
+            useCache: true // Enable caching to reduce server calls
+          });
           
           // Set up listener for session status changes - no delay as this is critical
           console.log("Setting up session status listener...");
@@ -612,52 +693,60 @@ export default function StudentPage() {
 
   /**
    * Handle submitting an answer to an active question
-   * Sends the answer to the database and updates UI
-   * 
-   * @param e - The form submit event
    */
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!answerText.trim() || !activeQuestion || !studentId || !sessionCode) {
+    if (!activeQuestion || !answerText.trim() || !studentId || !sessionCode) {
+      console.error("Missing required data for answer submission:", { 
+        hasActiveQuestion: !!activeQuestion, 
+        hasAnswerText: !!answerText.trim(), 
+        hasStudentId: !!studentId, 
+        hasSessionCode: !!sessionCode 
+      });
+      alert("Cannot submit answer: Missing required information");
       return;
     }
     
     try {
       setIsSubmitting(true);
+      console.log(`Submitting answer to question ${activeQuestion.id}:`, answerText);
       
-      // Submit answer to the database
-      await addAnswer({
+      // Add the answer
+      const result = await addAnswer({
         text: answerText.trim(),
         activeQuestionId: activeQuestion.id,
         studentId,
         sessionCode,
-        questionText: activeQuestion.text
+        questionText: activeQuestion.text // Include question text for context
       });
       
-      // Update UI
-      setAnswerSubmitted(true);
-      setAnswerText('');
-      
-      // Set cooldown to prevent spam
-      setCooldownActive(true);
-      setCooldownTime(10); // 10 second cooldown
-      
-      const cooldownInterval = setInterval(() => {
-        setCooldownTime(prevTime => {
-          if (prevTime <= 1) {
-            clearInterval(cooldownInterval);
-            setCooldownActive(false);
-            return 0;
-          }
-          return prevTime - 1;
-        });
-      }, 1000);
-      
-      setIsSubmitting(false);
+      if (result) {
+        console.log(`Answer submitted successfully with ID: ${result}`);
+        setAnswerSubmitted(true);
+        
+        // Start cooldown timer
+        setCooldownActive(true);
+        setCooldownTime(10);
+        
+        const timer = setInterval(() => {
+          setCooldownTime(prev => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              setCooldownActive(false);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        console.error("Failed to submit answer - no result ID returned");
+        alert("Failed to submit your answer. Please try again.");
+      }
     } catch (error) {
-      console.error('Error submitting answer:', error);
-      setError('Failed to submit answer. Please try again.');
+      console.error("Error submitting answer:", error);
+      alert("Error submitting your answer: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -722,6 +811,7 @@ export default function StudentPage() {
     }
   };
 
+  // Improved refresh function with better error handling
   const refreshActiveQuestion = async () => {
     if (!sessionCode) {
       console.error("Cannot refresh: No active session code");
@@ -730,6 +820,7 @@ export default function StudentPage() {
     }
     
     console.log(`Manually refreshing active question for session ${sessionCode}...`);
+    setIsLoadingQuestion(true);
     
     // Create a direct query to check for active questions
     try {
@@ -745,6 +836,8 @@ export default function StudentPage() {
       
       if (snapshot.empty) {
         console.log("No active questions found");
+        setActiveQuestion(null);
+        setIsLoadingQuestion(false);
         alert("No active questions found for this session");
         return;
       }
@@ -755,17 +848,32 @@ export default function StudentPage() {
       console.log(`Found active question: ${doc.id}`);
       console.log(`Question text: ${data.text}`);
       
+      // Check if this is a new question
+      const isNewQuestion = !activeQuestion || activeQuestion.id !== doc.id;
+      
       // Update active question state
-      setActiveQuestion({
+      const updatedQuestion = {
         id: doc.id,
         text: data.text || "No text provided",
         timestamp: data.timestamp || Date.now()
-      });
+      };
       
-      alert(`Active question refreshed: ${data.text}`);
+      setActiveQuestion(updatedQuestion);
+      setIsLoadingQuestion(false);
       
+      // If this is a new question, reset answer state and show notification
+      if (isNewQuestion) {
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        
+        // Notify user of new question
+        notifyNewQuestion(data.text);
+      } else {
+        alert(`Active question refreshed: ${data.text}`);
+      }
     } catch (error) {
       console.error("Error refreshing active question:", error);
+      setIsLoadingQuestion(false);
       alert("Error refreshing: " + (error instanceof Error ? error.message : String(error)));
     }
   };
@@ -850,50 +958,6 @@ export default function StudentPage() {
           <p>No questions from other students yet.</p>
         )}
       </div>
-      
-      {/* Active question from professor */}
-      {activeQuestion && (
-        <div className="bg-yellow-50 shadow-md rounded-lg p-4 mb-6 dark:bg-yellow-900 dark:text-white">
-          <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
-          <div className="mb-4 p-3 bg-white rounded dark:bg-gray-800">
-            {activeQuestion.text}
-          </div>
-          
-          {answerSubmitted ? (
-            <div className="bg-green-100 p-3 rounded dark:bg-green-800 dark:text-white">
-              <p className="font-semibold">Your answer has been submitted!</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmitAnswer}>
-              <div className="mb-4">
-                <label htmlFor="answerText" className="block mb-1 font-semibold">
-                  Your Answer:
-                </label>
-                <textarea
-                  id="answerText"
-                  value={answerText}
-                  onChange={(e) => setAnswerText(e.target.value)}
-                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                  rows={3}
-                  disabled={cooldownActive}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className={`px-4 py-2 rounded ${
-                  cooldownActive || isSubmitting
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
-                }`}
-                disabled={cooldownActive || isSubmitting}
-              >
-                {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
-              </button>
-            </form>
-          )}
-        </div>
-      )}
     </div>
   );
 
@@ -1156,8 +1220,8 @@ export default function StudentPage() {
               </div>
             </div>
             
-            {/* Active Question Sidebar - only shown in questions tab */}
-            {activeTab === 'questions' && activeQuestion && (
+            {/* Active Question Sidebar - show in any tab when there's an active question */}
+            {activeQuestion && (
               <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
                 <div className="bg-yellow-50 shadow-md rounded-lg p-4 sticky top-4 dark:bg-yellow-900 dark:text-white">
                   <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
