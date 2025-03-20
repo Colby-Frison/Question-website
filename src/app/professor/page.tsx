@@ -26,7 +26,8 @@ import {
   addActiveQuestion, 
   listenForAnswers,
   updateStudentPoints,
-  runDatabaseMaintenance
+  runDatabaseMaintenance,
+  updateQuestionStatus
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -223,10 +224,10 @@ export default function ProfessorPage() {
       setSessionStartTime(Date.now());
       setLastActivity(Date.now());
       
-      // Start listening for questions with the session code
+      // Start listening for questions with optimized listener (5 second delay max)
       const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
         setQuestions(newQuestions);
-      });
+      }, { maxWaitTime: 5000, useCache: true });
       
       setIsLoading(false);
       
@@ -341,10 +342,35 @@ export default function ProfessorPage() {
    */
   const handleDeleteQuestion = async (id: string) => {
     try {
+      console.log(`Deleting question ${id}`);
       await deleteQuestion(id);
       // The questions list will update automatically via the listener
+      console.log(`Question ${id} deleted successfully`);
     } catch (error) {
       console.error("Error deleting question:", error);
+      setError("Failed to delete question. Please try again.");
+    }
+  };
+
+  /**
+   * Handle updating a question's status
+   * 
+   * @param id - The ID of the question to update
+   * @param currentStatus - The current status of the question
+   */
+  const handleToggleQuestionStatus = async (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => {
+    try {
+      // Determine the new status
+      const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
+      console.log(`Updating question ${id} status to ${newStatus}`);
+      
+      await updateQuestionStatus(id, newStatus);
+      console.log(`Question ${id} status updated to ${newStatus}`);
+      
+      // The questions list will update automatically via the listener
+    } catch (error) {
+      console.error("Error updating question status:", error);
+      setError("Failed to update question status. Please try again.");
     }
   };
 
@@ -531,7 +557,10 @@ export default function ProfessorPage() {
         {questions.length > 0 ? (
           <QuestionList 
             questions={questions} 
+            isProfessor={true}
             onDelete={handleDeleteQuestion}
+            onToggleStatus={handleToggleQuestionStatus}
+            emptyMessage="No questions yet. Students will be able to ask questions once they join."
           />
         ) : (
           <p>No questions yet. Students will be able to ask questions once they join.</p>

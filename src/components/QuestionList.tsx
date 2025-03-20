@@ -12,6 +12,7 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [isStudent] - Whether the current user is a student
  * @property {string} [studentId] - ID of the current student, if applicable
  * @property {function} [onDelete] - Optional callback for when a question is deleted
+ * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
  * @property {string} [emptyMessage] - Message to display when there are no questions
  * @property {boolean} [isLoading] - Whether questions are currently loading
  */
@@ -21,6 +22,7 @@ interface QuestionListProps {
   isStudent?: boolean;
   studentId?: string;
   onDelete?: (id: string) => void;
+  onToggleStatus?: (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => void;
   emptyMessage?: string;
   isLoading?: boolean;
 }
@@ -43,6 +45,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   isStudent = false,
   studentId = '',
   onDelete,
+  onToggleStatus,
   emptyMessage = "No questions yet.",
   isLoading = false
 }) => {
@@ -130,6 +133,19 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    * @param {('answered'|'unanswered'|undefined)} currentStatus - Current status of the question
    */
   const toggleQuestionStatus = useCallback(async (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => {
+    // Use the provided callback if available
+    if (onToggleStatus) {
+      setUpdatingStatusId(id);
+      try {
+        await onToggleStatus(id, currentStatus);
+      } catch (error) {
+        console.error('Error in toggleQuestionStatus:', error);
+      } finally {
+        setUpdatingStatusId(null);
+      }
+      return;
+    }
+
     // Default to 'unanswered' if status is undefined
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
     
@@ -164,7 +180,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       console.error('Error in toggleQuestionStatus:', error);
       setUpdatingStatusId(null);
     }
-  }, [questions]);
+  }, [questions, onToggleStatus]);
 
   /**
    * Renders the loading state when questions are being fetched
@@ -202,10 +218,13 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    * @returns {JSX.Element[]} Array of question item elements
    */
   const questionItems = useMemo(() => {
-    return questions.map((question) => (
-      <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
-        {/* Status indicator for students */}
-        {!isProfessor && isStudent && (
+    return questions.map((question) => {
+      // Check if this question belongs to the current student
+      const isOwnQuestion = isStudent && studentId === question.studentId;
+
+      return (
+        <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
+          {/* Status indicator for students and professors */}
           <div className="absolute top-2 right-2 z-10">
             <div 
               className={`h-2 w-2 rounded-full ${
@@ -216,54 +235,53 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
               title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
             ></div>
           </div>
-        )}
 
-        <div className="flex flex-col space-y-2 w-full">
-          <div className="w-full">
-            {editingId === question.id ? (
-              <div className="space-y-2">
-                <textarea
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  className="form-input w-full"
-                  rows={3}
-                />
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => saveEdit(question.id)}
-                    disabled={isUpdating}
-                    className="rounded-md px-2 py-1 text-xs font-medium bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
-                  >
-                    {isUpdating ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={cancelEditing}
-                    disabled={isUpdating}
-                    className="rounded-md px-2 py-1 text-xs font-medium bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary"
-                  >
-                    Cancel
-                  </button>
+          <div className="flex flex-col space-y-2 w-full">
+            <div className="w-full">
+              {editingId === question.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="form-input w-full"
+                    rows={3}
+                  />
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => saveEdit(question.id)}
+                      disabled={isUpdating}
+                      className="rounded-md px-2 py-1 text-xs font-medium bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
+                    >
+                      {isUpdating ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      disabled={isUpdating}
+                      className="rounded-md px-2 py-1 text-xs font-medium bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <>
-                <div 
-                  className={`text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere ${!isProfessor && isStudent ? 'pr-8 pl-2' : ''}`}
-                >
-                  {question.text}
-                </div>
-              </>
-            )}
-          </div>
-          
-          {/* Action buttons for professors or students */}
-          {(isProfessor || isStudent) && editingId !== question.id && (
-            <div className={`flex items-center justify-between`}>
-              <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary">
-                {new Date(question.timestamp).toLocaleString()}
-              </p>
-              
-              <div className="flex items-center space-x-2">
+              ) : (
+                <>
+                  <div 
+                    className="text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere pr-8 pl-2"
+                  >
+                    {question.text}
+                  </div>
+                  {/* Always show timestamp in smaller text */}
+                  <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary pl-2 mt-1">
+                    {new Date(question.timestamp).toLocaleString()}
+                  </p>
+                </>
+              )}
+            </div>
+            
+            {/* Action buttons for professors or students who own the question */}
+            {(isProfessor || isOwnQuestion) && editingId !== question.id && (
+              <div className="flex items-center justify-end space-x-2 mt-2">
+                {/* Professor controls */}
                 {isProfessor && (
                   <div className="flex items-center">
                     <button
@@ -300,7 +318,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   </div>
                 )}
                 
-                {isStudent && (
+                {/* Student controls - only for their own questions */}
+                {isOwnQuestion && (
                   <>
                     <button
                       onClick={() => startEditing(question.id, question.text)}
@@ -322,12 +341,12 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   </>
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      </li>
-    ));
-  }, [questions, isProfessor, isStudent, editingId, deletingId, updatingStatusId, startEditing, saveEdit, cancelEditing, handleDelete, toggleQuestionStatus, isUpdating, editText]);
+            )}
+          </div>
+        </li>
+      );
+    });
+  }, [questions, isProfessor, isStudent, studentId, editingId, deletingId, updatingStatusId, startEditing, saveEdit, cancelEditing, handleDelete, toggleQuestionStatus, isUpdating, editText]);
 
   if (isLoading) return renderLoading;
   if (questions.length === 0) return renderEmptyState;

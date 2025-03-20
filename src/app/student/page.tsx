@@ -231,20 +231,20 @@ export default function StudentPage() {
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
-          // Set up listener for student's questions
+          // Set up listener for student's questions - refresh every 10 seconds to reduce load
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} personal questions`);
             setMyQuestions(questions);
             setIsLoading(false);
-          });
+          }, { maxWaitTime: 10000 });
           
-          // Set up listener for all class questions
+          // Set up listener for all class questions - refresh every 15 seconds to reduce load
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          });
+          }, { maxWaitTime: 15000, useCache: true });
           
-          // Set up listener for active question with loading state
+          // Set up listener for active question with loading state - refresh every 5 seconds since it's more critical
           setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
             console.log("Active question update:", question);
@@ -260,7 +260,7 @@ export default function StudentPage() {
             lastQuestionCheckRef.current = Date.now();
           });
           
-          // Set up listener for session status changes
+          // Set up listener for session status changes - no delay as this is critical
           const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
             console.log(`Session status changed to: ${status}`);
             
@@ -369,19 +369,19 @@ export default function StudentPage() {
       
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions
+      // Set up listener for student's questions - refresh every 10 seconds
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions`);
         setMyQuestions(questions);
-      });
+      }, { maxWaitTime: 10000 });
       
-      // Set up listener for all class questions
+      // Set up listener for all class questions - refresh every 15 seconds
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions`);
         setClassQuestions(questions);
-      });
+      }, { maxWaitTime: 15000, useCache: true });
       
-      // Set up listener for active question
+      // Set up listener for active question - refresh every 5 seconds
       setIsLoadingQuestion(true);
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
         console.log("Active question update:", question);
@@ -395,7 +395,7 @@ export default function StudentPage() {
         setActiveQuestion(question);
         setIsLoadingQuestion(false);
         lastQuestionCheckRef.current = Date.now();
-      });
+      }, { maxWaitTime: 5000 });
       
       // Set up listener for session status changes
       const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
@@ -551,6 +551,9 @@ export default function StudentPage() {
           <QuestionList 
             questions={myQuestions}
             isProfessor={false}
+            isStudent={true}
+            studentId={studentId}
+            emptyMessage="You haven't asked any questions yet."
           />
         ) : (
           <p>You haven't asked any questions yet.</p>
@@ -561,8 +564,11 @@ export default function StudentPage() {
         <h2 className="text-xl font-bold mb-4">Class Questions</h2>
         {classQuestions.length > 0 ? (
           <QuestionList 
-            questions={classQuestions.filter(q => q.studentId !== studentId)}
+            questions={classQuestions}
             isProfessor={false}
+            isStudent={true}
+            studentId={studentId}
+            emptyMessage="No questions from the class yet."
           />
         ) : (
           <p>No questions from other students yet.</p>
