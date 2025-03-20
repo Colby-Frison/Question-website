@@ -47,6 +47,8 @@ import { db } from '@/lib/firebase';
 
 // Constants for Firebase collections
 const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
+const ANSWERS_COLLECTION = 'answers';
+const CLASS_SESSIONS_COLLECTION = 'classSessions';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
@@ -570,69 +572,35 @@ export default function ProfessorPage() {
   };
 
   /**
-   * Handle forcing the creation of necessary Firebase indexes
-   * This is a development utility to trigger index creation prompts
+   * Force index creation by making the necessary queries
    */
-  const handleForceIndexCreation = async () => {
+  const forceIndexCreation = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      await forceIndexCreation();
+      console.log("Attempting to force index creation...");
+      
+      // Index 1: Answers by activeQuestionId
+      console.log("Testing index for answers by activeQuestionId");
+      const q1 = query(
+        collection(db, ANSWERS_COLLECTION),
+        where("activeQuestionId", "==", "dummy-id")
+      );
+      await getDocs(q1);
+      
+      // Index 2: Classes by professorId
+      console.log("Testing index for classes by professorId");
+      const q2 = query(
+        collection(db, CLASS_SESSIONS_COLLECTION),
+        where("professorId", "==", "dummy-id")
+      );
+      await getDocs(q2);
+      
       console.log("Index creation queries completed");
       setError("Check console for index creation links. If links appeared, click them to create the required indexes.");
       setIsLoading(false);
     } catch (e) {
       console.error("Error forcing index creation:", e);
       setIsLoading(false);
-    }
-  };
-
-  /**
-   * Add the test function near the handleAskQuestion function
-   */
-  const testActiveQuestion = async () => {
-    if (!sessionCode) {
-      alert("No active session. Start a session first.");
-      return;
-    }
-    
-    try {
-      console.log("Testing active question functionality...");
-      
-      // Step 1: Create a test question
-      const testText = `Test question ${Date.now()}`;
-      console.log(`Creating test question: "${testText}"`);
-      
-      // Add active question and get its ID back
-      const id = await addActiveQuestion(sessionCode, testText);
-      
-      if (!id) {
-        console.error("Failed to create test question");
-        alert("Failed to create test question. Check console for details.");
-        return;
-      }
-      
-      console.log(`Test question created with ID: ${id}`);
-      
-      // Step 2: Verify we can retrieve it
-      console.log("Retrieving the active question...");
-      const docRef = doc(db, ACTIVE_QUESTION_COLLECTION, id);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        console.log(`Retrieved question data:`, data);
-        alert(`Success! Created and retrieved test question:\n\nID: ${id}\nText: ${data.text}`);
-        
-        // Set as the active question
-        setActiveQuestionId(id);
-        setActiveQuestionText(data.text);
-      } else {
-        console.error(`Question ${id} not found!`);
-        alert(`Error: Created question ${id} but couldn't retrieve it!`);
-      }
-    } catch (error) {
-      console.error("Error testing active question:", error);
-      alert("Error: " + (error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -665,16 +633,6 @@ export default function ProfessorPage() {
     <div className="p-4">
       <div className="mb-4">
         <h2 className="text-xl font-bold mb-2">Award Points</h2>
-        
-        {/* Add the test button */}
-        <div className="flex justify-end mb-4">
-          <button
-            onClick={testActiveQuestion}
-            className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-          >
-            Test Active Question
-          </button>
-        </div>
         
         <form onSubmit={handleAskQuestion} className="mb-4">
           <div className="flex items-center">
@@ -818,21 +776,6 @@ export default function ProfessorPage() {
                     Start Class Session
                   </button>
                 )}
-                
-                {/* Development button for creating indexes */}
-                <div className="mt-6 pt-4 border-t dark:border-gray-700">
-                  <h3 className="text-md font-semibold mb-2">Developer Tools</h3>
-                  <button
-                    onClick={handleForceIndexCreation}
-                    className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                  >
-                    Create Required Indexes
-                  </button>
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Click this button if you're experiencing issues with class sessions or queries. It will prompt Firebase to create necessary indexes.
-                    Check browser console for links to create indexes.
-                  </p>
-                </div>
               </div>
             ) : (
               <div>

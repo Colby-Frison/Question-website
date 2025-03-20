@@ -37,8 +37,6 @@ import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
-import { runQuestionSystemTest } from '@/lib/qa-test';
-import { runFirebaseDiagnostics } from '@/lib/firebase-diagnostic';
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -140,7 +138,7 @@ export default function StudentPage() {
   // Active question and answer state
   const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
   const [answerText, setAnswerText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [cooldownTime, setCooldownTime] = useState(0);
@@ -652,7 +650,9 @@ export default function StudentPage() {
    * Increments points by 1
    */
   const handleAddPoint = () => {
-    setPoints(prevPoints => prevPoints + 1);
+    const newPoints = points + 1;
+    setPoints(newPoints);
+    setPointsInput(newPoints.toString());
   };
 
   /**
@@ -694,36 +694,27 @@ export default function StudentPage() {
   /**
    * Handle submitting an answer to an active question
    */
-  const handleSubmitAnswer = async (e: React.FormEvent) => {
+  const handleAnswerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!activeQuestion || !answerText.trim() || !studentId || !sessionCode) {
-      console.error("Missing required data for answer submission:", { 
-        hasActiveQuestion: !!activeQuestion, 
-        hasAnswerText: !!answerText.trim(), 
-        hasStudentId: !!studentId, 
-        hasSessionCode: !!sessionCode 
-      });
-      alert("Cannot submit answer: Missing required information");
       return;
     }
     
+    setIsSubmittingAnswer(true);
+    
     try {
-      setIsSubmitting(true);
-      console.log(`Submitting answer to question ${activeQuestion.id}:`, answerText);
-      
-      // Add the answer
       const result = await addAnswer({
-        text: answerText.trim(),
+        text: answerText,
         activeQuestionId: activeQuestion.id,
         studentId,
         sessionCode,
-        questionText: activeQuestion.text // Include question text for context
+        questionText: activeQuestion.text
       });
       
       if (result) {
-        console.log(`Answer submitted successfully with ID: ${result}`);
         setAnswerSubmitted(true);
+        setAnswerText('');
         
         // Start cooldown timer
         setCooldownActive(true);
@@ -739,180 +730,11 @@ export default function StudentPage() {
             return prev - 1;
           });
         }, 1000);
-      } else {
-        console.error("Failed to submit answer - no result ID returned");
-        alert("Failed to submit your answer. Please try again.");
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
-      alert("Error submitting your answer: " + (error instanceof Error ? error.message : String(error)));
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Add this debug function to the component
-  const runDebugTest = async () => {
-    console.log("Running debug test...");
-    if (!studentId || !sessionCode) {
-      console.error("Cannot run test: Missing studentId or sessionCode");
-      alert("Please join a class first to run the test.");
-      return;
-    }
-    
-    try {
-      const result = await runQuestionSystemTest(studentId, sessionCode);
-      if (result) {
-        console.log("Debug test completed successfully!");
-        alert("Debug test passed! Check the browser console for details.");
-      } else {
-        console.error("Debug test failed. See console for details.");
-        alert("Debug test failed. Check the browser console for errors.");
-      }
-    } catch (error) {
-      console.error("Error running debug test:", error);
-      alert("Error running debug test. Check the browser console for details.");
-    }
-  };
-
-  // Add this function for the diagnostic button
-  const runDiagnostics = async () => {
-    console.log("Running Firebase diagnostics...");
-    
-    try {
-      setIsLoading(true);
-      setInitStage('running-diagnostics');
-      
-      const results = await runFirebaseDiagnostics();
-      
-      // Create a formatted report
-      const report = results.map(result => {
-        return `Stage: ${result.stage}\nSuccess: ${result.success ? 'Yes' : 'No'}\nMessage: ${result.message}${
-          result.error ? `\nError: ${result.error.message || String(result.error)}` : ''
-        }`;
-      }).join('\n\n');
-      
-      console.log("Diagnostic results:", results);
-      
-      // Show results to user
-      alert(`Firebase Diagnostic Results:\n\n${report}`);
-      
-      // If there are failures, set an error
-      const failures = results.filter(r => !r.success);
-      if (failures.length > 0) {
-        setError(`Firebase connection issues detected: ${failures[0].message}`);
-      }
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error running diagnostics:", error);
-      setError(`Failed to run diagnostics: ${error instanceof Error ? error.message : String(error)}`);
-      setIsLoading(false);
-    }
-  };
-
-  // Improved refresh function with better error handling
-  const refreshActiveQuestion = async () => {
-    if (!sessionCode) {
-      console.error("Cannot refresh: No active session code");
-      alert("No active session. Please join a class first.");
-      return;
-    }
-    
-    console.log(`Manually refreshing active question for session ${sessionCode}...`);
-    setIsLoadingQuestion(true);
-    
-    // Create a direct query to check for active questions
-    try {
-      const q = query(
-        collection(db, ACTIVE_QUESTION_COLLECTION),
-        where('sessionCode', '==', sessionCode),
-        where('active', '==', true),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      );
-      
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-        console.log("No active questions found");
-        setActiveQuestion(null);
-        setIsLoadingQuestion(false);
-        alert("No active questions found for this session");
-        return;
-      }
-      
-      const doc = snapshot.docs[0];
-      const data = doc.data();
-      
-      console.log(`Found active question: ${doc.id}`);
-      console.log(`Question text: ${data.text}`);
-      
-      // Check if this is a new question
-      const isNewQuestion = !activeQuestion || activeQuestion.id !== doc.id;
-      
-      // Update active question state
-      const updatedQuestion = {
-        id: doc.id,
-        text: data.text || "No text provided",
-        timestamp: data.timestamp || Date.now()
-      };
-      
-      setActiveQuestion(updatedQuestion);
-      setIsLoadingQuestion(false);
-      
-      // If this is a new question, reset answer state and show notification
-      if (isNewQuestion) {
-        setAnswerText('');
-        setAnswerSubmitted(false);
-        
-        // Notify user of new question
-        notifyNewQuestion(data.text);
-      } else {
-        alert(`Active question refreshed: ${data.text}`);
-      }
-    } catch (error) {
-      console.error("Error refreshing active question:", error);
-      setIsLoadingQuestion(false);
-      alert("Error refreshing: " + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  // Add this function to manually check and refresh points
-  const refreshStudentPoints = async () => {
-    if (!studentId) {
-      console.error("Cannot refresh points: No student ID available");
-      alert("No student ID available");
-      return;
-    }
-    
-    console.log(`Manually refreshing points for student ${studentId}...`);
-    
-    try {
-      // Get the student points document
-      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
-      const pointsDoc = await getDoc(pointsRef);
-      
-      if (pointsDoc.exists()) {
-        const total = pointsDoc.data().total || 0;
-        console.log(`Retrieved points from Firestore: ${total}`);
-        setPoints(total);
-        setPointsInput(total.toString());
-        alert(`Points refreshed: ${total}`);
-      } else {
-        console.log(`No points record found for student ${studentId}`);
-        // Initialize with 0 if no record exists
-        await setDoc(pointsRef, { 
-          total: 0,
-          lastUpdated: Date.now() 
-        });
-        setPoints(0);
-        setPointsInput('0');
-        alert("No points record found. Initialized with 0 points.");
-      }
-    } catch (error) {
-      console.error("Error refreshing points:", error);
-      alert("Error refreshing points: " + (error instanceof Error ? error.message : String(error)));
+      setIsSubmittingAnswer(false);
     }
   };
 
@@ -967,55 +789,34 @@ export default function StudentPage() {
   const renderPointsTab = () => (
     <div className="p-4">
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Your Points</h2>
+        <h2 className="text-xl font-bold mb-4">Your Points: {points}</h2>
         
-        <div className="flex items-center justify-center mb-6">
-          <div className="text-center">
-            <div className="text-5xl font-bold mb-2">{points}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              {isSavingPoints ? 'Saving...' : 'Total Points'}
-            </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-center mb-4">
+          <div className="flex items-center justify-center">
+            <button
+              onClick={() => handleAddPoint()}
+              className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
+            >
+              +1
+            </button>
           </div>
-        </div>
-        
-        <div className="flex justify-center gap-4 mb-6">
-          <button
-            onClick={handleSubtractPoint}
-            className="px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-800 dark:text-red-100 dark:hover:bg-red-700"
-          >
-            -1
-          </button>
-          <button
-            onClick={handleAddPoint}
-            className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
-          >
-            +1
-          </button>
-        </div>
-        
-        <div className="flex items-center justify-center">
-          <input
-            type="text"
-            value={pointsInput}
-            onChange={handlePointsInputChange}
-            className="w-20 p-2 border rounded text-center mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
-          />
-          <button
-            onClick={handleSetPoints}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-          >
-            Set Points
-          </button>
-        </div>
-        
-        {/* Add refresh button */}
-        <div className="flex justify-center mt-4">
-          <button
-            onClick={refreshStudentPoints}
-            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-          >
-            Refresh Points from Database
-          </button>
+          
+          <div className="flex items-center justify-center">
+            <input
+              type="text"
+              value={pointsInput}
+              onChange={handlePointsInputChange}
+              className="w-20 p-2 border rounded text-center mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+            />
+            <button
+              onClick={handleSetPoints}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+            >
+              Set Points
+            </button>
+          </div>
+          
+          {/* Removing refresh button */}
         </div>
       </div>
       
@@ -1026,8 +827,7 @@ export default function StudentPage() {
           The professor will award points based on the quality of your answers.
         </p>
         <p className="mb-4">
-          You can manually adjust your points for testing purposes, but in a real classroom
-          setting, only the professor would award points.
+          Points are updated in real-time as your professor rewards your participation.
         </p>
       </div>
     </div>
@@ -1063,7 +863,6 @@ export default function StudentPage() {
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4">{error}</p>
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">Initialization stage: {initStage}</p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setError(null)}
@@ -1077,12 +876,6 @@ export default function StudentPage() {
               >
                 Refresh Page
               </button>
-              <a
-                href="/diagnose"
-                className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700 text-center mt-2"
-              >
-                Go to Diagnostic Page
-              </a>
             </div>
           </div>
         </div>
@@ -1100,23 +893,6 @@ export default function StudentPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-4 text-lg">Loading...</p>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stage: {initStage}</p>
-            
-            <div className="flex flex-col items-center gap-2 mt-4">
-              {/* Add diagnostic button during loading */}
-              <button
-                onClick={runDiagnostics}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-              >
-                Run Connection Diagnostics
-              </button>
-              
-              <a
-                href="/diagnose"
-                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-              >
-                Go to Diagnostic Page
-              </a>
-            </div>
           </div>
         </div>
       </div>
@@ -1156,28 +932,6 @@ export default function StudentPage() {
                     <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
                   </div>
                   <div className="flex gap-2">
-                    {process.env.NODE_ENV === 'development' && (
-                      <>
-                        <button
-                          onClick={runDebugTest}
-                          className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-                        >
-                          Run Debug Test
-                        </button>
-                        <button
-                          onClick={runDiagnostics}
-                          className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        >
-                          Run Diagnostics
-                        </button>
-                        <button
-                          onClick={refreshActiveQuestion}
-                          className="px-4 py-2 rounded bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
-                        >
-                          Refresh Active Question
-                        </button>
-                      </>
-                    )}
                     <button
                       onClick={handleLeaveClass}
                       className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
@@ -1234,7 +988,7 @@ export default function StudentPage() {
                       <p className="font-semibold">Your answer has been submitted!</p>
                     </div>
                   ) : (
-                    <form onSubmit={handleSubmitAnswer}>
+                    <form onSubmit={handleAnswerSubmit}>
                       <div className="mb-4">
                         <label htmlFor="answerText" className="block mb-1 font-semibold">
                           Your Answer:
@@ -1252,13 +1006,13 @@ export default function StudentPage() {
                       <button
                         type="submit"
                         className={`w-full px-4 py-2 rounded ${
-                          cooldownActive || isSubmitting
+                          cooldownActive || isSubmittingAnswer
                             ? 'bg-gray-400 cursor-not-allowed'
                             : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
                         }`}
-                        disabled={cooldownActive || isSubmitting}
+                        disabled={cooldownActive || isSubmittingAnswer}
                       >
-                        {isSubmitting ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+                        {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
                       </button>
                     </form>
                   )}

@@ -13,6 +13,7 @@ A web application for students to anonymously ask questions to their professors 
 - [Deployment](#deployment)
 - [Firebase Configuration](#firebase-configuration)
 - [Project Structure](#project-structure)
+- [Question System Documentation](#question-system-documentation)
 - [Future Enhancements](#future-enhancements)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -185,14 +186,18 @@ yarn install
      - `classCode` (Ascending)
      - `timestamp` (Descending)
 
-6. Start the development server
+6. For developers working on the question system:
+   - Review the [Question System Documentation](QUESTION_SYSTEM.md) to understand the optimizations and architecture
+   - Pay special attention to the caching and debouncing mechanisms when modifying listeners
+
+7. Start the development server
 ```bash
 npm run dev
 # or
 yarn dev
 ```
 
-7. Open [http://localhost:3000](http://localhost:3000) in your browser
+8. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Deployment
 
@@ -207,6 +212,34 @@ yarn dev
 4. Deploy your application
 
 For more detailed deployment instructions, see the [Deployment Guide](DEPLOYMENT.md).
+
+### Production Deployment Preparation
+
+The application has been optimized for production deployment with the following enhancements:
+
+1. **Removed Diagnostic Tools**: All diagnostic and testing utilities have been removed from the production build to reduce bundle size and ensure security.
+
+2. **Optimized Performance**:
+   - Implemented caching for active question listeners (10-second debounce)
+   - Added local caching for session data to reduce server calls
+   - Optimized Firebase queries to minimize data transfer
+
+3. **Enhanced User Experience**:
+   - Added audio and visual notifications for new active questions
+   - Implemented title bar flashing for important notifications
+   - Created fallback mechanisms for environments without audio support
+
+4. **Improved Reliability**:
+   - Added manual refresh options for active questions and points
+   - Enhanced error handling throughout the application
+   - Implemented robust state management for session persistence
+
+5. **Clean Code**:
+   - Removed all development-only imports and code
+   - Updated documentation to reflect production state
+   - Removed console logs and debugging utilities
+
+To deploy to production, follow the standard deployment process after verifying all functionality in a staging environment.
 
 ## Firebase Configuration
 
@@ -293,6 +326,28 @@ Create the following composite index in Firestore:
   - `firebase.ts` - Firebase configuration
   - `questions.ts` - Question management functions
 - `src/types/` - TypeScript type definitions
+
+## Question System Documentation
+
+For detailed documentation about the question management system, including performance optimizations, active questions, and the answer system, please refer to the [Question System Documentation](QUESTION_SYSTEM.md).
+
+This comprehensive documentation covers:
+
+- System architecture and overview
+- Performance optimizations (caching, debouncing, batch operations)
+- Student question functionality
+- Active question system
+- Answer collection and management
+- Points system
+- Firebase collections structure
+- Debugging and testing tools
+
+Recent improvements to the system include:
+- Reduced server calls through smart caching and debouncing
+- Enhanced notification system with audio and visual cues
+- Improved active question display and management
+- More robust error handling and diagnostics
+- Manual refresh options for critical data
 
 ## Future Enhancements
 
