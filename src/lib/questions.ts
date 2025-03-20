@@ -50,6 +50,9 @@ const cache = {
   CACHE_EXPIRATION: 30 * 1000
 };
 
+// Cache for student points to reduce redundant callbacks
+const pointsCache = new Map<string, number>();
+
 // =====================================================================
 // STUDENT QUESTIONS (Questions that students ask professors)
 // =====================================================================
@@ -187,16 +190,16 @@ export const listenForQuestions = (
           console.log(`[listenForQuestions] Received ${snapshot.docs.length} questions`);
           
           const questions: Question[] = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              text: data.text || "No text provided",
-              timestamp: data.timestamp || Date.now(),
-              status: data.status || 'unanswered',
+          const data = doc.data();
+          return {
+            id: doc.id,
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
               studentId: data.studentId || "unknown",
               sessionCode: data.sessionCode || sessionCode
-            };
-          });
+          };
+        });
           
           // Store the pending update
           pendingData = questions;
@@ -240,7 +243,7 @@ export const listenForQuestions = (
           clearTimeout(debounceTimer);
         }
         unsubscribe();
-      } catch (error) {
+  } catch (error) {
         console.error("[listenForQuestions] Error during cleanup:", error);
       }
     };
@@ -299,7 +302,7 @@ export const listenForUserQuestions = (
         console.log(`[listenForUserQuestions] Received ${snapshot.docs.length} user-question links`);
         
         if (snapshot.empty) {
-          callback([]);
+    callback([]);
           return;
         }
         
@@ -323,11 +326,11 @@ export const listenForUserQuestions = (
                   
                   if (questionDoc.exists()) {
                     const data = questionDoc.data();
-                    return {
+          return {
                       id: questionId,
-                      text: data.text || "No text provided",
-                      timestamp: data.timestamp || Date.now(),
-                      status: data.status || 'unanswered',
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
                       studentId: data.studentId || studentId,
                       sessionCode: data.sessionCode || sessionCode
                     } as Question;
@@ -350,9 +353,9 @@ export const listenForUserQuestions = (
             callback(questions);
             lastUpdate = Date.now();
             pendingOperation = null;
-          } catch (error) {
+  } catch (error) {
             console.error("[listenForUserQuestions] Error processing questions:", error);
-            callback([]);
+    callback([]);
           }
         };
         
@@ -426,15 +429,15 @@ export const updateQuestion = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestion] Question ${questionId} not found`);
-      return false;
-    }
+    return false;
+  }
     
     const data = questionDoc.data();
     if (data.studentId !== studentId) {
       console.error(`[updateQuestion] Student ${studentId} does not own question ${questionId}`);
-      return false;
-    }
-    
+    return false;
+  }
+
     // Update question
     await updateDoc(questionRef, {
       text: newText.trim(),
@@ -473,8 +476,8 @@ export const updateQuestionStatus = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestionStatus] Question ${questionId} not found`);
-      return false;
-    }
+    return false;
+  }
     
     // Update status
     await updateDoc(questionRef, {
@@ -613,7 +616,7 @@ export const listenForActiveQuestion = (
     
     // Query for the most recent active question in this session
     const q = query(
-      collection(db, ACTIVE_QUESTION_COLLECTION),
+      collection(db, ACTIVE_QUESTION_COLLECTION), 
       where('sessionCode', '==', sessionCode),
       where('active', '==', true),
       orderBy('timestamp', 'desc'),
@@ -694,7 +697,7 @@ export const listenForActiveQuestion = (
             }
           }, waitTime);
         }
-      },
+      }, 
       (error) => {
         console.error("[listenForActiveQuestion] Error in listener:", error);
         callback(null);
@@ -806,7 +809,7 @@ export const addAnswer = async (
     
     // Check if this student has already answered this question
     const q = query(
-      collection(db, ANSWERS_COLLECTION),
+      collection(db, ANSWERS_COLLECTION), 
       where('activeQuestionId', '==', activeQuestionId),
       where('studentId', '==', studentId)
     );
@@ -853,7 +856,7 @@ export const addAnswer = async (
  * @returns Unsubscribe function to stop listening
  */
 export const listenForAnswers = (
-  activeQuestionId: string,
+  activeQuestionId: string, 
   callback: (answers: {id: string, text: string, timestamp: number, studentId: string, questionText?: string}[]) => void
 ): (() => void) => {
   if (!activeQuestionId) {
@@ -867,7 +870,7 @@ export const listenForAnswers = (
   try {
     // Query for answers to this active question
     const q = query(
-      collection(db, ANSWERS_COLLECTION),
+      collection(db, ANSWERS_COLLECTION), 
       where('activeQuestionId', '==', activeQuestionId),
       orderBy('timestamp', 'asc')
     );
@@ -889,8 +892,8 @@ export const listenForAnswers = (
           const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId));
           if (questionDoc.exists()) {
             questionText = questionDoc.data().text || "";
-          }
-        } catch (error) {
+            }
+          } catch (error) {
           console.error(`[listenForAnswers] Error fetching question text for ${activeQuestionId}:`, error);
         }
         
@@ -908,7 +911,7 @@ export const listenForAnswers = (
         });
         
         callback(answers);
-      },
+      }, 
       (error) => {
         console.error("[listenForAnswers] Error in listener:", error);
         callback([]);
@@ -1028,45 +1031,95 @@ export const listenForStudentPoints = (
   console.log(`[listenForStudentPoints] Setting up listener for student: ${studentId}`);
   
   try {
+    // Check if we already have cached points for this student
+    if (pointsCache.has(studentId)) {
+      const cachedPoints = pointsCache.get(studentId);
+      console.log(`[listenForStudentPoints] Using cached points for student ${studentId}: ${cachedPoints}`);
+      // Use setTimeout to ensure the callback is asynchronous
+      setTimeout(() => callback(cachedPoints!), 0);
+    }
+    
     // Set up listener for this student's points document
     const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     
-    // Use includeMetadataChanges for better real-time updates
+    // Use includeMetadataChanges but with a special setting to reduce unnecessary callbacks
     const unsubscribe = onSnapshot(
       pointsRef,
-      { includeMetadataChanges: true },
+      { 
+        includeMetadataChanges: true 
+      },
       (doc) => {
         // Check if the data comes from cache or server
         const source = doc.metadata.hasPendingWrites ? "local" : "server";
         
         if (!doc.exists()) {
           console.log(`[listenForStudentPoints] No points record for student ${studentId}`);
-          // Initialize with 0 points if no record exists
-          setDoc(pointsRef, { 
-            total: 0,
-            lastUpdated: Date.now() 
-          }).catch(err => {
-            console.error("[listenForStudentPoints] Error initializing points record:", err);
-          });
-          callback(0);
+          
+          // Only initialize if we don't have it in cache
+          if (!pointsCache.has(studentId)) {
+            // Initialize with 0 points if no record exists
+            setDoc(pointsRef, { 
+              total: 0,
+              lastUpdated: Date.now() 
+            }).catch(err => {
+              console.error("[listenForStudentPoints] Error initializing points record:", err);
+            });
+            
+            // Update cache
+            pointsCache.set(studentId, 0);
+    callback(0);
+          }
           return;
         }
         
         const total = doc.data().total || 0;
-        console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points (source: ${source})`);
-        callback(total);
+        
+        // Only update and trigger callback if points have changed or it's from server
+        const cachedValue = pointsCache.get(studentId);
+        if (cachedValue !== total || source === "server") {
+          console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points (source: ${source})`);
+          
+          // Update cache
+          pointsCache.set(studentId, total);
+          
+          // Trigger callback
+          callback(total);
+        } else {
+          console.log(`[listenForStudentPoints] Skipping redundant update for student ${studentId}`);
+        }
       },
       (error) => {
         console.error("[listenForStudentPoints] Error in listener:", error);
-        callback(0);
+        callback(pointsCache.get(studentId) || 0);
       }
     );
     
-    return unsubscribe;
-  } catch (error) {
+    // Return a cleanup function that also cleans the cache for this student
+    return () => {
+      console.log(`[listenForStudentPoints] Cleaning up listener for student ${studentId}`);
+      // We don't remove from cache on unsubscribe to allow faster resubscription
+      unsubscribe();
+    };
+        } catch (error) {
     console.error("[listenForStudentPoints] Error setting up listener:", error);
-    callback(0);
+    callback(pointsCache.get(studentId) || 0);
     return () => {};
+  }
+};
+
+/**
+ * Clear the points cache for all students or a specific student
+ * Useful when major changes happen or for testing
+ * 
+ * @param studentId - Optional ID of the student to clear cache for
+ */
+export const clearPointsCache = (studentId?: string): void => {
+  if (studentId) {
+    console.log(`[clearPointsCache] Clearing cache for student ${studentId}`);
+    pointsCache.delete(studentId);
+  } else {
+    console.log(`[clearPointsCache] Clearing cache for all students`);
+    pointsCache.clear();
   }
 };
 
@@ -1088,9 +1141,9 @@ export const runDatabaseMaintenance = async (): Promise<{
   // For brevity, returning a simple result
   console.log('[runDatabaseMaintenance] Maintenance operations would run here');
   
-  return {
-    inactiveSessionsDeleted: 0,
+    return {
+      inactiveSessionsDeleted: 0,
     orphanedQuestionsDeleted: 0,
-    orphanedAnswersDeleted: 0
-  };
+      orphanedAnswersDeleted: 0
+    };
 }; 

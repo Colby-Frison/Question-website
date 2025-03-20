@@ -30,6 +30,7 @@ import {
   listenForStudentPoints,
   updateStudentPoints,
   runDatabaseMaintenance,
+  clearPointsCache,
   ACTIVE_QUESTION_COLLECTION
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
@@ -172,6 +173,111 @@ export default function StudentPage() {
   }, [studentId, sessionListener]);
 
   /**
+   * Handle adding a point to student's total
+   * Increments points by 1
+   */
+  const handleAddPoint = () => {
+    // Trigger the points update with a 1-point increment
+    handlePointsChange(points + 1);
+  };
+
+  /**
+   * Handle subtracting a point from student's total
+   * Decrements points by 1, but not below 0
+   */
+  const handleSubtractPoint = () => {
+    // Trigger the points update with a 1-point decrement, but not below 0
+    handlePointsChange(Math.max(0, points - 1));
+  };
+
+  /**
+   * Handle setting points to a specific value
+   * Validates input and updates points state
+   */
+  const handleSetPoints = () => {
+    const newPoints = parseInt(pointsInput, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      handlePointsChange(newPoints);
+    } else {
+      // Reset input to current points if invalid
+      setPointsInput(points.toString());
+    }
+  };
+
+  /**
+   * Centralized function to handle all points changes and sync with database
+   * @param newValue - The new points value to set
+   */
+  const handlePointsChange = (newValue: number) => {
+    if (newValue === points) return; // No change, skip processing
+    
+    // Update UI immediately for responsiveness
+    setPoints(newValue);
+    setPointsInput(newValue.toString());
+    
+    // Sync with database if student is authenticated
+      if (studentId) {
+      // Indicate saving status
+      setIsSavingPoints(true);
+      
+      // Clear any existing timeout to avoid multiple saves
+        if (pointsSaveTimeoutRef.current) {
+          clearTimeout(pointsSaveTimeoutRef.current);
+        }
+        
+      // Debounce database update to avoid excessive writes
+        pointsSaveTimeoutRef.current = setTimeout(async () => {
+          try {
+          console.log(`Syncing points to database: ${newValue}`);
+          
+            // Get current points from database
+          let currentDbPoints = 0;
+            
+            // Use a promise to get the current points value
+            await new Promise<void>((resolve) => {
+              const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
+              currentDbPoints = dbPoints;
+                unsubscribe();
+                resolve();
+              });
+            });
+            
+          // Only update if there's a difference with what's in the database
+          const pointsDifference = newValue - currentDbPoints;
+            
+            if (pointsDifference !== 0) {
+            console.log(`Updating database with points difference: ${pointsDifference}`);
+            const success = await updateStudentPoints(studentId, pointsDifference);
+            
+            if (success) {
+              console.log(`Points saved to database. New total: ${newValue}`);
+            } else {
+              console.error("Failed to update points in database");
+              // Don't revert UI here - let the listener handle any discrepancies
+            }
+          } else {
+            console.log("Points already in sync with database");
+            }
+          } catch (error) {
+            console.error("Error saving points to database:", error);
+          } finally {
+            setIsSavingPoints(false);
+          }
+      }, 1500); // Reduced from 2000ms to 1500ms for better responsiveness while still limiting calls
+    }
+  };
+
+  /**
+   * Effect to save points to localStorage when they change
+   */
+  useEffect(() => {
+    // Save points to localStorage whenever they change
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('studentPoints', points.toString());
+    }
+  }, [points]);
+
+  /**
    * Set up real-time listener for student points from Firestore
    * Updates the points state when changes occur in the database
    */
@@ -179,96 +285,44 @@ export default function StudentPage() {
     if (!studentId) return () => {};
     
     console.log("Setting up points listener for student:", studentId);
+    let isInitialLoad = true;
+    
     const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
-      console.log("Received points update:", newPoints);
+      console.log("Received points update from database:", newPoints);
       
-      // Only update if the points have changed to avoid infinite loops
-      if (newPoints !== points) {
-        setPoints(newPoints);
+      // If it's the initial load or the points are different from local state
+      if (isInitialLoad || newPoints !== points) {
+        console.log(`Updating points from ${points} to ${newPoints} (initial load: ${isInitialLoad})`);
+        
+        // Update the local state
+      setPoints(newPoints);
         setPointsInput(newPoints.toString());
         
-        // Visual feedback for points change
-        const pointsDisplay = document.getElementById('points-display');
-        if (pointsDisplay) {
-          // Add a temporary scale effect to highlight changes
-          pointsDisplay.classList.add('scale-110');
-          pointsDisplay.classList.add(newPoints > points ? 'text-green-500' : 'text-red-500');
-          
-          setTimeout(() => {
-            pointsDisplay.classList.remove('scale-110');
-            pointsDisplay.classList.remove(newPoints > points ? 'text-green-500' : 'text-red-500');
-          }, 1000);
+        // Only show animation if it's not the initial load
+        if (!isInitialLoad) {
+          // Visual feedback for points change
+          const pointsDisplay = document.getElementById('points-display');
+          if (pointsDisplay) {
+            // Add a temporary scale effect to highlight changes
+            pointsDisplay.classList.add('scale-110');
+            pointsDisplay.classList.add(newPoints > points ? 'text-green-500' : 'text-red-500');
+            
+            setTimeout(() => {
+              pointsDisplay.classList.remove('scale-110');
+              pointsDisplay.classList.remove(newPoints > points ? 'text-green-500' : 'text-red-500');
+            }, 1000);
+          }
         }
       }
+      
+      isInitialLoad = false;
     });
     
     return () => {
       console.log("Cleaning up points listener");
       unsubscribe();
     };
-  }, [studentId, points]);
-
-  /**
-   * Effect to save points to localStorage and database when they change
-   * Uses a debounce pattern to avoid excessive database writes
-   */
-  useEffect(() => {
-    // Save points to localStorage whenever they change
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('studentPoints', points.toString());
-      setPointsInput(points.toString());
-      
-      // Set up debounced save to database
-      if (studentId) {
-        // Clear any existing timeout
-        if (pointsSaveTimeoutRef.current) {
-          clearTimeout(pointsSaveTimeoutRef.current);
-        }
-        
-        setIsSavingPoints(true);
-        
-        // Set a new timeout to save to database after 2 seconds of inactivity
-        pointsSaveTimeoutRef.current = setTimeout(async () => {
-          try {
-            console.log(`Saving points to database: ${points}`);
-            // Get current points from database
-            let currentPoints = 0;
-            
-            // Use a promise to get the current points value
-            await new Promise<void>((resolve) => {
-              const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
-                currentPoints = dbPoints;
-                unsubscribe();
-                resolve();
-              });
-            });
-            
-            // Calculate the difference to update
-            const pointsDifference = points - currentPoints;
-            
-            if (pointsDifference !== 0) {
-              console.log(`Updating database with points difference: ${pointsDifference}`);
-              await updateStudentPoints(studentId, pointsDifference);
-              console.log(`Points saved to database. Difference: ${pointsDifference}`);
-            } else {
-              console.log("No point difference to update");
-            }
-          } catch (error) {
-            console.error("Error saving points to database:", error);
-          } finally {
-            setIsSavingPoints(false);
-          }
-        }, 2000);
-      }
-    }
-    
-    // Cleanup function to clear timeout
-    return () => {
-      if (pointsSaveTimeoutRef.current) {
-        clearTimeout(pointsSaveTimeoutRef.current);
-      }
-    };
-  }, [points, studentId]);
+  }, [studentId]); // Remove points dependency to avoid constant re-subscriptions
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -289,7 +343,7 @@ export default function StudentPage() {
     const userId = getUserId();
     console.log("User ID retrieved:", userId ? "success" : "failed");
     setStudentId(userId);
-    
+
     // Check network status
     const handleOnline = () => {
       console.log("Network connection restored");
@@ -324,13 +378,24 @@ export default function StudentPage() {
     
     console.log("== STUDENT PAGE MOUNT EFFECT COMPLETED ==");
     
+    // Cleanup function
     return () => {
+      // Clean up event listeners
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      console.log("== STUDENT PAGE UNMOUNTED ==");
+      
+      // Clean up any pending timeouts
+      if (pointsSaveTimeoutRef.current) {
+        clearTimeout(pointsSaveTimeoutRef.current);
+      }
+      
+      // Clear points cache for this student when the component unmounts
+      if (userId) {
+        clearPointsCache(userId);
+      }
+      
+      console.log("== STUDENT PAGE CLEANUP COMPLETED ==");
     };
-    
-    // This effect should only run once on mount and when router changes
   }, [router]);
 
   /**
@@ -410,8 +475,8 @@ export default function StudentPage() {
                 console.log("New active question detected!");
                 
                 // Reset answer state for the new question
-                setAnswerText('');
-                setAnswerSubmitted(false);
+              setAnswerText('');
+              setAnswerSubmitted(false);
                 
                 // Notify user of new question (but only if not first load)
                 if (!isFirstLoad.current) {
@@ -488,7 +553,7 @@ export default function StudentPage() {
         setInitStage('joined-class-error');
       }
     };
-    
+
     checkJoinedClass();
     console.log("== JOINED CLASS EFFECT COMPLETED ==");
     
@@ -574,29 +639,29 @@ export default function StudentPage() {
       // Set class and session info
       setClassName(session.code); // Original class name
       setSessionCode(code);       // Session code
-      setJoined(true);
-      
+        setJoined(true);
+        
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
       // Set up listener for student's questions - refresh every 10 seconds
       console.log(`Setting up personal questions listener...`);
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions:`, questions);
-        setMyQuestions(questions);
+          setMyQuestions(questions);
       }, { maxWaitTime: 10000 });
       
       // Set up listener for all class questions - refresh every 15 seconds
       console.log(`Setting up class questions listener...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
-        setClassQuestions(questions);
+          setClassQuestions(questions);
       }, { maxWaitTime: 15000, useCache: true });
-      
+        
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
-      setIsLoadingQuestion(true);
+        setIsLoadingQuestion(true);
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
-        console.log("Active question update:", question);
+          console.log("Active question update:", question);
         
         // If the active question changes, reset the answer state
         if (question?.id !== activeQuestion?.id) {
@@ -605,8 +670,8 @@ export default function StudentPage() {
         }
         
         setActiveQuestion(question);
-        setIsLoadingQuestion(false);
-        lastQuestionCheckRef.current = Date.now();
+          setIsLoadingQuestion(false);
+          lastQuestionCheckRef.current = Date.now();
       }, { maxWaitTime: 5000 });
       
       // Set up listener for session status changes
@@ -618,12 +683,12 @@ export default function StudentPage() {
         if (!status || status === 'closed' || status === 'archived') {
           console.log('Session ended by professor, leaving class...');
           // Call handleLeaveClass directly
-          setJoined(false);
+      setJoined(false);
           setClassName('');
           setSessionCode('');
-          setMyQuestions([]);
-          setClassQuestions([]);
-          setActiveQuestion(null);
+      setMyQuestions([]);
+        setClassQuestions([]);
+        setActiveQuestion(null);
           
           if (studentId) {
             leaveClass(studentId).catch(console.error);
@@ -667,26 +732,6 @@ export default function StudentPage() {
   };
 
   /**
-   * Handle adding a point to student's total
-   * Increments points by 1
-   */
-  const handleAddPoint = () => {
-    const newPoints = points + 1;
-    setPoints(newPoints);
-    setPointsInput(newPoints.toString());
-  };
-
-  /**
-   * Handle subtracting a point from student's total
-   * Decrements points by 1, but not below 0
-   */
-  const handleSubtractPoint = () => {
-    const newPoints = Math.max(0, points - 1);
-    setPoints(newPoints);
-    setPointsInput(newPoints.toString());
-  };
-
-  /**
    * Handle input change for the points field
    * Validates input to ensure it's a positive number
    * 
@@ -697,20 +742,6 @@ export default function StudentPage() {
     // Only allow digits
     if (/^\d*$/.test(value)) {
       setPointsInput(value);
-    }
-  };
-
-  /**
-   * Handle setting points to a specific value
-   * Validates input and updates points state
-   */
-  const handleSetPoints = () => {
-    const newPoints = parseInt(pointsInput, 10);
-    if (!isNaN(newPoints) && newPoints >= 0) {
-      setPoints(newPoints);
-    } else {
-      // Reset input to current points if invalid
-      setPointsInput(points.toString());
     }
   };
 
@@ -776,13 +807,13 @@ export default function StudentPage() {
         <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 dark:bg-blue-900/30 dark:border-blue-800">
           <p className="text-sm text-blue-800 dark:text-blue-200">
             Your question will be anonymous to other students, but you'll be able to track its status.
-          </p>
-        </div>
+                </p>
+                </div>
         <QuestionForm 
           studentId={studentId}
           sessionCode={sessionCode}
         />
-      </div>
+              </div>
       
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
         <h2 className="text-xl font-bold mb-4 flex items-center">
@@ -792,11 +823,11 @@ export default function StudentPage() {
           My Questions
         </h2>
         {myQuestions.length > 0 ? (
-          <QuestionList 
-            questions={myQuestions}
+              <QuestionList 
+                questions={myQuestions} 
             isProfessor={false}
-            isStudent={true}
-            studentId={studentId}
+              isStudent={true}
+              studentId={studentId}
             emptyMessage="You haven't asked any questions yet."
           />
         ) : (
@@ -807,9 +838,9 @@ export default function StudentPage() {
             <p className="text-gray-600 dark:text-gray-400">You haven't asked any questions yet.</p>
             <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Your questions will appear here after you ask them.</p>
           </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
   );
 
   /**
@@ -827,16 +858,16 @@ export default function StudentPage() {
         <p className="text-sm text-purple-800 dark:text-purple-200">
           Questions from your classmates. All questions are anonymous.
         </p>
-      </div>
+              </div>
       {classQuestions.length > 0 ? (
         <div className="max-h-[600px] overflow-y-auto pr-1 space-y-2">
           <QuestionList 
-            questions={classQuestions}
+              questions={classQuestions}
             isProfessor={false}
             isStudent={true}
             studentId={studentId}
             emptyMessage="No questions from the class yet."
-          />
+            />
         </div>
       ) : (
         <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg dark:border-gray-600">
@@ -845,7 +876,7 @@ export default function StudentPage() {
           </svg>
           <p className="text-gray-600 dark:text-gray-400">No class questions yet</p>
           <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Questions from your classmates will appear here.</p>
-        </div>
+      </div>
       )}
     </div>
   );
@@ -931,6 +962,9 @@ export default function StudentPage() {
       setIsLoading(true);
       console.log(`Manually refreshing points for student: ${studentId}`);
       
+      // Clear cache first to ensure we get fresh data
+      clearPointsCache(studentId);
+      
       // Get the points data from Firestore
       const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
       const pointsDoc = await getDoc(pointsRef);
@@ -939,6 +973,7 @@ export default function StudentPage() {
         const pointsData = pointsDoc.data();
         console.log(`Retrieved points data:`, pointsData);
         setPoints(pointsData.total || 0);
+        setPointsInput((pointsData.total || 0).toString());
       } else {
         console.log(`No points record found for student: ${studentId}, initializing with 0`);
         // Initialize with 0 points if no record exists
@@ -947,6 +982,7 @@ export default function StudentPage() {
           lastUpdated: Date.now() 
         });
         setPoints(0);
+        setPointsInput('0');
       }
       
       setIsLoading(false);
@@ -988,7 +1024,7 @@ export default function StudentPage() {
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4">{error}</p>
             <div className="flex flex-col gap-2">
-              <button
+        <button
                 onClick={() => setError(null)}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
               >
@@ -999,19 +1035,19 @@ export default function StudentPage() {
                 className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
               >
                 Refresh Page
-              </button>
+        </button>
             </div>
           </div>
-        </div>
       </div>
-    );
+    </div>
+  );
   }
 
   // Show loading state
   if (isLoading) {
-    return (
+  return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="student" onLogout={handleLogout} />
+      <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
@@ -1056,7 +1092,7 @@ export default function StudentPage() {
                     <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
                   </div>
                   <div className="flex gap-2">
-                    <button
+              <button
                       onClick={handleLeaveClass}
                       className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
                     >
@@ -1071,30 +1107,30 @@ export default function StudentPage() {
                   <div className="flex">
                     <button
                       className={`px-4 py-2 ${
-                        activeTab === 'questions' 
+                  activeTab === 'questions'
                           ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
                           : 'text-gray-600 dark:text-gray-400'
-                      }`}
+                }`}
                       onClick={() => setActiveTab('questions')}
-                    >
-                      Questions
-                    </button>
-                    <button
+              >
+                Questions
+              </button>
+              <button
                       className={`px-4 py-2 ${
-                        activeTab === 'points' 
+                  activeTab === 'points'
                           ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
                           : 'text-gray-600 dark:text-gray-400'
-                      }`}
+                }`}
                       onClick={() => setActiveTab('points')}
-                    >
+              >
                       My Points
-                    </button>
-                  </div>
-                </div>
-                
+              </button>
+            </div>
+          </div>
+          
                 <div className="mt-4">
                   {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-                </div>
+            </div>
               </div>
             </div>
             
@@ -1133,8 +1169,8 @@ export default function StudentPage() {
                           {isSavingPoints && (
                             <div className="absolute -top-2 -right-2">
                               <div className="animate-spin h-4 w-4 border-t-2 border-green-500 rounded-full"></div>
-                            </div>
-                          )}
+            </div>
+          )}
                         </div>
                         
                         <button 
@@ -1146,7 +1182,7 @@ export default function StudentPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                           </svg>
                         </button>
-                      </div>
+        </div>
                       
                       <div className="text-sm text-green-800 dark:text-green-200 text-center">
                         Total points earned in this class

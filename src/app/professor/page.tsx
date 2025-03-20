@@ -27,7 +27,8 @@ import {
   listenForAnswers,
   updateStudentPoints,
   runDatabaseMaintenance,
-  updateQuestionStatus
+  updateQuestionStatus,
+  clearPointsCache
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -130,6 +131,19 @@ export default function ProfessorPage() {
     };
     
     checkConnection();
+    
+    // Cleanup function
+    return () => {
+      // End session if active
+      if (sessionActive && sessionId) {
+        endClassSession(sessionId).catch(console.error);
+      }
+      
+      // Clear points cache when component unmounts
+      clearPointsCache();
+      
+      console.log("Professor page cleanup completed");
+    };
   }, [router]);
 
   /**
@@ -307,6 +321,16 @@ export default function ProfessorPage() {
       setIsLoading(true);
       console.log(`Attempting to end session with ID: ${sessionId}`);
       
+      // Clear answers and active question if any
+      if (activeQuestionId) {
+        setActiveQuestionId(null);
+        setActiveQuestionText('');
+        setAnswers([]);
+        setPointsAwarded({});
+        // Clear points cache as session is ending
+        clearPointsCache();
+      }
+      
       try {
         // First try with the stored session ID
         const success = await endClassSession(sessionId);
@@ -445,11 +469,23 @@ export default function ProfessorPage() {
    * Clears user type and redirects to home page
    */
   const handleLogout = () => {
-    // End session if active
+    // First clean up resources
     if (sessionActive && sessionId) {
-      endClassSession(sessionId).catch(console.error);
+      // End the session in the database
+      endClassSession(sessionId).catch(error => {
+        console.error("Error ending session during logout:", error);
+      });
     }
+
+    // Clear points cache before leaving
+    clearPointsCache();
     
+    // Clear local state
+    setSessionActive(false);
+    setSessionId('');
+    setSessionCode('');
+    
+    // Then clear user type and redirect
     clearUserType();
     router.push('/');
   };
@@ -528,9 +564,9 @@ export default function ProfessorPage() {
               onClick={() => handleRewardPoints(studentId, points, answerId)}
               className={`flex-1 py-2 text-center font-medium border-r last:border-r-0 border-gray-300 dark:border-gray-600 transition-all ${
                 currentPoints === points 
-                  ? 'bg-green-500 text-white dark:bg-green-600 dark:text-white transform scale-105' 
+                  ? 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white transform scale-105' 
                   : currentPoints > 0 && points <= currentPoints
-                    ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-100'
+                    ? 'bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-100'
                     : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
               }`}
               aria-label={`Award ${points} point${points !== 1 ? 's' : ''}`}
@@ -556,60 +592,75 @@ export default function ProfessorPage() {
       // Check if we've already awarded points for this answer
       const previousPoints = pointsAwarded[answerId] || 0;
       
+      // Skip processing if points haven't changed
+      if (previousPoints === points && previousPoints !== 0) {
+        console.log(`Points for answer ${answerId} already set to ${points}`);
+        return;
+      }
+      
+      // Calculate the actual point difference to apply
+      let pointsDifference = 0;
+      
       // If clicking the same number, unselect and remove all points
       if (previousPoints === points) {
-        // Remove all points
-        if (previousPoints > 0) {
-          // First update UI immediately for better user experience
-          setPointsAwarded(prev => {
-            const newPointsAwarded = { ...prev };
-            delete newPointsAwarded[answerId];
-            return newPointsAwarded;
-          });
-          
-          // Then update the database
-          const success = await updateStudentPoints(studentId, -previousPoints);
-          
-          if (!success) {
-            // Revert UI if database update failed
-            setPointsAwarded(prev => ({
-              ...prev,
-              [answerId]: previousPoints
-            }));
-            throw new Error("Failed to remove points");
-          }
-          
-          console.log(`Removed ${previousPoints} points from student ${studentId} for answer ${answerId}`);
-        }
+        // This can only happen when both are non-zero (checked above)
+        pointsDifference = -previousPoints;
+        
+        // Update UI immediately for responsiveness
+        setPointsAwarded(prev => {
+          const newPointsAwarded = { ...prev };
+          delete newPointsAwarded[answerId];
+          return newPointsAwarded;
+        });
+        
+        console.log(`Removing ${previousPoints} points from student ${studentId} for answer ${answerId}`);
       } else {
-        // Clicking a different number
-        const pointsDifference = points - previousPoints;
+        // Clicking a different number - calculate the difference
+        pointsDifference = points - previousPoints;
         
-        // Update UI immediately for better user experience
-        setPointsAwarded(prev => ({
-          ...prev,
+        // Update UI immediately for responsiveness
+      setPointsAwarded(prev => ({
+        ...prev,
           [answerId]: points
-        }));
+      }));
         
-        // Then update the database
+        console.log(`Changing points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
+      }
+      
+      // Only make the database call if there's an actual change
+      if (pointsDifference !== 0) {
+        // Apply the points change in the database
         const success = await updateStudentPoints(studentId, pointsDifference);
         
         if (!success) {
           // Revert UI if database update failed
-          setPointsAwarded(prev => ({
-            ...prev,
-            [answerId]: previousPoints
-          }));
-          throw new Error("Failed to update points");
+          if (previousPoints === points) {
+            // We were trying to remove points
+            setPointsAwarded(prev => ({
+              ...prev,
+              [answerId]: previousPoints
+            }));
+          } else {
+            // We were trying to update to a new value
+            setPointsAwarded(prev => {
+              const newPointsAwarded = { ...prev };
+              if (previousPoints === 0) {
+                delete newPointsAwarded[answerId];
+              } else {
+                newPointsAwarded[answerId] = previousPoints;
+              }
+              return newPointsAwarded;
+            });
+          }
+          
+          throw new Error("Failed to update points in the database");
         }
         
-        console.log(`Changed points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
-      }
-      
-      // Update session activity
-      if (sessionId) {
-        await updateSessionActivity(sessionId);
-        setLastActivity(Date.now());
+        // Update session activity only if the update succeeded
+        if (sessionId) {
+          await updateSessionActivity(sessionId);
+          setLastActivity(Date.now());
+        }
       }
     } catch (error) {
       console.error("Error managing reward points:", error);
@@ -681,7 +732,7 @@ export default function ProfessorPage() {
       setIsLoading(false);
     }
   };
-
+  
   /**
    * Render the questions tab content
    */
@@ -695,16 +746,10 @@ export default function ProfessorPage() {
           Student Questions
         </h2>
         
-        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 dark:bg-blue-900/30 dark:border-blue-800">
-          <p className="text-sm text-blue-800 dark:text-blue-200">
-            Questions from your students will appear here. You can mark them as answered or remove them if needed.
-          </p>
-        </div>
-        
         {questions.length > 0 ? (
-          <QuestionList 
-            questions={questions} 
-            isProfessor={true}
+      <QuestionList 
+        questions={questions} 
+        isProfessor={true}
             onDelete={handleDeleteQuestion}
             onToggleStatus={handleToggleQuestionStatus}
             emptyMessage="No questions yet. Students will be able to ask questions once they join."
@@ -721,7 +766,7 @@ export default function ProfessorPage() {
       </div>
     </div>
   );
-
+  
   /**
    * Render the points tab content
    */
@@ -735,22 +780,16 @@ export default function ProfessorPage() {
           Ask a Question
         </h2>
         
-        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 mb-4 dark:bg-purple-900/30 dark:border-purple-800">
-          <p className="text-sm text-purple-800 dark:text-purple-200">
-            Ask students a question and award points based on their answers. You can award from 1 to 5 points.
-          </p>
-        </div>
-        
         <form onSubmit={handleAskQuestion} className="mb-4">
           <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
               placeholder="Enter a question for students to answer..."
               className="flex-grow p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-              required
-            />
+                required
+              />
             <button
               type="submit"
               className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 font-medium"
@@ -758,25 +797,25 @@ export default function ProfessorPage() {
               Ask Question
             </button>
           </div>
-        </form>
+          </form>
         
         {activeQuestionId ? (
           <div>
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-2 flex items-center">
-                <svg className="mr-2 h-5 w-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 Active Question
               </h3>
-              <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200 dark:bg-yellow-900 dark:border-yellow-700 dark:text-white">
+              <div className="mb-4 p-4 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                 <p className="font-medium">{activeQuestionText || answers[0]?.questionText || "Loading question..."}</p>
-              </div>
-            </div>
-            
+        </div>
+      </div>
+      
             <div>
               <h3 className="text-lg font-semibold mb-3 flex items-center">
-                <svg className="mr-2 h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Student Answers
@@ -794,7 +833,7 @@ export default function ProfessorPage() {
                         </span>
                         
                         {pointsAwarded[answer.id] ? (
-                          <span className="text-sm bg-green-100 dark:bg-green-900 px-3 py-1 rounded-full text-green-800 dark:text-green-100 font-medium">
+                          <span className="text-sm bg-blue-100 dark:bg-blue-900 px-3 py-1 rounded-full text-blue-800 dark:text-blue-100 font-medium">
                             <span className="inline-flex items-center">
                               <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -847,22 +886,22 @@ export default function ProfessorPage() {
 
   // Show error state if there's a problem
   if (error) {
-    return (
+                          return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
         <Navbar userType="professor" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4">{error}</p>
-            <button
+                            <button
               onClick={handleRetry}
               className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
             >
               Retry
-            </button>
+                            </button>
           </div>
-        </div>
-      </div>
+                      </div>
+                    </div>
     );
   }
 
@@ -876,27 +915,20 @@ export default function ProfessorPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-4 text-lg">Loading...</p>
           </div>
-        </div>
       </div>
-    );
+    </div>
+  );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Navbar with theme toggle */}
-      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <h1 className="text-xl font-bold">Professor Dashboard</h1>
-            <ThemeToggle />
-          </div>
-        </div>
-      </nav>
+      <Navbar userType="professor" onLogout={handleLogout} />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-col md:flex-row gap-6">
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row items-start gap-6">
           {/* Sidebar */}
-          <div className="w-full md:w-1/3 lg:w-1/4">
+          <div className="w-full lg:w-1/3">
             <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 sticky top-6">
               {error && (
                 <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/30 dark:text-red-200">
@@ -905,7 +937,7 @@ export default function ProfessorPage() {
               )}
 
               <h2 className="text-xl font-bold mb-4 flex items-center">
-                <svg className="mr-2 h-5 w-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
                 Class Management
@@ -941,7 +973,7 @@ export default function ProfessorPage() {
                 {/* Session Management Section */}
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
                   <h3 className="font-medium mb-2 flex items-center">
-                    <svg className="mr-2 h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="mr-2 h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Class Session
@@ -951,7 +983,7 @@ export default function ProfessorPage() {
                     <button
                       onClick={handleStartSession}
                       disabled={isLoading}
-                      className="w-full px-4 py-2 bg-green-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-green-600 transition-colors dark:bg-green-600 dark:hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (
                         <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -968,8 +1000,8 @@ export default function ProfessorPage() {
                     </button>
                   ) : (
                     <div className="space-y-3">
-                      <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-center dark:bg-blue-900/30 dark:border-blue-800">
-                        <p className="font-medium text-blue-800 dark:text-blue-200">Session Code:</p>
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-gray-700 dark:border-gray-600">
+                        <p className="font-medium text-gray-700 dark:text-gray-300">Session Code:</p>
                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
                       </div>
                       
@@ -1012,25 +1044,25 @@ export default function ProfessorPage() {
                   </h3>
                   
                   <div className="flex border rounded-md overflow-hidden">
-                    <button
+                <button
                       onClick={() => setActiveTab('questions')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'questions'
-                          ? 'bg-indigo-500 text-white dark:bg-indigo-600'
+                    activeTab === 'questions'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      Questions
-                    </button>
-                    <button
+                  }`}
+                >
+                  Questions
+                </button>
+                <button
                       onClick={() => setActiveTab('points')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'points'
-                          ? 'bg-indigo-500 text-white dark:bg-indigo-600'
+                    activeTab === 'points'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      Points
+                  }`}
+                >
+                  Points
                     </button>
                   </div>
                 </div>
@@ -1046,14 +1078,14 @@ export default function ProfessorPage() {
                 </button>
               </div>
             </div>
-          </div>
+        </div>
 
           {/* Main Content Area */}
-          <div className="w-full md:w-2/3 lg:w-3/4">
+          <div className="w-full lg:w-2/3">
             {/* Welcome Message */}
             <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center">
-                <svg className="mr-2 h-6 w-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Welcome, Professor!
@@ -1069,7 +1101,7 @@ export default function ProfessorPage() {
             {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
           </div>
         </div>
-      </div>
+        </div>
     </div>
   );
 } 
