@@ -23,6 +23,7 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
+import { getSessionByCode } from './classSession';
 
 // Collection reference - keeping the same collection names for backward compatibility
 const CLASS_CODES_COLLECTION = 'classCodes';
@@ -211,34 +212,31 @@ export const getClassCodeForProfessor = getClassForProfessor;
 /**
  * Join a class as a student
  * 
- * Records that a student has joined a specific class by its class code.
+ * Records that a student has joined a specific class by its session code.
  * This allows tracking which students are in which classes.
  * 
- * @param classCode - The class code of the class to join
+ * @param sessionCode - The session code of the class session to join
  * @param studentId - The ID of the student joining the class
  * @returns A promise that resolves to a boolean indicating success/failure
  */
-export const joinClass = async (classCode: string, studentId: string): Promise<boolean> => {
-  if (!classCode || !studentId) {
-    console.error("Missing parameters for joinClass");
+export const joinClass = async (sessionCode: string, studentId: string): Promise<boolean> => {
+  if (!sessionCode || !studentId) {
+    console.error("Missing parameters for joinClass: ", { sessionCode, studentId });
     return false;
   }
 
   try {
-    console.log(`Student ${studentId} attempting to join class with code: ${classCode}`);
+    console.log(`Student ${studentId} attempting to join class with session code: ${sessionCode}`);
     
-    // First, check if the class code exists
-    const classCodeQuery = query(
-      collection(db, CLASS_CODES_COLLECTION),
-      where('code', '==', classCode)
-    );
+    // Check if the session code is valid by looking it up directly
+    const sessionResult = await getSessionByCode(sessionCode);
     
-    const classCodeSnapshot = await getDocs(classCodeQuery);
-    
-    if (classCodeSnapshot.empty) {
-      console.log(`Invalid class code: ${classCode}`);
+    if (!sessionResult) {
+      console.log(`Invalid session code: ${sessionCode} - No active session found`);
       return false;
     }
+    
+    console.log(`Found valid session: ${sessionResult.id} for class: ${sessionResult.code}`);
     
     // Check if student has already joined this class
     const joinedQuery = query(
@@ -247,23 +245,30 @@ export const joinClass = async (classCode: string, studentId: string): Promise<b
     );
     
     const joinedSnapshot = await getDocs(joinedQuery);
+    console.log(`Found ${joinedSnapshot.docs.length} existing join records for student`);
     
     // If student has already joined a class, update it
     if (!joinedSnapshot.empty) {
       const doc = joinedSnapshot.docs[0];
-      await updateDoc(doc.ref, {
-        classCode,
+      const updateData = {
+        sessionCode,             // The session code for joining
+        className: sessionResult.code, // The original class name
         joinedAt: Date.now()
-      });
-      console.log(`Updated class for student ${studentId} to ${classCode}`);
+      };
+      console.log("Updating existing join record:", updateData);
+      await updateDoc(doc.ref, updateData);
+      console.log(`Updated class for student ${studentId} to session ${sessionCode}`);
     } else {
       // Otherwise, create a new join record
-      await addDoc(collection(db, JOINED_CLASSES_COLLECTION), {
+      const newJoinRecord = {
         studentId,
-        classCode,
+        sessionCode,             // The session code for joining
+        className: sessionResult.code, // The original class name
         joinedAt: Date.now()
-      });
-      console.log(`Student ${studentId} joined class ${classCode}`);
+      };
+      console.log("Creating new join record:", newJoinRecord);
+      await addDoc(collection(db, JOINED_CLASSES_COLLECTION), newJoinRecord);
+      console.log(`Student ${studentId} joined class ${sessionCode}`);
     }
     
     return true;

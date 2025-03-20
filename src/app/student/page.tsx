@@ -594,7 +594,7 @@ export default function StudentPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="student" />
+        <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
@@ -615,7 +615,7 @@ export default function StudentPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="student" />
+        <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>

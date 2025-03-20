@@ -35,7 +35,8 @@ import {
   endClassSession,
   updateSessionActivity,
   isSessionInactive,
-  SESSION_INACTIVITY_TIMEOUT
+  SESSION_INACTIVITY_TIMEOUT,
+  forceIndexCreation
 } from '@/lib/classSession';
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
@@ -438,6 +439,23 @@ export default function ProfessorPage() {
   };
 
   /**
+   * Handle forcing the creation of necessary Firebase indexes
+   * This is a development utility to trigger index creation prompts
+   */
+  const handleForceIndexCreation = async () => {
+    try {
+      setIsLoading(true);
+      await forceIndexCreation();
+      console.log("Index creation queries completed");
+      setError("Check console for index creation links. If links appeared, click them to create the required indexes.");
+      setIsLoading(false);
+    } catch (e) {
+      console.error("Error forcing index creation:", e);
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Render the questions tab content
    */
   const renderQuestionsTab = () => (
@@ -539,7 +557,7 @@ export default function ProfessorPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="professor" />
+        <Navbar userType="professor" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
@@ -560,7 +578,7 @@ export default function ProfessorPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="professor" />
+        <Navbar userType="professor" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
@@ -606,6 +624,21 @@ export default function ProfessorPage() {
                     Start Class Session
                   </button>
                 )}
+                
+                {/* Development button for creating indexes */}
+                <div className="mt-6 pt-4 border-t dark:border-gray-700">
+                  <h3 className="text-md font-semibold mb-2">Developer Tools</h3>
+                  <button
+                    onClick={handleForceIndexCreation}
+                    className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                  >
+                    Create Required Indexes
+                  </button>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Click this button if you're experiencing issues with class sessions or queries. It will prompt Firebase to create necessary indexes.
+                    Check browser console for links to create indexes.
+                  </p>
+                </div>
               </div>
             ) : (
               <div>

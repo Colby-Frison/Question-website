@@ -47,14 +47,23 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
     }
     
     setIsJoining(true);
+    setError('');
     
     try {
+      console.log(`Attempting to join class with session code: ${sessionCode}`);
+      
       // First check if it's a valid session
       const session = await getSessionByCode(sessionCode);
       
+      // Log session result for debugging
+      console.log("Session lookup result:", session);
+      
       if (session) {
+        console.log(`Valid session found: ${session.id} for class ${session.code}`);
         // Session exists, now join the class
         const joined = await joinClass(sessionCode, studentId);
+        
+        console.log(`Join class result: ${joined}`);
         
         if (joined) {
           setError('');
@@ -64,11 +73,12 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
           setError('Failed to join class. Please try again.');
         }
       } else {
+        console.log(`No active session found with code: ${sessionCode}`);
         setError('Invalid session code. The class may have ended or doesn\'t exist.');
       }
     } catch (error) {
       console.error('Error joining class:', error);
-      setError('An error occurred. Please try again.');
+      setError('An error occurred when trying to join the class. Please check the console for details.');
     } finally {
       setIsJoining(false);
     }

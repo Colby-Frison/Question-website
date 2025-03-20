@@ -200,35 +200,112 @@ export const getSessionByCode = async (sessionCode: string): Promise<ClassSessio
     return null;
   }
 
+  // Clean up the session code (remove whitespace, convert to uppercase)
+  const cleanSessionCode = sessionCode.trim().toUpperCase();
+  
   try {
-    console.log(`Looking up session with code: ${sessionCode}`);
-    const q = query(
-      collection(db, CLASS_SESSIONS_COLLECTION),
-      where('sessionCode', '==', sessionCode),
-      where('status', '==', 'active')  // Only get active sessions
-    );
+    console.log(`Looking up session with code: ${cleanSessionCode}`);
     
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) {
-      console.log(`No active session found with code ${sessionCode}`);
+    // Force index creation if this query fails
+    try {
+      const q = query(
+        collection(db, CLASS_SESSIONS_COLLECTION),
+        where('sessionCode', '==', cleanSessionCode),
+        where('status', '==', 'active')  // Only get active sessions
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        console.log(`No active session found with code ${cleanSessionCode}`);
+        
+        // Try a secondary lookup with case-insensitive session code
+        console.log("Attempting secondary lookup with different format...");
+        const q2 = query(
+          collection(db, CLASS_SESSIONS_COLLECTION),
+          where('sessionCode', '==', cleanSessionCode)
+        );
+        
+        const secondarySnapshot = await getDocs(q2);
+        
+        if (secondarySnapshot.empty) {
+          console.log("Secondary lookup also found no sessions");
+          return null;
+        }
+        
+        // Found with secondary lookup
+        const secondaryDoc = secondarySnapshot.docs[0];
+        console.log(`Found session with ID: ${secondaryDoc.id} but status is: ${secondaryDoc.data().status}`);
+        
+        // If status is not active, return null but with a log
+        if (secondaryDoc.data().status !== 'active') {
+          console.log(`Session ${secondaryDoc.id} exists but is not active (status: ${secondaryDoc.data().status})`);
+          return null;
+        }
+        
+        return {
+          id: secondaryDoc.id,
+          code: secondaryDoc.data().code,
+          sessionCode: secondaryDoc.data().sessionCode,
+          professorId: secondaryDoc.data().professorId,
+          status: secondaryDoc.data().status,
+          createdAt: secondaryDoc.data().createdAt,
+          lastActiveAt: secondaryDoc.data().lastActiveAt,
+          lastActive: secondaryDoc.data().lastActive || secondaryDoc.data().lastActiveAt,
+          archivedAt: secondaryDoc.data().archivedAt
+        };
+      }
+      
+      const doc = querySnapshot.docs[0];
+      console.log(`Found active session with ID: ${doc.id}`);
+      
+      return {
+        id: doc.id,
+        code: doc.data().code,
+        sessionCode: doc.data().sessionCode,
+        professorId: doc.data().professorId,
+        status: doc.data().status,
+        createdAt: doc.data().createdAt,
+        lastActiveAt: doc.data().lastActiveAt,
+        lastActive: doc.data().lastActive || doc.data().lastActiveAt,
+        archivedAt: doc.data().archivedAt
+      };
+    } catch (indexError) {
+      console.error("Error with session lookup - possible missing index:", indexError);
+      console.log("Please check if you need to create an index for this query");
+      
+      // Try a simpler query without the index requirement
+      const fallbackQuery = query(collection(db, CLASS_SESSIONS_COLLECTION));
+      const allSessions = await getDocs(fallbackQuery);
+      
+      // Log all sessions for debugging
+      console.log(`Found ${allSessions.docs.length} total sessions`);
+      allSessions.docs.forEach(doc => {
+        console.log(`Session ${doc.id}: code=${doc.data().code}, sessionCode=${doc.data().sessionCode}, status=${doc.data().status}`);
+      });
+      
+      // Try to find a match manually
+      const matchingSession = allSessions.docs.find(doc => 
+        doc.data().sessionCode === cleanSessionCode && doc.data().status === 'active'
+      );
+      
+      if (matchingSession) {
+        console.log(`Found matching session via fallback: ${matchingSession.id}`);
+        return {
+          id: matchingSession.id,
+          code: matchingSession.data().code,
+          sessionCode: matchingSession.data().sessionCode,
+          professorId: matchingSession.data().professorId,
+          status: matchingSession.data().status,
+          createdAt: matchingSession.data().createdAt,
+          lastActiveAt: matchingSession.data().lastActiveAt,
+          lastActive: matchingSession.data().lastActive || matchingSession.data().lastActiveAt,
+          archivedAt: matchingSession.data().archivedAt
+        };
+      }
+      
       return null;
     }
-    
-    const doc = querySnapshot.docs[0];
-    console.log(`Found session with ID: ${doc.id}`);
-    
-    return {
-      id: doc.id,
-      code: doc.data().code,
-      sessionCode: doc.data().sessionCode,
-      professorId: doc.data().professorId,
-      status: doc.data().status,
-      createdAt: doc.data().createdAt,
-      lastActiveAt: doc.data().lastActiveAt,
-      lastActive: doc.data().lastActive || doc.data().lastActiveAt,
-      archivedAt: doc.data().archivedAt
-    };
   } catch (error) {
     console.error("Error getting session by code:", error);
     return null;
@@ -329,4 +406,54 @@ export const archiveClassSession = async (sessionId: string): Promise<boolean> =
 };
 
 // Define closeClassSession as an alias for endClassSession for better code readability
-export const closeClassSession = endClassSession; 
+export const closeClassSession = endClassSession;
+
+/**
+ * Force index creation for Firestore
+ * 
+ * This function explicitly runs queries that require indexes to be created.
+ * Call this function during development to trigger Firebase's index creation prompts.
+ * 
+ * @returns A promise that resolves when the queries are complete
+ */
+export const forceIndexCreation = async (): Promise<void> => {
+  try {
+    console.log("Running queries to force index creation...");
+    
+    // Query 1: Find active sessions for a specific class
+    const q1 = query(
+      collection(db, CLASS_SESSIONS_COLLECTION),
+      where('code', '==', 'SAMPLE'),
+      where('status', '==', 'active'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    // Query 2: Find session by session code and status
+    const q2 = query(
+      collection(db, CLASS_SESSIONS_COLLECTION),
+      where('sessionCode', '==', 'SAMPLE'),
+      where('status', '==', 'active')
+    );
+    
+    // Execute the queries
+    try {
+      await getDocs(q1);
+      console.log("Successfully ran query 1 for index creation");
+    } catch (error: any) {
+      // This error should contain the URL to create the index
+      console.error("Index needed for query 1:", error.message);
+    }
+    
+    try {
+      await getDocs(q2);
+      console.log("Successfully ran query 2 for index creation");
+    } catch (error: any) {
+      // This error should contain the URL to create the index
+      console.error("Index needed for query 2:", error.message);
+    }
+    
+    console.log("Finished index creation checks");
+  } catch (error) {
+    console.error("Error in forceIndexCreation:", error);
+  }
+}; 
