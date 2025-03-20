@@ -82,26 +82,26 @@ export const getQuestions = async (classCode: string): Promise<Question[]> => {
  * Creates a Firestore listener that triggers the callback whenever there are changes
  * to the questions in a specific class. The callback receives the updated list of questions.
  * 
- * @param classCode - The code of the class to listen for questions in
+ * @param sessionCode - The code of the session to listen for questions in
  * @param callback - Function that receives the updated list of questions
  * @returns An unsubscribe function to stop listening
  */
 export const listenForQuestions = (
-  classCode: string, 
+  sessionCode: string, 
   callback: (questions: Question[]) => void
 ) => {
-  if (!classCode) {
-    console.error("No class code provided to listenForQuestions");
+  if (!sessionCode) {
+    console.error("No session code provided to listenForQuestions");
     callback([]);
     return () => {};
   }
 
-  console.log(`Setting up questions listener for class: ${classCode}`);
+  console.log(`Setting up questions listener for session: ${sessionCode}`);
   
   try {
     const q = query(
       collection(db, QUESTIONS_COLLECTION), 
-      where('classCode', '==', classCode),
+      where('sessionCode', '==', sessionCode),
       orderBy('timestamp', 'desc')
     );
     
@@ -115,6 +115,7 @@ export const listenForQuestions = (
             text: data.text || "No text provided",
             timestamp: data.timestamp || Date.now(),
             status: data.status || 'unanswered',
+            studentId: data.studentId || "unknown"
           };
         });
         callback(questions);
@@ -187,44 +188,78 @@ export const getUserQuestions = async (
  * the updated list of questions.
  * 
  * @param userIdentifier - The ID of the user (student) to listen for questions from
- * @param classCode - The code of the class to listen in
+ * @param sessionCode - The code of the session to listen in
  * @param callback - Function that receives the updated list of questions
  * @returns An unsubscribe function to stop listening
  */
 export const listenForUserQuestions = (
   userIdentifier: string = 'student',
-  classCode: string,
+  sessionCode: string,
   callback: (questions: Question[]) => void
 ) => {
-  if (!userIdentifier || !classCode) {
+  if (!userIdentifier || !sessionCode) {
     console.error("Missing parameters for listenForUserQuestions");
     callback([]);
     return () => {};
   }
 
-  console.log(`Setting up user questions listener for user ${userIdentifier} in class ${classCode}`);
+  console.log(`Setting up user questions listener for user ${userIdentifier} in session ${sessionCode}`);
   
   try {
     const q = query(
       collection(db, USER_QUESTIONS_COLLECTION),
-      where('userIdentifier', '==', userIdentifier),
-      where('classCode', '==', classCode),
+      where('studentId', '==', userIdentifier),
+      where('sessionCode', '==', sessionCode),
       orderBy('timestamp', 'desc')
     );
     
     const unsubscribe = onSnapshot(q, 
       (querySnapshot) => {
         console.log(`User questions snapshot received with ${querySnapshot.docs.length} documents`);
-        const questions = querySnapshot.docs.map(doc => {
-          const data = doc.data();
+        
+        // Map each doc to a question, fetching the full question data if needed
+        const questionPromises = querySnapshot.docs.map(async (docSnapshot) => {
+          const data = docSnapshot.data();
+          const questionId = data.questionId || docSnapshot.id;
+          
+          // If we have the questionId, get the full question data
+          try {
+            const questionDocRef = doc(db, QUESTIONS_COLLECTION, questionId);
+            const questionDoc = await getDoc(questionDocRef);
+            
+            if (questionDoc.exists()) {
+              const questionData = questionDoc.data();
+              return {
+                id: questionId,
+                text: questionData.text || "No text provided",
+                timestamp: questionData.timestamp || data.timestamp || Date.now(),
+                status: questionData.status || 'unanswered',
+                studentId: questionData.studentId || userIdentifier
+              };
+            }
+          } catch (error) {
+            console.error(`Error getting question ${questionId}:`, error);
+          }
+          
+          // Fallback if we couldn't get the full question data
           return {
-            id: data.questionId || doc.id,
+            id: questionId,
             text: data.text || "No text provided",
             timestamp: data.timestamp || Date.now(),
             status: data.status || 'unanswered',
+            studentId: userIdentifier
           };
         });
-        callback(questions);
+        
+        // Resolve all the promises and send the results to the callback
+        Promise.all(questionPromises)
+          .then(questions => {
+            callback(questions);
+          })
+          .catch(error => {
+            console.error("Error processing user questions:", error);
+            callback([]);
+          });
       }, 
       (error) => {
         console.error("Error in user questions listener:", error);
@@ -502,27 +537,28 @@ export const addActiveQuestion = async (
 };
 
 /**
- * Clear existing active questions for a class
+ * Clear any active questions for a class
  * 
- * Removes all active questions for a class except for the one with the specified ID.
- * This ensures only one active question exists at a time.
+ * Removes all active questions for a specific class, except optionally
+ * a specific question to keep. This is used when setting a new active question
+ * to clear any previous ones.
  * 
- * @param classCode - The code of the class to clear active questions for
- * @param skipId - Optional ID of an active question to skip (usually the new one just created)
+ * @param sessionCode - The code of the session to clear active questions for
+ * @param skipId - Optional ID of an active question to keep (not delete)
  * @returns A promise that resolves to a boolean indicating success/failure
  */
-export const clearActiveQuestions = async (classCode: string, skipId?: string): Promise<boolean> => {
-  if (!classCode) {
-    console.error("No class code provided to clearActiveQuestions");
+export const clearActiveQuestions = async (sessionCode: string, skipId?: string): Promise<boolean> => {
+  if (!sessionCode) {
+    console.error("No session code provided to clearActiveQuestions");
     return false;
   }
 
   try {
-    console.log(`Clearing active questions for class ${classCode}`);
+    console.log(`Clearing active questions for session ${sessionCode}${skipId ? ' except ' + skipId : ''}`);
     
     const q = query(
       collection(db, ACTIVE_QUESTION_COLLECTION),
-      where('classCode', '==', classCode)
+      where('sessionCode', '==', sessionCode)
     );
     
     const querySnapshot = await getDocs(q);
@@ -533,7 +569,7 @@ export const clearActiveQuestions = async (classCode: string, skipId?: string): 
       .map(doc => deleteDoc(doc.ref));
     
     await Promise.all(deletePromises);
-    console.log("All active questions cleared");
+    console.log("Active questions cleared");
     
     return true;
   } catch (error) {
@@ -543,26 +579,26 @@ export const clearActiveQuestions = async (classCode: string, skipId?: string): 
 };
 
 /**
- * Clear answers for previous questions
+ * Clear previous answers for a class
  * 
- * Removes all answers for a specific class. This is typically called
- * when a new active question is created to avoid confusion with previous answers.
+ * Removes all answers for a specific class. This is used when setting a new active question
+ * to clear answers to previous questions.
  * 
- * @param classCode - The code of the class to clear answers for
+ * @param sessionCode - The code of the session to clear answers for
  * @returns A promise that resolves to a boolean indicating success/failure
  */
-export const clearPreviousAnswers = async (classCode: string): Promise<boolean> => {
-  if (!classCode) {
-    console.error("No class code provided to clearPreviousAnswers");
+export const clearPreviousAnswers = async (sessionCode: string): Promise<boolean> => {
+  if (!sessionCode) {
+    console.error("No session code provided to clearPreviousAnswers");
     return false;
   }
 
   try {
-    console.log(`Clearing previous answers for class ${classCode}`);
+    console.log(`Clearing previous answers for session ${sessionCode}`);
     
     const q = query(
       collection(db, ANSWERS_COLLECTION),
-      where('classCode', '==', classCode)
+      where('sessionCode', '==', sessionCode)
     );
     
     const querySnapshot = await getDocs(q);
@@ -588,20 +624,20 @@ export const clearPreviousAnswers = async (classCode: string): Promise<boolean> 
  * Retrieves the most recent active question for a class.
  * Only retrieves one question (the most recent one).
  * 
- * @param classCode - The code of the class to get the active question for
+ * @param sessionCode - The code of the session to get the active question for
  * @returns A promise that resolves to the active question object, or null if none found
  */
-export const getActiveQuestion = async (classCode: string): Promise<{id: string, text: string, timestamp: number} | null> => {
-  if (!classCode) {
-    console.warn("getActiveQuestion called without a class code");
+export const getActiveQuestion = async (sessionCode: string): Promise<{id: string, text: string, timestamp: number} | null> => {
+  if (!sessionCode) {
+    console.warn("getActiveQuestion called without a session code");
     return null;
   }
 
   try {
-    console.log(`Fetching active question for class code: ${classCode}`);
+    console.log(`Fetching active question for session code: ${sessionCode}`);
     const q = query(
       collection(db, ACTIVE_QUESTION_COLLECTION), 
-      where('classCode', '==', classCode),
+      where('sessionCode', '==', sessionCode),
       orderBy('timestamp', 'desc'),
       limit(1)
     );
@@ -635,27 +671,27 @@ export const getActiveQuestion = async (classCode: string): Promise<{id: string,
  * This function also immediately fetches the current active question to provide
  * faster initial data loading.
  * 
- * @param classCode - The code of the class to listen for active questions in
+ * @param sessionCode - The code of the session to listen for active questions in
  * @param callback - Function that receives the updated active question or null if none exists
  * @returns An unsubscribe function to stop listening
  */
 export const listenForActiveQuestion = (
-  classCode: string, 
+  sessionCode: string, 
   callback: (question: {id: string, text: string, timestamp: number} | null) => void
 ) => {
-  if (!classCode) {
-    console.error("No class code provided to listenForActiveQuestion");
+  if (!sessionCode) {
+    console.error("No session code provided to listenForActiveQuestion");
     callback(null);
     return () => {};
   }
 
-  console.log(`Setting up active question listener for class: ${classCode}`);
+  console.log(`Setting up active question listener for session: ${sessionCode}`);
   
   try {
     // First, do a direct fetch to get the current active question immediately
     const fetchCurrentQuestion = async () => {
       try {
-        const currentQuestion = await getActiveQuestion(classCode);
+        const currentQuestion = await getActiveQuestion(sessionCode);
         if (currentQuestion) {
           console.log("Initial active question fetch:", currentQuestion);
           callback(currentQuestion);
@@ -671,7 +707,7 @@ export const listenForActiveQuestion = (
     // Then set up the real-time listener for future updates
     const q = query(
       collection(db, ACTIVE_QUESTION_COLLECTION), 
-      where('classCode', '==', classCode),
+      where('sessionCode', '==', sessionCode),
       orderBy('timestamp', 'desc'),
       limit(1)
     );
