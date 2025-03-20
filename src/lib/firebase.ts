@@ -1,5 +1,5 @@
-import { initializeApp, FirebaseApp, getApps } from 'firebase/app';
-import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { initializeApp, FirebaseApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, Firestore, connectFirestoreEmulator, collection, query, getDocs, limit } from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';
 
 // Your web app's Firebase configuration
@@ -64,26 +64,42 @@ try {
   db = getFirestore(app);
 }
 
-// Function to check if Firebase is properly connected
-export const checkFirebaseConnection = async () => {
+/**
+ * Check if Firebase is properly configured and can connect to the database
+ * 
+ * @returns Promise<boolean> - Whether Firebase connection was successful
+ */
+export const checkFirebaseConnection = async (): Promise<boolean> => {
   try {
-    const timestamp = Date.now();
-    console.log(`Testing Firebase connection at ${new Date(timestamp).toISOString()}`);
-    console.log("Firebase config:", {
-      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "Set" : "Not set",
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    console.log("[Firebase] Checking connection status...");
+    
+    // Check if Firebase is initialized
+    if (!db) {
+      console.error("[Firebase] Firebase DB not initialized");
+      return false;
+    }
+    
+    // Print out Firebase config (except sensitive parts) for debugging
+    console.log("[Firebase] Firebase configuration check:");
+    const config = getApp().options;
+    console.log({
+      projectId: config.projectId,
+      appId: config.appId ? "exists" : "missing",
+      databaseURL: config.databaseURL ? "exists" : "missing",
+      storageBucket: config.storageBucket ? "exists" : "missing"
     });
     
-    // Try to access Firestore to verify connection
-    const { collection, getDocs, query, limit } = await import('firebase/firestore');
-    const testQuery = query(collection(db, 'questions'), limit(1));
+    // Try to access a test collection to verify connection works
+    const testCollection = collection(db, 'test_connection');
+    const testQuery = query(testCollection, limit(1));
+    
+    console.log("[Firebase] Attempting to query test collection...");
     await getDocs(testQuery);
     
-    console.log("Firebase connection successful");
+    console.log("[Firebase] Connection successful - database is accessible");
     return true;
   } catch (error) {
-    console.error("Firebase connection test failed:", error);
+    console.error("[Firebase] Connection check failed:", error);
     return false;
   }
 };

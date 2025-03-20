@@ -37,12 +37,16 @@ import { Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
 import { runQuestionSystemTest } from '@/lib/qa-test';
+import { runFirebaseDiagnostics } from '@/lib/firebase-diagnostic';
 
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
 
 export default function StudentPage() {
   const router = useRouter();
+  
+  // Add initialization logging
+  console.log("== STUDENT PAGE INITIALIZING ==");
   
   // State for class and session management
   const [className, setClassName] = useState('');
@@ -54,6 +58,8 @@ export default function StudentPage() {
   const [studentId, setStudentId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
+  const [initStage, setInitStage] = useState('starting');
   
   // Points management state
   const [points, setPoints] = useState<number>(() => {
@@ -186,29 +192,61 @@ export default function StudentPage() {
    * Checks if user is a student and gets their ID
    */
   useEffect(() => {
+    console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
+    setInitStage('checking-user-type');
+    
     // Check if user is a student
     if (!isStudent()) {
+      console.log("Not a student, redirecting to home");
       router.push('/');
       return;
     }
 
+    setInitStage('getting-user-id');
+    const userId = getUserId();
+    console.log("User ID retrieved:", userId ? "success" : "failed");
+    setStudentId(userId);
+    
+    // Check network status
+    const handleOnline = () => {
+      console.log("Network connection restored");
+      setNetworkStatus('online');
+    };
+    
+    const handleOffline = () => {
+      console.log("Network connection lost");
+      setNetworkStatus('offline');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    setInitStage('checking-firebase');
     // Verify Firebase connection on page load
     checkFirebaseConnection()
       .then(connected => {
         if (!connected) {
           console.error("Firebase connection failed. Check your Firebase configuration.");
           setError("Unable to connect to database. Please refresh or try again later.");
+          setInitStage('firebase-connection-failed');
         } else {
           console.log("Firebase connection verified successfully.");
+          setInitStage('firebase-connection-success');
         }
       })
       .catch(error => {
         console.error("Error checking Firebase connection:", error);
+        setInitStage('firebase-connection-error');
       });
-
-    const userId = getUserId();
-    setStudentId(userId);
-
+    
+    console.log("== STUDENT PAGE MOUNT EFFECT COMPLETED ==");
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      console.log("== STUDENT PAGE UNMOUNTED ==");
+    };
+    
     // This effect should only run once on mount and when router changes
   }, [router]);
 
@@ -233,39 +271,51 @@ export default function StudentPage() {
    * for questions, class questions, and active questions
    */
   useEffect(() => {
-    if (!studentId) return () => {};
+    console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
+    if (!studentId) {
+      console.log("No student ID yet, skipping joined class check");
+      return () => {};
+    }
     
+    setInitStage('checking-joined-class');
     let cleanup: (() => void) | undefined;
 
     const checkJoinedClass = async () => {
       try {
+        console.log("Checking if student has joined a class...");
         // Check if student has already joined a class
         const joinedClass = await getJoinedClass(studentId);
+        console.log("Joined class result:", joinedClass);
         
         if (joinedClass && joinedClass.sessionCode) {
+          console.log(`Student has joined class: ${joinedClass.className} with session: ${joinedClass.sessionCode}`);
           setClassName(joinedClass.className);
           setSessionCode(joinedClass.sessionCode);
           setJoined(true);
+          setInitStage('setting-up-listeners');
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
           // Set up listener for student's questions - refresh every 10 seconds to reduce load
+          console.log("Setting up personal questions listener...");
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} personal questions:`, questions);
+            console.log(`Received ${questions.length} personal questions`);
             setMyQuestions(questions);
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
           // Set up listener for all class questions - refresh every 15 seconds to reduce load
+          console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} class questions:`, questions);
+            console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
           }, { maxWaitTime: 15000, useCache: true });
           
           // Set up listener for active question with loading state - refresh every 5 seconds since it's more critical
+          console.log("Setting up active question listener...");
           setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
-            console.log("Active question update:", question);
+            console.log("Active question update:", question ? "received" : "none");
             
             // If the active question changes, reset the answer state
             if (question?.id !== activeQuestion?.id) {
@@ -279,6 +329,7 @@ export default function StudentPage() {
           }, { maxWaitTime: 5000 });
           
           // Set up listener for session status changes - no delay as this is critical
+          console.log("Setting up session status listener...");
           const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
             console.log(`Session status changed to: ${status}`);
             
@@ -302,6 +353,7 @@ export default function StudentPage() {
           });
           
           setSessionListener(() => unsubscribeSessionStatus);
+          setInitStage('listeners-setup-complete');
           
           // Return cleanup function
           cleanup = () => {
@@ -311,15 +363,21 @@ export default function StudentPage() {
             unsubscribeActiveQuestion();
             unsubscribeSessionStatus();
           };
+        } else {
+          console.log("Student has not joined a class");
+          setIsLoading(false);
+          setInitStage('no-class-joined');
         }
       } catch (error) {
         console.error('Error checking joined class:', error);
         setError('Failed to check if you have joined a class. Please refresh the page.');
         setIsLoading(false);
+        setInitStage('joined-class-error');
       }
     };
     
     checkJoinedClass();
+    console.log("== JOINED CLASS EFFECT COMPLETED ==");
     
     // Return the cleanup function
     return () => {
@@ -615,6 +673,42 @@ export default function StudentPage() {
     }
   };
 
+  // Add this function for the diagnostic button
+  const runDiagnostics = async () => {
+    console.log("Running Firebase diagnostics...");
+    
+    try {
+      setIsLoading(true);
+      setInitStage('running-diagnostics');
+      
+      const results = await runFirebaseDiagnostics();
+      
+      // Create a formatted report
+      const report = results.map(result => {
+        return `Stage: ${result.stage}\nSuccess: ${result.success ? 'Yes' : 'No'}\nMessage: ${result.message}${
+          result.error ? `\nError: ${result.error.message || String(result.error)}` : ''
+        }`;
+      }).join('\n\n');
+      
+      console.log("Diagnostic results:", results);
+      
+      // Show results to user
+      alert(`Firebase Diagnostic Results:\n\n${report}`);
+      
+      // If there are failures, set an error
+      const failures = results.filter(r => !r.success);
+      if (failures.length > 0) {
+        setError(`Firebase connection issues detected: ${failures[0].message}`);
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error running diagnostics:", error);
+      setError(`Failed to run diagnostics: ${error instanceof Error ? error.message : String(error)}`);
+      setIsLoading(false);
+    }
+  };
+
   /**
    * Render the questions tab content
    */
@@ -766,6 +860,27 @@ export default function StudentPage() {
     </div>
   );
 
+  // Show network error if offline
+  if (networkStatus === 'offline') {
+    return (
+      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+        <Navbar userType="student" onLogout={handleLogout} />
+        <div className="flex-grow flex items-center justify-center p-4">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
+            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Network Error</h2>
+            <p className="mb-4">You are currently offline. Please check your internet connection and try again.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show error state if there's a problem
   if (error) {
     return (
@@ -775,12 +890,27 @@ export default function StudentPage() {
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-            >
-              Dismiss
-            </button>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">Initialization stage: {initStage}</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setError(null)}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
+              >
+                Refresh Page
+              </button>
+              <a
+                href="/diagnose"
+                className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700 text-center mt-2"
+              >
+                Go to Diagnostic Page
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -796,6 +926,24 @@ export default function StudentPage() {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-4 text-lg">Loading...</p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stage: {initStage}</p>
+            
+            <div className="flex flex-col items-center gap-2 mt-4">
+              {/* Add diagnostic button during loading */}
+              <button
+                onClick={runDiagnostics}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+              >
+                Run Connection Diagnostics
+              </button>
+              
+              <a
+                href="/diagnose"
+                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+              >
+                Go to Diagnostic Page
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -836,12 +984,20 @@ export default function StudentPage() {
                   </div>
                   <div className="flex gap-2">
                     {process.env.NODE_ENV === 'development' && (
-                      <button
-                        onClick={runDebugTest}
-                        className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-                      >
-                        Run Debug Test
-                      </button>
+                      <>
+                        <button
+                          onClick={runDebugTest}
+                          className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+                        >
+                          Run Debug Test
+                        </button>
+                        <button
+                          onClick={runDiagnostics}
+                          className="px-4 py-2 rounded bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        >
+                          Run Diagnostics
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={handleLeaveClass}
