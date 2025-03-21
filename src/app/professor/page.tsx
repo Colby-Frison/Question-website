@@ -747,9 +747,9 @@ export default function ProfessorPage() {
         </h2>
         
         {questions.length > 0 ? (
-      <QuestionList 
-        questions={questions} 
-        isProfessor={true}
+          <QuestionList 
+            questions={questions} 
+            isProfessor={true}
             onDelete={handleDeleteQuestion}
             onToggleStatus={handleToggleQuestionStatus}
             emptyMessage="No questions yet. Students will be able to ask questions once they join."
@@ -784,12 +784,12 @@ export default function ProfessorPage() {
           <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
-                value={questionText}
-                onChange={(e) => setQuestionText(e.target.value)}
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
               placeholder="Enter a question for students to answer..."
               className="flex-grow p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                required
-              />
+              required
+            />
             <button
               type="submit"
               className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 font-medium"
@@ -797,7 +797,7 @@ export default function ProfessorPage() {
               Ask Question
             </button>
           </div>
-          </form>
+        </form>
         
         {activeQuestionId ? (
           <div>
@@ -810,9 +810,9 @@ export default function ProfessorPage() {
               </h3>
               <div className="mb-4 p-4 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                 <p className="font-medium">{activeQuestionText || answers[0]?.questionText || "Loading question..."}</p>
-        </div>
-      </div>
-      
+              </div>
+            </div>
+            
             <div>
               <h3 className="text-lg font-semibold mb-3 flex items-center">
                 <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

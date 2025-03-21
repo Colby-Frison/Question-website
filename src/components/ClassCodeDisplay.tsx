@@ -119,7 +119,7 @@ export default function ClassNameDisplay({
         ) : (
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between">
-              <div className="p-3 bg-gray-100 rounded font-medium text-lg dark:bg-gray-700">
+              <div className="p-3 bg-blue-50 rounded font-medium text-lg dark:bg-blue-900/30 dark:text-blue-100">
                 {className}
               </div>
               <button
