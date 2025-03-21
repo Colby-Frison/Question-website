@@ -87,9 +87,9 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
   return (
     <div>
       {error && (
-        <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 animate-fadeIn">
+        <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 animate-fadeIn">
           <div className="flex">
-            <svg className="h-5 w-5 text-red-500 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-4 w-4 text-red-500 mr-2 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <span>{error}</span>
@@ -97,7 +97,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
         </div>
       )}
       
-      <div className="flex flex-col space-y-6">
+      <div className="flex flex-col space-y-4">
         <div className="flex-1">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -108,7 +108,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             <input
               type="text"
               id="sessionCode"
-              className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-blue-400 text-xl font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase text-center"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-blue-400 text-lg font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase text-center"
               placeholder="ENTER SESSION CODE"
               value={sessionCode}
               onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
@@ -121,7 +121,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
         <button
           onClick={handleJoinClass}
           disabled={isJoining || !sessionCode.trim()}
-          className={`w-full px-4 py-4 rounded-lg font-medium text-lg flex items-center justify-center transition-all duration-200 ${
+          className={`w-full px-4 py-3 rounded-lg font-medium text-md flex items-center justify-center transition-all duration-200 ${
             isJoining || !sessionCode.trim() 
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
               : 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700'
@@ -129,7 +129,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
         >
           {isJoining ? (
             <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -137,7 +137,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             </>
           ) : (
             <>
-              <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
               </svg>
               Join Class
@@ -145,12 +145,12 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
           )}
         </button>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center pt-2">
           <button
             onClick={() => window.location.href = '/'}
-            className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 flex items-center transition-colors"
+            className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 flex items-center transition-colors"
           >
-            <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Home

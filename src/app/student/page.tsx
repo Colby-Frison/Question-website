@@ -159,15 +159,7 @@ export default function StudentPage() {
     console.log('Student leaving class');
     setIsLeavingClass(true);
     
-    // Update UI immediately
-    setJoined(false);
-    setClassName('');
-    setSessionCode('');
-    setMyQuestions([]);
-    setClassQuestions([]);
-    setActiveQuestion(null);
-
-    // Clean up Firebase data
+    // Clean up Firebase data first
     if (studentId) {
       leaveClass(studentId)
         .catch(error => {
@@ -175,16 +167,39 @@ export default function StudentPage() {
           // Consider showing an error to the user here
         })
         .finally(() => {
+          // Only update UI after Firebase cleanup completes
+          // Update UI in a single batch to avoid race conditions
+          setJoined(false);
+          setClassName('');
+          setSessionCode('');
+          setMyQuestions([]);
+          setClassQuestions([]);
+          setActiveQuestion(null);
+          
+          // Clean up listeners
+          if (sessionListener) {
+            sessionListener();
+            setSessionListener(null);
+          }
+          
           setIsLeavingClass(false);
         });
     } else {
+      // If no studentId, just update UI
+      setJoined(false);
+      setClassName('');
+      setSessionCode('');
+      setMyQuestions([]);
+      setClassQuestions([]);
+      setActiveQuestion(null);
+      
+      // Clean up listeners
+      if (sessionListener) {
+        sessionListener();
+        setSessionListener(null);
+      }
+      
       setIsLeavingClass(false);
-    }
-
-    // Clean up listeners
-    if (sessionListener) {
-      sessionListener();
-      setSessionListener(null);
     }
   }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
       setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
@@ -1164,28 +1179,30 @@ export default function StudentPage() {
       
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
-          <div className="max-w-md mx-auto">
-            <div className="bg-white shadow-lg rounded-lg overflow-hidden dark:bg-gray-900 dark:border dark:border-gray-800">
-              <div className="p-6">
-                <h2 className="text-xl font-bold mb-6">Join a Class</h2>
-                
-                <div className="group relative mb-8">
-                  <div className="flex items-center mb-2">
-                    <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Session Code
-                    </label>
-                    <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-72 p-3 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        Enter the 6-digit code provided by your professor to join the current class session
+          <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
+            <div className="max-w-sm w-full mx-auto">
+              <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-gray-900 dark:border dark:border-gray-800">
+                <div className="p-8">
+                  <h2 className="text-xl font-bold mb-6 text-center">Join a Class</h2>
+                  
+                  <div className="group relative mb-4">
+                    <div className="flex items-center mb-1 justify-center">
+                      <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Session Code
+                      </label>
+                      <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-60 p-2 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          Enter the 6-digit code provided by your professor
+                        </div>
+                        <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
                       </div>
-                      <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
                     </div>
                   </div>
+                  
+                  <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
                 </div>
-                
-                <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
               </div>
             </div>
           </div>
