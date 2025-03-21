@@ -222,8 +222,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     if (questions.length === 0) {
       return (
         <div className="flex items-center justify-center py-6 sm:py-8">
-          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
-          <span className="ml-2 text-xs sm:text-sm text-text-secondary dark:text-dark-text-secondary">Loading questions...</span>
+          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-blue-500 dark:border-blue-400"></div>
+          <span className="ml-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300">Loading questions...</span>
         </div>
       );
     }
@@ -237,8 +237,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const renderEmptyState = useMemo(() => {
     if (questions.length === 0) {
       return (
-        <div className="rounded-md bg-background-secondary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
-          <p className="text-sm sm:text-base text-text-secondary dark:text-dark-text-secondary">{emptyMessage}</p>
+        <div className="rounded-md bg-gray-50 p-4 sm:p-8 text-center dark:bg-gray-800">
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">{emptyMessage}</p>
         </div>
       );
     }
@@ -255,14 +255,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       const isOwnQuestion = isStudent && studentId === question.studentId;
 
       return (
-        <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
+        <li key={question.id} className="py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700 last:border-0 relative">
           {/* Status indicator for students and professors */}
           <div className="absolute top-2 right-2 z-10">
             <div 
               className={`h-2 w-2 rounded-full ${
                 question.status === 'answered' 
-                  ? 'bg-success-light dark:bg-success-dark' 
-                  : 'bg-error-light dark:bg-error-dark'
+                  ? 'bg-green-400 dark:bg-green-500' 
+                  : 'bg-red-400 dark:bg-red-500'
               }`}
               title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
             ></div>
@@ -275,21 +275,21 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   <textarea
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
-                    className="form-input w-full"
+                    className="w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                     rows={3}
                   />
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleSaveEdit(question.id)}
                       disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
+                      className="rounded-md px-2 py-1 text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
                     >
                       {isUpdating ? 'Saving...' : 'Save'}
                     </button>
                     <button
                       onClick={handleCancelEdit}
                       disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary"
+                      className="rounded-md px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                     >
                       Cancel
                     </button>
@@ -298,12 +298,12 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
               ) : (
                 <>
                   <div 
-                    className="text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere pr-8 pl-2"
+                    className="text-sm sm:text-base text-gray-900 dark:text-gray-100 break-words whitespace-normal overflow-wrap-anywhere pr-8 pl-2"
                   >
                     {question.text}
                   </div>
                   {/* Always show timestamp in smaller text */}
-                  <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary pl-2 mt-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 pl-2 mt-1">
                     {new Date(question.timestamp).toLocaleString()}
                   </p>
                 </>
@@ -323,8 +323,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                         updatingStatusId === question.id
                           ? 'bg-gray-300 dark:bg-gray-600'
                           : optimisticStatusUpdates[question.id] === 'answered' || (!optimisticStatusUpdates.hasOwnProperty(question.id) && question.status === 'answered')
-                            ? 'bg-success-light dark:bg-success-dark'
-                            : 'bg-error-light dark:bg-error-dark'
+                            ? 'bg-green-400 dark:bg-green-500'
+                            : 'bg-red-400 dark:bg-red-500'
                       }`}
                     >
                       <span
@@ -337,7 +337,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                         }`}
                       ></span>
                     </button>
-                    <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary min-w-[70px] inline-block">
+                    <span className="mx-2 text-xs text-gray-600 dark:text-gray-300 min-w-[70px] inline-block">
                       {optimisticStatusUpdates[question.id] || question.status === 'answered' ? 'Answered' : 'Unanswered'}
                     </span>
                     <button
@@ -345,8 +345,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       disabled={updatingStatusId === question.id}
                       className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
                         updatingStatusId === question.id
-                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
+                          ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                          : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30'
                       }`}
                     >
                       Delete
@@ -359,7 +359,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   <>
                     <button
                       onClick={() => handleEdit(question)}
-                      className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
+                      className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
                     >
                       Edit
                     </button>
@@ -368,8 +368,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       disabled={updatingStatusId === question.id}
                       className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
                         updatingStatusId === question.id
-                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
+                          ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                          : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30'
                       }`}
                     >
                       {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
@@ -387,7 +387,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary w-full overflow-hidden">
+    <ul className="divide-y divide-gray-200 dark:divide-gray-700 rounded-md bg-white p-2 sm:p-4 dark:bg-gray-900 w-full overflow-hidden shadow-sm dark:shadow-[0_0_15px_rgba(0,0,0,0.2)]">
       {questionItems}
     </ul>
   );
