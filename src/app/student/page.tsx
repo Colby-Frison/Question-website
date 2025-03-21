@@ -838,6 +838,9 @@ export default function StudentPage() {
               </svg>
               Ask a Question
             </h3>
+            <div className="mb-2 text-sm text-gray-600 dark:text-gray-300">
+              Your questions will be visible to the professor. Ask anything related to the current class session.
+            </div>
             <QuestionForm 
               studentId={studentId}
               sessionCode={sessionCode}

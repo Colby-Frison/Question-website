@@ -337,8 +337,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                         }`}
                       ></span>
                     </button>
-                    <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary">
-                      {question.status === 'answered' ? 'Answered' : 'Unanswered'}
+                    <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary min-w-[70px] inline-block">
+                      {optimisticStatusUpdates[question.id] || question.status === 'answered' ? 'Answered' : 'Unanswered'}
                     </span>
                     <button
                       onClick={() => handleDelete(question.id)}
@@ -349,7 +349,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                           : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
                       }`}
                     >
-                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
+                      Delete
                     </button>
                   </div>
                 )}

@@ -413,7 +413,10 @@ export default function ProfessorPage() {
     try {
       console.log(`Deleting question ${id}`);
       await deleteQuestion(id);
-      // The questions list will update automatically via the listener
+      
+      // Update the local state immediately to remove the deleted question
+      setQuestions(prevQuestions => prevQuestions.filter(q => q.id !== id));
+      
       console.log(`Question ${id} deleted successfully`);
     } catch (error) {
       console.error("Error deleting question:", error);
@@ -737,7 +740,7 @@ export default function ProfessorPage() {
    * Render the questions tab content
    */
   const renderQuestionsTab = () => (
-    <div className="p-4">
+    <div>
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
         <h2 className="text-xl font-bold mb-4 flex items-center">
           <svg className="mr-2 h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -772,7 +775,7 @@ export default function ProfessorPage() {
    * Render the points tab content
    */
   const renderPointsTab = () => (
-    <div className="p-4">
+    <div>
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
         <h2 className="text-xl font-bold mb-4 flex items-center">
           <svg className="mr-2 h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1079,30 +1082,32 @@ export default function ProfessorPage() {
                 </button>
               </div>
             </div>
-        </div>
+          </div>
 
           {/* Main Content Area */}
           <div className="w-full lg:w-2/3">
-            {/* Welcome Message */}
-            <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center">
-                <svg className="mr-2 h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Welcome, Professor!
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                {sessionCode 
-                  ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
-                  : "Start a new session to begin collecting questions and awarding points to your students."}
-              </p>
-            </div>
-
-            {/* Tabs Content */}
-            {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+            {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
+            {activeTab === 'questions' ? (
+              <>
+                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
+                  <h2 className="text-2xl font-bold mb-2 flex items-center">
+                    <svg className="mr-2 h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Welcome, Professor!
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    {sessionCode 
+                      ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
+                      : "Start a new session to begin collecting questions and awarding points to your students."}
+                  </p>
+                </div>
+                {renderQuestionsTab()}
+              </>
+            ) : renderPointsTab()}
           </div>
         </div>
-        </div>
+      </div>
     </div>
   );
 } 
