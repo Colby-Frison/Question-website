@@ -91,6 +91,21 @@ export default function ProfessorPage() {
   // Add this state declaration with the other states
   const [studentJoinCount, setStudentJoinCount] = useState(0);
 
+  // Add showWelcome state near the top where other state variables are defined
+  const [sessionStatus, setSessionStatus] = useState<'active' | 'closed' | 'archived'>('active');
+  const [loading, setLoading] = useState(true);
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
+  
+  // Add state to track welcome message visibility
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('hideWelcomeProfessor');
+      return savedState ? false : true; // Show by default unless explicitly hidden
+    }
+    return true;
+  });
+
   /**
    * Initial setup effect - runs once when component mounts
    * Checks if user is a professor, gets their ID, and initializes the class
@@ -274,6 +289,9 @@ export default function ProfessorPage() {
     }
     
     try {
+      // Reset welcome message when starting a new session
+      resetWelcomeMessage();
+      
       setIsLoading(true);
       const result = await createClassSession(className, professorId);
       
@@ -888,6 +906,27 @@ export default function ProfessorPage() {
     return Math.max(0, SESSION_INACTIVITY_TIMEOUT - elapsed);
   };
 
+  /**
+   * Handle closing the welcome message
+   * Stores preference in localStorage to keep it closed between sessions
+   */
+  const handleCloseWelcome = useCallback(() => {
+    setShowWelcome(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hideWelcomeProfessor', 'true');
+    }
+  }, []);
+
+  /**
+   * Reset welcome message when starting a new session
+   */
+  const resetWelcomeMessage = useCallback(() => {
+    setShowWelcome(true);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('hideWelcomeProfessor');
+    }
+  }, []);
+
   // Show error state if there's a problem
   if (error) {
                           return (
@@ -1087,24 +1126,31 @@ export default function ProfessorPage() {
           {/* Main Content Area */}
           <div className="w-full lg:w-2/3">
             {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
-            {activeTab === 'questions' ? (
-              <>
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 mb-6">
-                  <h2 className="text-2xl font-bold mb-2 flex items-center">
-                    <svg className="mr-2 h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Welcome, Professor!
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {sessionCode 
-                      ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
-                      : "Start a new session to begin collecting questions and awarding points to your students."}
-                  </p>
-                </div>
-                {renderQuestionsTab()}
-              </>
-            ) : renderPointsTab()}
+            {activeTab === 'questions' && showWelcome ? (
+              <div className="bg-white dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)] shadow-md rounded-lg p-6 mb-6 relative">
+                <button 
+                  onClick={handleCloseWelcome}
+                  className="absolute top-3 right-3 text-text-tertiary hover:text-text-secondary dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary"
+                  aria-label="Close welcome message"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <h2 className="text-2xl font-bold mb-2 flex items-center text-text-primary dark:text-dark-text-primary">
+                  <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Welcome, Professor!
+                </h2>
+                <p className="text-text-secondary dark:text-dark-text-secondary">
+                  {sessionCode 
+                    ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
+                    : "Start a new session to begin collecting questions and awarding points to your students."}
+                </p>
+              </div>
+            ) : null}
+            {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
           </div>
         </div>
       </div>
