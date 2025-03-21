@@ -11,6 +11,7 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [isProfessor] - Whether the current user is a professor
  * @property {boolean} [isStudent] - Whether the current user is a student
  * @property {string} [studentId] - ID of the current student, if applicable
+ * @property {boolean} [showControls] - Whether to show edit and delete buttons (defaults to true)
  * @property {function} [onDelete] - Optional callback for when a question is deleted
  * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
  * @property {string} [emptyMessage] - Message to display when there are no questions
@@ -22,6 +23,7 @@ interface QuestionListProps {
   isStudent?: boolean;
   studentId?: string;
   emptyMessage?: string;
+  showControls?: boolean;
   onDelete?: (questionId: string) => void;
   onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
 }
@@ -44,6 +46,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   isStudent = false,
   studentId = '',
   emptyMessage = "No questions yet.",
+  showControls = true,
   onDelete,
   onToggleStatus
 }) => {
@@ -52,6 +55,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [optimisticStatusUpdates, setOptimisticStatusUpdates] = useState<Record<string, 'answered' | 'unanswered'>>({});
 
   /**
    * Format timestamp to a readable date/time
@@ -142,35 +146,53 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    * Toggle a question's answered/unanswered status
    */
   const toggleQuestionStatus = async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
+    // Set updating status and show the loader
+    setUpdatingStatusId(questionId);
+    setError(null);
+
+    // Calculate the new status
+    const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
+    
+    // Update UI optimistically
+    setOptimisticStatusUpdates(prev => ({
+      ...prev,
+      [questionId]: newStatus
+    }));
+    
     // If a custom toggle handler is provided, use it
     if (onToggleStatus) {
       try {
-        setUpdatingStatusId(questionId);
-        onToggleStatus(questionId, currentStatus);
+        await onToggleStatus(questionId, currentStatus);
       } catch (error) {
         console.error('Error toggling question status:', error);
         setError('Failed to update question status');
+        
+        // Revert the optimistic update on error
+        setOptimisticStatusUpdates(prev => {
+          const updated = { ...prev };
+          delete updated[questionId];
+          return updated;
+        });
       } finally {
-        // Update UI optimistically
+        // Finish update
         setUpdatingStatusId(null);
       }
       return;
     }
     
     // Otherwise use the default implementation
-    setUpdatingStatusId(questionId);
-    setError(null);
-    
     try {
-      const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
-      const success = await updateQuestionStatus(questionId, newStatus);
-      
-      if (!success) {
-        setError('Failed to update question status');
-      }
+      await updateQuestionStatus(questionId, newStatus);
     } catch (error) {
-      console.error('Error updating question status:', error);
-      setError('An error occurred while updating the question status');
+      console.error('Error toggling question status:', error);
+      setError('Failed to update question status');
+      
+      // Revert the optimistic update on error
+      setOptimisticStatusUpdates(prev => {
+        const updated = { ...prev };
+        delete updated[questionId];
+        return updated;
+      });
     } finally {
       setUpdatingStatusId(null);
     }
@@ -289,7 +311,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
             </div>
             
             {/* Action buttons for professors or students who own the question */}
-            {(isProfessor || isOwnQuestion) && editingId !== question.id && (
+            {((isProfessor || isOwnQuestion) && editingId !== question.id && showControls) && (
               <div className="flex items-center justify-end space-x-2 mt-2">
                 {/* Professor controls */}
                 {isProfessor && (
@@ -299,17 +321,21 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       disabled={updatingStatusId === question.id}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         updatingStatusId === question.id
-                          ? 'bg-background-tertiary dark:bg-dark-background-tertiary'
-                          : question.status === 'answered'
+                          ? 'bg-gray-300 dark:bg-gray-600'
+                          : optimisticStatusUpdates[question.id] === 'answered' || (!optimisticStatusUpdates.hasOwnProperty(question.id) && question.status === 'answered')
                             ? 'bg-success-light dark:bg-success-dark'
                             : 'bg-error-light dark:bg-error-dark'
                       }`}
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          question.status === 'answered' ? 'translate-x-6' : 'translate-x-1'
+                          updatingStatusId === question.id 
+                            ? 'translate-x-3 animate-pulse'
+                            : optimisticStatusUpdates[question.id] === 'answered' || (!optimisticStatusUpdates.hasOwnProperty(question.id) && question.status === 'answered')
+                              ? 'translate-x-6' 
+                              : 'translate-x-1'
                         }`}
-                      />
+                      ></span>
                     </button>
                     <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary">
                       {question.status === 'answered' ? 'Answered' : 'Unanswered'}
@@ -356,7 +382,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         </li>
       );
     });
-  }, [questions, isProfessor, isStudent, studentId, editingId, updatingStatusId, handleEdit, handleSaveEdit, handleCancelEdit, handleDelete, toggleQuestionStatus, isUpdating, editText]);
+  }, [questions, isProfessor, isStudent, studentId, editingId, updatingStatusId, handleEdit, handleSaveEdit, handleCancelEdit, handleDelete, toggleQuestionStatus, isUpdating, editText, optimisticStatusUpdates, showControls]);
 
   if (questions.length === 0) return renderEmptyState;
 
