@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { validateClass, joinClass } from '@/lib/classCode';
 import { getSessionByCode } from '@/lib/classSession';
+import { useRouter } from 'next/navigation';
+import { clearUserType } from '@/lib/auth';
 
 /**
  * Interface for JoinClass component props
@@ -32,6 +34,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
   const [sessionCode, setSessionCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const router = useRouter();
 
   /**
    * Handles the class joining process
@@ -82,6 +85,17 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
     } finally {
       setIsJoining(false);
     }
+  };
+
+  /**
+   * Handles returning to the home page
+   * Clears user type and redirects to home
+   */
+  const handleBackToHome = () => {
+    // Clear the user type to reset the state
+    clearUserType();
+    // Navigate to home page
+    router.push('/');
   };
 
   return (
@@ -147,7 +161,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
 
         <div className="flex justify-center pt-2">
           <button
-            onClick={() => window.location.href = '/'}
+            onClick={handleBackToHome}
             className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 flex items-center transition-colors"
           >
             <svg className="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

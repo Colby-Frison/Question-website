@@ -896,7 +896,7 @@ export default function StudentPage() {
             Your Points
           </h3>
           
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-900 dark:text-gray-100">
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/20 dark:border-blue-800 dark:text-gray-100">
             <p className="text-sm text-blue-800 dark:text-blue-200">
               Points are awarded by your professor when you answer questions correctly. You can also adjust your points using the controls below.
             </p>
@@ -954,7 +954,7 @@ export default function StudentPage() {
               <div className="w-full flex flex-col space-y-3">
                 <button
                   onClick={refreshStudentPoints}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-blue-600/90 dark:hover:bg-blue-700 dark:text-gray-100"
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
                 >
                   <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -992,7 +992,7 @@ export default function StudentPage() {
           
           {activeQuestion ? (
             <div>
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-900 dark:text-white">
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-white">
                 <h3 className="font-semibold mb-2">Current Question:</h3>
                 <p className="font-medium">{activeQuestion.text}</p>
               </div>
@@ -1024,7 +1024,7 @@ export default function StudentPage() {
                     className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
                       cooldownActive || isSubmittingAnswer
                         ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600/90 dark:hover:bg-blue-700 dark:text-gray-100'
+                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white'
                     }`}
                     disabled={cooldownActive || isSubmittingAnswer}
                   >
@@ -1038,26 +1038,14 @@ export default function StudentPage() {
               <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-gray-600 dark:text-gray-400 mb-2">
+              <p className="text-gray-600 dark:text-gray-300 mb-2">
                 No active question at the moment
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 When your professor asks a question, it will appear here for you to answer.
               </p>
             </div>
           )}
-        </div>
-        
-        <div className="bg-white dark:bg-gray-900 dark:border dark:border-gray-800 shadow-md rounded-lg p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center">
-            <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Points History
-          </h3>
-          <div className="text-gray-600 dark:text-gray-400 text-center p-4">
-            Coming soon: A detailed history of your points changes for this class session.
-          </div>
         </div>
       </div>
     );
@@ -1114,11 +1102,11 @@ export default function StudentPage() {
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-900 dark:border dark:border-gray-800">
-            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-500">Network Error</h2>
+            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Network Error</h2>
             <p className="mb-4 text-gray-700 dark:text-gray-300">You are currently offline. Please check your internet connection and try again.</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600/90 dark:hover:bg-blue-700 dark:text-gray-100 transition-colors"
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white transition-colors"
             >
               Retry
             </button>
@@ -1135,18 +1123,18 @@ export default function StudentPage() {
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-900 dark:border dark:border-gray-800">
-            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-500">Error</h2>
+            <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4 text-gray-700 dark:text-gray-300">{error}</p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setError(null)}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600/90 dark:hover:bg-blue-700 dark:text-gray-100 transition-colors"
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white transition-colors"
               >
                 Dismiss
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600/90 dark:hover:bg-green-700 dark:text-gray-100 transition-colors"
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-white transition-colors"
               >
                 Refresh Page
               </button>
@@ -1212,7 +1200,7 @@ export default function StudentPage() {
             <div className="w-full lg:w-1/3">
               <div className="bg-white dark:bg-gray-900 dark:border dark:border-gray-800 shadow-md rounded-lg p-6 sticky top-6">
                 {error && (
-                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
+                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-400 dark:border dark:border-red-800">
                     <p className="text-sm font-medium">{error}</p>
                   </div>
                 )}
@@ -1248,7 +1236,7 @@ export default function StudentPage() {
                       <button
                         onClick={handleLeaveClass}
                         disabled={isLeavingClass}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600/90 dark:hover:bg-red-700 dark:text-gray-100 flex items-center justify-center space-x-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 dark:text-white flex items-center justify-center space-x-2 disabled:opacity-70 disabled:cursor-not-allowed"
                       >
                         {isLeavingClass ? (
                           <>
@@ -1285,7 +1273,7 @@ export default function StudentPage() {
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                           activeTab === 'questions'
                             ? 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-850 dark:border-r dark:border-gray-700'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:border-r dark:border-gray-700'
                         }`}
                       >
                         Questions
@@ -1295,7 +1283,7 @@ export default function StudentPage() {
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                           activeTab === 'points'
                             ? 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-850'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
                         }`}
                       >
                         My Points
@@ -1326,7 +1314,7 @@ export default function StudentPage() {
                   </svg>
                   Welcome, Student!
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-gray-600 dark:text-gray-300">
                   You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
                 </p>
               </div>

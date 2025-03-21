@@ -752,7 +752,7 @@ export default function ProfessorPage() {
             isProfessor={true}
             onDelete={handleDeleteQuestion}
             onToggleStatus={handleToggleQuestionStatus}
-            showControls={false}
+            showControls={true}
             emptyMessage="No questions yet. Students will be able to ask questions once they join."
           />
         ) : (
