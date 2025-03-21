@@ -186,7 +186,8 @@ export default function StudentPage() {
       sessionListener();
       setSessionListener(null);
     }
-  }, [studentId, sessionListener]);
+  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
+      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
 
   /**
    * Handle adding a point to student's total
@@ -1164,47 +1165,27 @@ export default function StudentPage() {
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
           <div className="max-w-md mx-auto">
-            <div className="bg-white shadow-lg rounded-lg overflow-hidden dark:bg-gray-900 dark:border dark:border-gray-800 transition-all duration-300 hover:shadow-xl">
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 dark:from-blue-600 dark:to-purple-700 p-4">
-                <h1 className="text-2xl font-bold text-white mb-1">Student Dashboard</h1>
-                <p className="text-blue-100 text-sm">Welcome to the interactive classroom experience</p>
-              </div>
-              
+            <div className="bg-white shadow-lg rounded-lg overflow-hidden dark:bg-gray-900 dark:border dark:border-gray-800">
               <div className="p-6">
-                <div className="flex items-center mb-6">
-                  <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full mr-4">
-                    <svg className="h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Join a Class</h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Connect with your professor and classmates</p>
-                  </div>
-                </div>
+                <h2 className="text-xl font-bold mb-6">Join a Class</h2>
                 
-                <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-4 mb-6 border border-blue-100 dark:border-blue-900/30">
-                  <p className="text-sm text-blue-800 dark:text-blue-200 flex items-start">
-                    <svg className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Enter the session code provided by your professor to join the current class session.</span>
-                  </p>
+                <div className="group relative mb-8">
+                  <div className="flex items-center mb-2">
+                    <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Session Code
+                    </label>
+                    <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-72 p-3 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        Enter the 6-digit code provided by your professor to join the current class session
+                      </div>
+                      <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 
                 <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
-                
-                <div className="mt-6 flex justify-center">
-                  <button
-                    onClick={handleLogout}
-                    className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 flex items-center transition-colors"
-                  >
-                    <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Return to Home
-                  </button>
-                </div>
               </div>
             </div>
           </div>

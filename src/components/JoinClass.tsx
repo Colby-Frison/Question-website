@@ -97,11 +97,8 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
         </div>
       )}
       
-      <div className="flex flex-col space-y-4">
+      <div className="flex flex-col space-y-6">
         <div className="flex-1">
-          <label htmlFor="sessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Session Code
-          </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,25 +108,23 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             <input
               type="text"
               id="sessionCode"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-blue-400 text-lg font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase"
-              placeholder="ENTER CODE"
+              className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-blue-400 text-xl font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase text-center"
+              placeholder="ENTER SESSION CODE"
               value={sessionCode}
               onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
               maxLength={6}
+              autoFocus
             />
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
-            Enter the 6-digit code provided by your professor
-          </p>
         </div>
         
         <button
           onClick={handleJoinClass}
           disabled={isJoining || !sessionCode.trim()}
-          className={`w-full px-4 py-3 rounded-lg font-medium text-lg flex items-center justify-center transition-all duration-300 ${
+          className={`w-full px-4 py-4 rounded-lg font-medium text-lg flex items-center justify-center transition-all duration-200 ${
             isJoining || !sessionCode.trim() 
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
-              : 'bg-blue-500 text-white hover:bg-blue-600 transform hover:translate-y-[-2px] hover:shadow-lg dark:bg-blue-600 dark:hover:bg-blue-700'
+              : 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700'
           }`}
         >
           {isJoining ? (
@@ -149,6 +144,18 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             </>
           )}
         </button>
+
+        <div className="flex justify-center">
+          <button
+            onClick={() => window.location.href = '/'}
+            className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 flex items-center transition-colors"
+          >
+            <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to Home
+          </button>
+        </div>
       </div>
       
       <style jsx>{`
