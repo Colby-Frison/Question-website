@@ -930,82 +930,74 @@ export default function StudentPage() {
     return (
       <div className="grid grid-cols-1 gap-6">
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
-            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Your Points
           </h3>
           
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
-            <p className="text-sm text-blue-800 dark:text-dark-text-secondary">
-              Earn points by participating in class activities and correctly answering questions from your professor.
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
+            <p className="text-sm text-blue-800 dark:text-white">
+              Points are awarded by your professor for participation and correct answers.
             </p>
           </div>
           
           <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6">
-            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-dark-text-primary">Current Points</h4>
+            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
             <div className="flex justify-center items-center mb-4">
-              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-dark-primary transition-all transform">
+              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-blue-400 transition-all transform">
                 {points}
               </div>
-              
-              <div className="ml-2 relative group">
-                <button className="text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                </button>
+            </div>
+            
+            <div className="text-sm text-blue-800 dark:text-white text-center mb-4">
+              Total points earned in this class
+            </div>
+            
+            {isSavingPoints && (
+              <div className="mb-4 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
+                <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
               </div>
+            )}
+            
+            <div className="w-full flex flex-col space-y-3">
+              <button
+                onClick={refreshStudentPoints}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted"
+              >
+                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh Points
+              </button>
               
-              <div className="text-sm text-blue-800 dark:text-dark-text-secondary text-center mb-4">
-                Total points earned in this class
-              </div>
-              
-              {isSavingPoints && (
-                <div className="mb-4 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
-                  <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Saving...
-                </div>
-              )}
-              
-              <div className="w-full flex flex-col space-y-3">
+              <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                <input 
+                  type="text" 
+                  value={pointsInput}
+                  onChange={handlePointsInputChange}
+                  className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-dark-background-tertiary dark:text-dark-text-primary focus:outline-none"
+                  aria-label="Set points value"
+                />
                 <button
-                  onClick={refreshStudentPoints}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted"
+                  onClick={handleSetPoints}
+                  className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-dark-text-secondary transition-colors"
                 >
-                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh Points
+                  Set
                 </button>
-                
-                <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                  <input 
-                    type="text" 
-                    value={pointsInput}
-                    onChange={handlePointsInputChange}
-                    className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-dark-background-tertiary dark:text-dark-text-primary focus:outline-none"
-                    aria-label="Set points value"
-                  />
-                  <button
-                    onClick={handleSetPoints}
-                    className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-dark-text-secondary transition-colors"
-                  >
-                    Set
-                  </button>
-                </div>
               </div>
             </div>
           </div>
         </div>
         
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
-            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Answer Professor's Question
@@ -1013,13 +1005,13 @@ export default function StudentPage() {
           
           {activeQuestion ? (
             <div>
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
                 <h3 className="font-semibold mb-2">Current Question:</h3>
                 <p className="font-medium">{activeQuestion.text}</p>
               </div>
               
               {answerSubmitted ? (
-                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
+                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
                   <p className="font-semibold">Your answer has been submitted!</p>
                   <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
                 </div>
