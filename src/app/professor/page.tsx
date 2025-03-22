@@ -758,22 +758,32 @@ export default function ProfessorPage() {
    * Render the questions tab content
    */
   const renderQuestionsTab = () => (
-    <div className="space-y-4">
-      {/* Questions container with dark mode styling */}
-      <div className="rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-        <h2 className="mb-4 text-xl font-semibold text-text-primary dark:text-dark-text-primary">Student Questions</h2>
-        {questions.length === 0 ? (
-          <div className="rounded-md bg-background-secondary p-4 text-center text-text-secondary dark:bg-dark-background-tertiary dark:text-dark-text-secondary">
-            No questions yet.
-          </div>
-        ) : (
+    <div>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Student Questions
+        </h2>
+        
+        {questions.length > 0 ? (
           <QuestionList 
             questions={questions} 
             isProfessor={true}
-            onDelete={handleDeleteQuestion} 
+            onDelete={handleDeleteQuestion}
             onToggleStatus={handleToggleQuestionStatus}
             showControls={true}
+            emptyMessage="No questions yet. Students will be able to ask questions once they join."
           />
+        ) : (
+          <div className="text-center py-6 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+            <svg className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-300">No questions yet</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Student questions will appear here once they join and ask questions.</p>
+          </div>
         )}
       </div>
     </div>
@@ -783,89 +793,107 @@ export default function ProfessorPage() {
    * Render the points tab content
    */
   const renderPointsTab = () => (
-    <div className="space-y-4">
-      {/* Active question form with dark mode styling */}
-      <div className="rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-        <h2 className="mb-4 text-xl font-semibold text-text-primary dark:text-dark-text-primary">Ask the Class</h2>
+    <div>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+          <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Ask a Question
+        </h2>
         
-        <form onSubmit={handleAskQuestion} className="space-y-4">
-          <div>
-            <label 
-              htmlFor="question-text" 
-              className="mb-1 block text-sm font-medium text-text-primary dark:text-dark-text-primary"
-            >
-              Question Text
-            </label>
-            <textarea
-              id="question-text"
+        <form onSubmit={handleAskQuestion} className="mb-4">
+          <div className="flex flex-col md:flex-row gap-2">
+            <input
+              type="text"
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
-              placeholder="Type your question here..."
-              className="w-full rounded-md border border-background-tertiary bg-white px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-              rows={3}
+              placeholder="Enter a question for students to answer..."
+              className="flex-grow p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
               required
             />
-          </div>
-          
-          <div>
             <button
               type="submit"
-              disabled={!questionText.trim() || !!activeQuestionId}
-              className="rounded-md bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:focus:ring-offset-dark-background-secondary dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
+              className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white font-medium"
             >
               Ask Question
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Active question display with dark mode styling */}
-      {activeQuestionId && (
-        <div className="rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-text-primary dark:text-dark-text-primary">Active Question</h2>
-            <button
-              onClick={handleAskQuestion}
-              className="rounded-md bg-error px-3 py-1 text-sm text-white hover:bg-error-dark dark:bg-error dark:text-dark-text-inverted dark:hover:bg-error-dark"
-            >
-              End Question
-            </button>
-          </div>
-          
-          <div className="mb-4 rounded-md bg-background-secondary p-4 text-text-primary dark:bg-dark-background-tertiary dark:text-dark-text-primary">
-            {activeQuestionText}
-          </div>
-          
-          <h3 className="mb-2 text-lg font-medium text-text-primary dark:text-dark-text-primary">Student Answers</h3>
-          
-          {answers.length === 0 ? (
-            <div className="rounded-md bg-background-secondary p-4 text-center text-text-secondary dark:bg-dark-background-tertiary dark:text-dark-text-secondary">
-              No answers yet.
+        
+        {activeQuestionId ? (
+          <div>
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Active Question
+              </h3>
+              <div className="mb-4 p-4 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <p className="font-medium">{activeQuestionText || answers[0]?.questionText || "Loading question..."}</p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {answers.map((answer) => (
-                <div 
-                  key={answer.id} 
-                  className="rounded-md border border-background-tertiary p-4 dark:border-dark-background-tertiary"
-                >
-                  <p className="mb-3 text-text-primary dark:text-dark-text-primary">{answer.text}</p>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-text-secondary dark:text-dark-text-secondary">
-                      {new Date(answer.timestamp).toLocaleString()}
+            
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center text-gray-900 dark:text-gray-100">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Student Answers
+              </h3>
+              
+              {answers.length > 0 ? (
+                <div className="space-y-4">
+                  {answers.map(answer => (
+                    <div key={answer.id} className="p-4 border rounded-lg dark:border-gray-700 bg-white dark:bg-gray-800">
+                      <p className="mb-2 font-medium dark:text-gray-100">{answer.text}</p>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
+                          Student ID: {answer.studentId.substring(0, 6)}
+                        </span>
+                        
+                        {pointsAwarded[answer.id] ? (
+                          <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 font-medium">
+                            <span className="inline-flex items-center">
+                              <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {pointsAwarded[answer.id]} points awarded
+                            </span>
+                          </span>
+                        ) : null}
+                      </div>
+                      
+                      <div className="mt-3">
+                        <p className="text-sm mb-1 font-medium text-gray-700 dark:text-gray-300">Award points:</p>
+                        {renderPointsScale(answer.studentId, answer.id)}
+                      </div>
                     </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      {renderPointsScale(answer.studentId, answer.id)}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p className="text-gray-600 dark:text-gray-300 mb-1">No answers yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Waiting for students to respond...</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-300 mb-1">No active question</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Ask a question using the form above to get student responses and award points.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -936,197 +964,196 @@ export default function ProfessorPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background dark:bg-dark-background-default">
-      <Navbar 
-        onLogout={handleLogout}
-        userType="professor"
-      />
-      
-      <main className="flex-grow p-4">
-        <div className="mx-auto max-w-6xl space-y-6">
-          
-          {/* Welcome banner - with dark mode styling */}
-          {showWelcome && (
-            <div className="flex items-center justify-between rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-              <div>
-                <h2 className="text-xl font-semibold text-text-primary dark:text-dark-text-primary">👋 Welcome to Your Professor Dashboard</h2>
-                <p className="mt-1 text-text-secondary dark:text-dark-text-secondary">
-                  Manage your class, view student questions, and award points.
-                </p>
-              </div>
-              <button 
-                onClick={() => {
-                  setShowWelcome(false);
-                  if (typeof window !== 'undefined') {
-                    localStorage.setItem('hideWelcomeProfessor', 'true');
-                  }
-                }}
-                className="rounded-md bg-background-secondary p-2 text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      {/* Navbar with theme toggle */}
+      <Navbar userType="professor" onLogout={handleLogout} />
+
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row items-start gap-6">
+          {/* Sidebar */}
+          <div className="w-full lg:w-1/3">
+            <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300">
+                  <p className="text-sm font-medium">{error}</p>
+                </div>
+              )}
+
+              <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
-              </button>
-            </div>
-          )}
-          
-          {/* Error state - with dark theme styling */}
-          {error && (
-            <div className="rounded-lg bg-error-light/30 p-4 text-error-dark dark:bg-error-light/20 dark:text-error-light">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-error-dark dark:text-error-light" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
+                Class Management
+              </h2>
+
+              <div className="space-y-4">
+                {/* Class Name Section */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Class Name
+                  </h3>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      placeholder="Enter class name"
+                      className="flex-grow p-2 border rounded-md text-sm dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    />
+                    <button
+                      onClick={handleClassNameChange}
+                      className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+                    >
+                      Update
+                    </button>
+                  </div>
                 </div>
-                <div className="ml-3 flex-1 md:flex md:justify-between">
-                  <p>{error}</p>
-                  <button 
-                    onClick={handleRetry}
-                    className="ml-3 whitespace-nowrap text-sm font-medium text-error-dark underline dark:text-error-light"
-                  >
-                    Retry
-                  </button>
+
+                {/* Session Management Section */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Class Session
+                  </h3>
+                  
+                  {!sessionCode ? (
+                    <button
+                      onClick={handleStartSession}
+                      disabled={isLoading}
+                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
+                      <span>{isLoading ? "Starting..." : "Start New Session"}</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-gray-700 dark:border-gray-600">
+                        <p className="font-medium text-gray-700 dark:text-gray-300">Session Code:</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Active students:</span>
+                          <span className="font-medium">{studentJoinCount}</span>
+                        </div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span>Session duration:</span>
+                          <span className="font-medium">{formatSessionDuration(sessionStartTime)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Activity timeout:</span>
+                          <span className="font-medium">{Math.floor(remainingMs() / 60000)} min</span>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={handleEndSession}
+                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                        </svg>
+                        <span>End Session</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Network status alert - with dark mode styling */}
-          {networkStatus === 'offline' && (
-            <div className="rounded-lg bg-warning-light/30 p-4 text-warning-dark dark:bg-warning-light/20 dark:text-warning-light">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-warning-dark dark:text-warning-light" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
+
+                {/* Tab Navigation */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                    <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                    </svg>
+                    Dashboard Views
+                  </h3>
+                  
+                  <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
+                    <button
+                      onClick={() => setActiveTab('questions')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                        activeTab === 'questions'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Questions
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('points')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                        activeTab === 'points'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Points
+                    </button>
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <p>You are currently offline. Some features may be unavailable until connection is restored.</p>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Class management - with dark mode styling */}
-          <div className="rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <h2 className="text-xl font-semibold text-text-primary dark:text-dark-text-primary">Class Management</h2>
-                {className && <p className="text-text-secondary dark:text-dark-text-secondary">Class: {className}</p>}
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {!sessionActive ? (
-                  <button
-                    onClick={handleStartSession}
-                    disabled={isLoading || !className}
-                    className="rounded-md bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:focus:ring-offset-dark-background-secondary dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
-                  >
-                    Start Class Session
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleEndSession}
-                    className="rounded-md bg-error px-4 py-2 text-white transition-colors hover:bg-error-dark focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-2 dark:bg-error dark:text-dark-text-inverted dark:hover:bg-error-dark dark:focus:ring-error dark:focus:ring-offset-dark-background-secondary"
-                  >
-                    End Class Session
-                  </button>
-                )}
-                
+
                 <button
-                  onClick={handleClassNameChange}
-                  className="rounded-md border border-primary bg-transparent px-4 py-2 text-primary transition-colors hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:border-dark-primary dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary dark:focus:ring-offset-dark-background-secondary"
+                  onClick={handleLogout}
+                  className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700 flex items-center justify-center space-x-2"
                 >
-                  Change Class Name
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>Logout</span>
                 </button>
               </div>
             </div>
-            
-            {/* If session active, show code and stats */}
-            {sessionActive && (
-              <div className="mt-4">
-                <div className="flex flex-col gap-4 sm:flex-row">
-                  <div className="flex-1 rounded-md bg-background-secondary p-4 dark:bg-dark-background-tertiary">
-                    <h3 className="mb-1 text-sm font-medium text-text-secondary dark:text-dark-text-secondary">Class Code</h3>
-                    <div className="text-3xl font-bold tracking-widest text-primary dark:text-dark-primary">{sessionCode}</div>
-                  </div>
-                  
-                  <div className="flex-1 rounded-md bg-background-secondary p-4 dark:bg-dark-background-tertiary">
-                    <h3 className="mb-1 text-sm font-medium text-text-secondary dark:text-dark-text-secondary">Students Joined</h3>
-                    <div className="text-3xl font-bold text-text-primary dark:text-dark-text-primary">{studentJoinCount}</div>
-                  </div>
-                  
-                  <div className="flex-1 rounded-md bg-background-secondary p-4 dark:bg-dark-background-tertiary">
-                    <h3 className="mb-1 text-sm font-medium text-text-secondary dark:text-dark-text-secondary">Session Time</h3>
-                    <div className="text-2xl font-bold text-text-primary dark:text-dark-text-primary">
-                      {formatSessionDuration(sessionStartTime)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-          
-          {/* Tab navigation - with dark mode styling */}
-          {sessionActive && (
-            <>
-              <div className="border-b border-background-tertiary dark:border-dark-background-tertiary">
-                <nav className="-mb-px flex space-x-8">
-                  <button
-                    onClick={() => handleTabChange('questions')}
-                    className={`cursor-pointer border-b-2 py-2 px-1 text-sm font-medium ${
-                      activeTab === 'questions'
-                        ? 'border-primary text-primary dark:border-dark-primary dark:text-dark-primary'
-                        : 'border-transparent text-text-secondary hover:border-background-tertiary hover:text-text-primary dark:text-dark-text-secondary dark:hover:border-dark-background-tertiary dark:hover:text-dark-text-primary'
-                    }`}
-                  >
-                    Student Questions
-                  </button>
-                  <button
-                    onClick={() => handleTabChange('points')}
-                    className={`cursor-pointer border-b-2 py-2 px-1 text-sm font-medium ${
-                      activeTab === 'points'
-                        ? 'border-primary text-primary dark:border-dark-primary dark:text-dark-primary'
-                        : 'border-transparent text-text-secondary hover:border-background-tertiary hover:text-text-primary dark:text-dark-text-secondary dark:hover:border-dark-background-tertiary dark:hover:text-dark-text-primary'
-                    }`}
-                  >
-                    Ask Questions
-                  </button>
-                </nav>
+
+          {/* Main Content Area */}
+          <div className="w-full lg:w-2/3">
+            {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
+            {activeTab === 'questions' && showWelcome ? (
+              <div className="bg-white dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)] shadow-md rounded-lg p-6 mb-6 relative">
+                <button 
+                  onClick={handleCloseWelcome}
+                  className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  aria-label="Close welcome message"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                  <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Welcome, Professor!
+                </h2>
+                <p className="text-gray-600 dark:text-gray-300">
+                  {sessionCode 
+                    ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
+                    : "Start a new session to begin collecting questions and awarding points to your students."}
+                </p>
               </div>
-              
-              {/* Active tab content */}
-              {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-            </>
-          )}
-          
-          {/* Loading state - with dark mode styling */}
-          {isLoading && (
-            <div className="flex justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
-            </div>
-          )}
-          
-          {/* Class name form if no class is set - with dark mode styling */}
-          {!isLoading && !error && !className && (
-            <div className="rounded-lg bg-white p-6 shadow-[0_0_15px_rgba(0,0,0,0.1)] transition-all dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-              <h2 className="mb-4 text-xl font-semibold text-text-primary dark:text-dark-text-primary">Create a Class</h2>
-              <JoinClass 
-                onSuccess={(className) => {
-                  setClassName(className);
-                  console.log('Class created:', className);
-                }} 
-                studentId={professorId}
-              />
-            </div>
-          )}
+            ) : null}
+            {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+          </div>
         </div>
-      </main>
-      
-      <footer className="border-t border-background-tertiary p-4 text-center text-sm text-text-secondary dark:border-dark-background-tertiary dark:text-dark-text-secondary">
-        &copy; {new Date().getFullYear()} Classroom Q&A - Professor Dashboard
-      </footer>
+      </div>
     </div>
   );
 } 
