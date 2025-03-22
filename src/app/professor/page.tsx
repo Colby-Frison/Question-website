@@ -45,7 +45,6 @@ import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
 import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 // Constants for Firebase collections
 const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';

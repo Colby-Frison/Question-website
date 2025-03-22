@@ -1,13 +1,18 @@
-import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import Footer from '@/components/Footer';
+import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'ClassQuestions - Interactive Classroom Q&A',
-  description: 'An interactive platform for classroom questions and answers',
+  title: 'Classroom Q&A',
+  description: 'Anonymous question platform for students',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -16,12 +21,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} flex flex-col min-h-screen`}>
-        <main className="flex-grow">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Force light mode */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  // Force light mode
+                  document.documentElement.classList.remove('dark');
+                  localStorage.setItem('theme', 'light');
+                } catch (e) {
+                  console.error('Theme initialization failed:', e);
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className={`${inter.className} flex min-h-screen flex-col bg-background text-text`}>
+        <div className="flex flex-1 flex-col">
           {children}
-        </main>
-        <Footer />
+        </div>
       </body>
     </html>
   );

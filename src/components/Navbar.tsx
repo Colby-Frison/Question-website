@@ -37,13 +37,13 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 dark:bg-dark-background dark:border-gray-800 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between">
           {/* Logo and main nav */}
           <div className="flex">
             <div className="flex flex-shrink-0 items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900">
+              <Link href="/" className="text-xl font-bold text-gray-900 dark:text-white">
                 Classroom Q&A
               </Link>
             </div>
@@ -54,7 +54,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
             <button
               type="button"
               onClick={onLogout}
-              className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-dark-primary dark:text-white dark:hover:bg-dark-primary-hover"
             >
               Change Role
             </button>
@@ -64,7 +64,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           <div className="flex items-center sm:hidden">
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:text-white dark:hover:bg-gray-800 dark:hover:text-white"
               aria-controls="mobile-menu"
               aria-expanded={isMenuOpen}
               onClick={toggleMenu}
@@ -90,7 +90,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           <div className="space-y-1 px-2 pb-3 pt-2">
             <button
               onClick={onLogout}
-              className="block w-full rounded-md bg-blue-500 px-3 py-2 text-base font-medium text-white hover:bg-blue-600"
+              className="block w-full rounded-md bg-blue-500 px-3 py-2 text-base font-medium text-white hover:bg-blue-600 dark:bg-dark-primary dark:text-white dark:hover:bg-dark-primary-hover"
             >
               Change Role
             </button>

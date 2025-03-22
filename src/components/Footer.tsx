@@ -1,36 +1,34 @@
 'use client';
 
-import { ThemeToggle } from './ThemeToggle';
-
 /**
  * Footer component for the application
  * 
  * This component:
  * - Displays copyright information with the current year
- * - Provides access to the theme toggle
  * - Includes a link to the project's GitHub repository
  * - Is responsive with different layouts for mobile and desktop
  * - Sticks to the bottom of the page with mt-auto
  * 
  * @returns {JSX.Element} Rendered component
  */
-export default function Footer() {
+export function Footer() {
   return (
-    <footer className="bg-gray-100 py-4 mt-auto">
-      <div className="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
-        <div className="flex items-center">
-          <span className="text-sm text-gray-600">© 2023 ClassQuestions. All rights reserved.</span>
+    <footer className="mt-auto border-t border-background-tertiary py-3 sm:py-4">
+      <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between px-4">
+        <div className="mb-3 w-full text-center sm:mb-0 sm:w-auto sm:text-left">
+          <p className="text-xs sm:text-sm text-text-tertiary">
+            © {new Date().getFullYear()} Classroom Q&A
+          </p>
         </div>
         
-        <div className="flex items-center space-x-4">
-          <a href="#" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-            Privacy Policy
-          </a>
-          <a href="#" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-            Terms of Service
-          </a>
-          <a href="#" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-            Help
+        <div className="flex w-full flex-col sm:flex-row items-center justify-center sm:space-x-4 space-y-2 sm:space-y-0 sm:w-auto sm:justify-end">
+          <a 
+            href="https://github.com/Colby-Frison/Question-website/tree/main" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs sm:text-sm text-text-tertiary transition-colors hover:text-text-secondary"
+          >
+            GitHub
           </a>
         </div>
       </div>
