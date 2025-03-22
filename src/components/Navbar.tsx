@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
+import { ThemeToggle } from './ThemeToggle';
 
 /**
  * Interface for Navbar component props
@@ -37,24 +38,30 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-800 shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <nav className="bg-white shadow-sm dark:bg-dark-background-secondary dark:border-b dark:border-dark-background-tertiary">
+      <div className="mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between">
-          {/* Logo and main nav */}
-          <div className="flex">
-            <div className="flex flex-shrink-0 items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900 dark:text-blue-300">
-                Classroom Q&A
-              </Link>
-            </div>
+          {/* Logo and title */}
+          <div className="flex items-center">
+            <Link href="/" className="flex items-center">
+              <span className="text-xl font-semibold text-primary dark:text-dark-primary">
+                Classroom Q&amp;A
+              </span>
+            </Link>
           </div>
 
-          {/* Desktop menu */}
+          {/* Desktop Nav Items */}
           <div className="hidden items-center sm:flex">
-            <div className="flex items-center space-x-4">
+            <div className="ml-6 flex items-center space-x-4">
+              <span className="text-text-secondary dark:text-dark-text-secondary">
+                {userType === 'student' ? 'Student Dashboard' : 'Professor Dashboard'}
+              </span>
+              
+              <ThemeToggle />
+              
               <button
                 onClick={onLogout}
-                className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700"
+                className="rounded-md bg-background-secondary px-3 py-2 text-text-secondary transition-colors hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary"
               >
                 Change Role
               </button>
@@ -62,35 +69,47 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           </div>
 
           {/* Mobile menu button */}
-          <div className="flex items-center space-x-2 sm:hidden">
+          <div className="flex items-center sm:hidden">
+            <ThemeToggle />
+            
             <button
-              onClick={toggleMenu}
-              className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"
-              aria-expanded={isMenuOpen}
+              type="button"
+              className="ml-2 inline-flex items-center justify-center rounded-md p-2 text-text-secondary hover:bg-background-secondary hover:text-text-primary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary dark:hover:text-dark-text-primary"
+              aria-expanded="false"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               <span className="sr-only">Open main menu</span>
-              {/* Icon when menu is closed */}
-              {!isMenuOpen ? (
+              {isMenuOpen ? (
                 <svg
-                  className="block h-6 w-6"
+                  className="h-6 w-6"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   aria-hidden="true"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               ) : (
                 <svg
-                  className="block h-6 w-6"
+                  className="h-6 w-6"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   aria-hidden="true"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
                 </svg>
               )}
             </button>
@@ -98,16 +117,22 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
         </div>
       </div>
 
-      {/* Mobile menu, show/hide based on menu state */}
+      {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="sm:hidden">
-          <div className="space-y-1 px-4 pb-3 pt-2">
-            <button
-              onClick={onLogout}
-              className="block w-full rounded-md bg-gray-100 px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700"
-            >
-              Change Role
-            </button>
+        <div className="border-t border-gray-200 sm:hidden dark:border-dark-background-tertiary">
+          <div className="space-y-1 px-2 pb-3 pt-2">
+            <div className="flex flex-col items-start space-y-2 px-3 py-2">
+              <span className="text-text-secondary dark:text-dark-text-secondary">
+                {userType === 'student' ? 'Student Dashboard' : 'Professor Dashboard'}
+              </span>
+              
+              <button
+                onClick={onLogout}
+                className="w-full rounded-md bg-background-secondary px-3 py-2 text-text-secondary transition-colors hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary"
+              >
+                Change Role
+              </button>
+            </div>
           </div>
         </div>
       )}
