@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: 'class',
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,7 +8,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Light mode colors - Cool gray theme
+        // Light mode colors only
         primary: {
           DEFAULT: "#495464", // Dark blue-gray
           hover: "#3A4350",
@@ -42,44 +41,6 @@ module.exports = {
           secondary: "#5F677E", // Medium blue-gray
           tertiary: "#767D91", // Light blue-gray
           inverted: "#F4F4F2", // Light gray/off-white
-        },
-        
-        // Dark mode colors (Blue-Gray theme)
-        dark: {
-          primary: {
-            DEFAULT: "#5F85DB", // Medium blue
-            hover: "#4A6AB0",
-            light: "#90B8F8",
-            dark: "#3D5690",
-            50: "#F0F4FC",
-            100: "#E1E9FA",
-            200: "#C3D4F5",
-            300: "#90B8F8",
-            400: "#7AA1E6",
-            500: "#5F85DB",
-            600: "#4A6AB0",
-            700: "#3D5690",
-            800: "#2F4270",
-            900: "#26282B",
-          },
-          accent: {
-            DEFAULT: "#90B8F8", // Light blue
-            hover: "#7AA1E6",
-            light: "#C3D4F5",
-            dark: "#5F85DB",
-          },
-          background: {
-            DEFAULT: "#26282B", // Darkest gray
-            secondary: "#2D3035", // Dark gray
-            tertiary: "#404449", // Medium gray (darker than secondary, lighter than primary)
-            quaternary: "#4A4E54", // New color for hover state (darker than tertiary)
-          },
-          text: {
-            DEFAULT: "#F0F4FC", // Very light blue-gray
-            secondary: "#C3D4F5", // Light blue
-            tertiary: "#90B8F8", // Medium blue
-            inverted: "#26282B", // Dark gray
-          },
         },
         
         // Status colors
@@ -123,10 +84,6 @@ module.exports = {
         'md': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         'lg': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
         'xl': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-        'dark-sm': '0 1px 2px 0 rgba(0, 0, 0, 0.4)',
-        'dark-md': '0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4)',
-        'dark-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4)',
-        'dark-xl': '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
       },
     },
   },

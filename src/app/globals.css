@@ -8,27 +8,13 @@
     --foreground: 222.2 47.4% 11.2%;
   }
   
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-  }
+  /* Dark mode variables removed */
 }
 
-/* Prevent flash of unstyled content during theme change */
+/* Simple styling for light mode only */
 html {
   visibility: visible;
   opacity: 1;
-  transition: background-color 300ms ease, color 300ms ease;
-}
-
-html.theme-transitioning {
-  opacity: 0;
-  visibility: hidden;
-}
-
-/* Smooth transitions for theme changes */
-* {
-  @apply transition-colors duration-300;
 }
 
 body {
@@ -53,7 +39,6 @@ body {
   }
 }
 
-/* Desktop adjustments */
 @media (min-width: 1025px) {
   html {
     font-size: 16px;
@@ -62,28 +47,10 @@ body {
 
 /* Improved focus styles for accessibility */
 :focus-visible {
-  @apply outline-2 outline-offset-2 outline-primary dark:outline-dark-primary;
+  @apply outline-2 outline-offset-2 outline-primary;
 }
 
-/* Custom scrollbar for dark mode */
-.dark ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.dark ::-webkit-scrollbar-track {
-  @apply bg-dark-background-secondary;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  @apply bg-dark-primary rounded-full;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  @apply bg-dark-primary-hover;
-}
-
-/* Custom scrollbar for light mode */
+/* Custom scrollbar for light mode only */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -111,10 +78,9 @@ body {
 }
 
 .responsive-grid {
-  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
 }
 
-/* Responsive typography */
 .responsive-text-xs {
   @apply text-xs sm:text-sm;
 }
@@ -135,39 +101,35 @@ body {
   @apply text-xl sm:text-2xl;
 }
 
-/* Shadow styles */
+/* UI Components */
 .shadow-all-around {
-  @apply shadow-[0_0_15px_rgba(73,84,100,0.1)] dark:shadow-[0_0_15px_rgba(38,40,43,0.3)];
+  @apply shadow-[0_0_15px_rgba(0,0,0,0.1)];
 }
 
-/* Card styles with dark mode support */
 .card {
-  @apply bg-white rounded-lg shadow-all-around p-4 transition-all duration-300 hover:shadow-[0_0_20px_rgba(73,84,100,0.15)] dark:bg-dark-background-secondary dark:hover:shadow-[0_0_20px_rgba(38,40,43,0.4)];
+  @apply bg-white rounded-lg overflow-hidden shadow-md;
 }
 
-/* Button styles with dark mode support */
 .btn-primary {
-  @apply bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted dark:focus:ring-dark-primary-200;
+  @apply bg-primary text-white rounded-md px-4 py-2 hover:bg-primary-hover;
 }
 
 .btn-accent {
-  @apply bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-accent-light focus:ring-offset-2 dark:bg-dark-accent dark:hover:bg-dark-accent-hover dark:text-dark-text-inverted dark:focus:ring-dark-accent-light;
+  @apply bg-accent text-white rounded-md px-4 py-2 hover:bg-accent-hover;
 }
 
 .btn-outline {
-  @apply border border-primary text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:border-dark-primary dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
+  @apply border border-primary text-primary rounded-md px-4 py-2 hover:bg-primary hover:text-white;
 }
 
 .btn-ghost {
-  @apply text-primary hover:bg-primary-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 dark:text-dark-primary dark:hover:bg-dark-primary-900/20 dark:focus:ring-dark-primary-200;
+  @apply text-primary bg-transparent hover:bg-background-secondary rounded-md px-4 py-2;
 }
 
-/* Form input styles with dark mode support */
 .form-input {
-  @apply w-full rounded-md border border-background-tertiary bg-white px-3 py-2 text-text placeholder-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-background-tertiary dark:bg-dark-background-secondary dark:text-dark-text dark:placeholder-dark-text-tertiary dark:focus:border-dark-primary dark:focus:ring-dark-primary transition-[border-color,box-shadow,background-color,color] duration-300;
+  @apply w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent;
 }
 
-/* Responsive flex utilities */
 .responsive-flex {
   @apply flex flex-col sm:flex-row;
 }
@@ -176,40 +138,40 @@ body {
   @apply flex flex-col-reverse sm:flex-row;
 }
 
-/* Aspect ratio containers for responsive media */
+/* Utility classes for aspect ratios */
 .aspect-video {
-  @apply relative pb-[56.25%];
+  aspect-ratio: 16 / 9;
 }
 
 .aspect-square {
-  @apply relative pb-[100%];
+  aspect-ratio: 1 / 1;
 }
 
 .aspect-content {
-  @apply absolute inset-0 h-full w-full object-cover;
+  aspect-ratio: 3 / 2;
 }
 
-/* Status badges */
+/* Badges and status indicators */
 .badge {
-  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  @apply px-2 py-1 rounded-full text-xs font-medium;
 }
 
 .badge-primary {
-  @apply bg-primary-100 text-primary-800 dark:bg-dark-primary-900/30 dark:text-dark-primary-300;
+  @apply bg-blue-100 text-blue-800;
 }
 
 .badge-accent {
-  @apply bg-accent-light/30 text-accent-dark dark:bg-dark-accent-light/20 dark:text-dark-accent-light;
+  @apply bg-purple-100 text-purple-800;
 }
 
 .badge-success {
-  @apply bg-success-light/30 text-success-dark dark:bg-success-light/20 dark:text-success-light;
+  @apply bg-green-100 text-green-800;
 }
 
 .badge-warning {
-  @apply bg-warning-light/30 text-warning-dark dark:bg-warning-light/20 dark:text-warning-light;
+  @apply bg-yellow-100 text-yellow-800;
 }
 
 .badge-error {
-  @apply bg-error-light/30 text-error-dark dark:bg-error-light/20 dark:text-error-light;
+  @apply bg-red-100 text-red-800;
 } 

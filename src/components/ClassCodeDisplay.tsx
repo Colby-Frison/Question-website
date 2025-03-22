@@ -69,11 +69,11 @@ export default function ClassNameDisplay({
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow dark:bg-gray-800">
+    <div className="bg-white p-6 rounded-lg shadow">
       <h2 className="text-xl font-semibold mb-4">Your Class</h2>
       
       {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md text-sm dark:bg-red-800/30 dark:text-red-400">
+        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md text-sm">
           {error}
         </div>
       )}
@@ -82,19 +82,19 @@ export default function ClassNameDisplay({
         {!className || isEditing ? (
           <div className="flex flex-col space-y-4">
             <div className="flex-1">
-              <label htmlFor="className" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="className" className="block text-sm font-medium text-gray-700 mb-1">
                 {!className ? 'Create a Class Name' : 'Update Class Name'}
               </label>
               <input
                 type="text"
                 id="className"
-                className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                className="w-full p-2 border rounded"
                 placeholder="e.g. Math 101"
                 value={newClassName}
                 onChange={(e) => setNewClassName(e.target.value)}
                 maxLength={30}
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-xs text-gray-500">
                 Class name must be 3-30 characters and can contain letters, numbers, and spaces.
               </p>
             </div>
@@ -102,14 +102,14 @@ export default function ClassNameDisplay({
               <button
                 onClick={handleUpdateClass}
                 disabled={isCreating || !newClassName.trim()}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {isCreating ? 'Saving...' : !className ? 'Create Class' : 'Update Class'}
               </button>
               {isEditing && (
                 <button
                   onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
                 >
                   Cancel
                 </button>
@@ -119,7 +119,7 @@ export default function ClassNameDisplay({
         ) : (
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between">
-              <div className="p-3 bg-blue-50 rounded font-medium text-lg dark:bg-blue-900/30 dark:text-blue-100">
+              <div className="p-3 bg-blue-50 rounded font-medium text-lg">
                 {className}
               </div>
               <button
@@ -127,13 +127,13 @@ export default function ClassNameDisplay({
                   setNewClassName(className);
                   setIsEditing(true);
                 }}
-                className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
               >
                 Edit
               </button>
             </div>
             
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-gray-500">
               This is your class name. When you start a session, students will use the session code to join.
             </p>
           </div>
