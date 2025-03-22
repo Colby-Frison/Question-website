@@ -1,42 +1,23 @@
-'use client';
-
-import { ThemeProvider as NextThemesProvider } from 'next-themes';
-import { ReactNode } from 'react';
+import React from 'react';
 
 /**
  * Interface for ThemeProvider component props
  * @interface ThemeProviderProps
- * @property {ReactNode} children - Child components to be wrapped by the theme provider
- * @property {any} [key: string] - Additional props to be passed to the underlying next-themes provider
+ * @member {React.ReactNode} children - Child components
  */
 interface ThemeProviderProps {
-  children: ReactNode;
-  [key: string]: any;
+  children: React.ReactNode;
 }
 
 /**
- * Theme provider component for the application
+ * Simplified ThemeProvider that just returns children
  * 
- * This component:
- * - Wraps the application with next-themes provider
- * - Configures theme settings (system preference, storage, transitions)
- * - Uses CSS class-based theming
- * - Allows default theme customization
+ * This is a placeholder since we've removed dark mode
+ * It just renders children without any theme functionality
  * 
  * @param {ThemeProviderProps} props - Component props
- * @returns {JSX.Element} Rendered component
+ * @returns {JSX.Element} The children wrapped in a React fragment
  */
-export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return (
-    <NextThemesProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      storageKey="theme"
-      disableTransitionOnChange={false}
-      {...props}
-    >
-      {children}
-    </NextThemesProvider>
-  );
+export function ThemeProvider({ children }: ThemeProviderProps) {
+  return <>{children}</>;
 } 

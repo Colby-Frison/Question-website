@@ -303,19 +303,19 @@ export default function ProfessorPage() {
       
       // Start listening for questions with optimized listener (5 second delay max)
       const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
-        setQuestions(newQuestions);
+          setQuestions(newQuestions);
       }, { maxWaitTime: 5000, useCache: true });
       
-      setIsLoading(false);
-      
-      return () => {
-        unsubscribe();
-      };
+          setIsLoading(false);
+        
+        return () => {
+          unsubscribe();
+        };
     } catch (error) {
       console.error("Error starting class session:", error);
       setError("Failed to start class session. Please try again.");
-      setIsLoading(false);
-    }
+        setIsLoading(false);
+      }
   };
 
   /**
@@ -644,7 +644,7 @@ export default function ProfessorPage() {
         ...prev,
           [answerId]: points
       }));
-        
+      
         console.log(`Changing points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
       }
       
@@ -688,7 +688,7 @@ export default function ProfessorPage() {
       setError("Failed to update student points. Please try again.");
     }
   };
-
+  
   /**
    * Calculate time remaining before session auto-ends
    * Returns the time in minutes or null if no session is active
@@ -768,10 +768,10 @@ export default function ProfessorPage() {
         </h2>
         
         {questions.length > 0 ? (
-          <QuestionList 
-            questions={questions} 
-            isProfessor={true}
-            onDelete={handleDeleteQuestion}
+      <QuestionList 
+        questions={questions} 
+        isProfessor={true}
+        onDelete={handleDeleteQuestion}
             onToggleStatus={handleToggleQuestionStatus}
             showControls={true}
             emptyMessage="No questions yet. Students will be able to ask questions once they join."
@@ -793,7 +793,7 @@ export default function ProfessorPage() {
    * Render the points tab content
    */
   const renderPointsTab = () => (
-    <div>
+            <div>
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
         <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
           <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -806,12 +806,12 @@ export default function ProfessorPage() {
           <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
               placeholder="Enter a question for students to answer..."
               className="flex-grow p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-              required
-            />
+                required
+              />
             <button
               type="submit"
               className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white font-medium"
@@ -819,7 +819,7 @@ export default function ProfessorPage() {
               Ask Question
             </button>
           </div>
-        </form>
+          </form>
         
         {activeQuestionId ? (
           <div>
@@ -832,9 +832,9 @@ export default function ProfessorPage() {
               </h3>
               <div className="mb-4 p-4 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                 <p className="font-medium">{activeQuestionText || answers[0]?.questionText || "Loading question..."}</p>
-              </div>
-            </div>
-            
+        </div>
+      </div>
+      
             <div>
               <h3 className="text-lg font-semibold mb-3 flex items-center text-gray-900 dark:text-gray-100">
                 <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -929,21 +929,21 @@ export default function ProfessorPage() {
 
   // Show error state if there's a problem
   if (error) {
-    return (
+                          return (
       <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
         <Navbar userType="professor" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4 dark:text-gray-200">{error}</p>
-            <button
+                            <button
               onClick={handleRetry}
               className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
             >
               Retry
-            </button>
-          </div>
-        </div>
+                            </button>
+                      </div>
+                    </div>
       </div>
     );
   }
@@ -957,17 +957,17 @@ export default function ProfessorPage() {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto dark:border-blue-400"></div>
             <p className="mt-4 text-lg dark:text-gray-200">Loading...</p>
-          </div>
         </div>
       </div>
-    );
+    </div>
+  );
   }
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Navbar with theme toggle */}
       <Navbar userType="professor" onLogout={handleLogout} />
-
+      
       <div className="container mx-auto px-4 py-6">
         <div className="flex flex-col lg:flex-row items-start gap-6">
           {/* Sidebar */}
@@ -1004,7 +1004,7 @@ export default function ProfessorPage() {
                       placeholder="Enter class name"
                       className="flex-grow p-2 border rounded-md text-sm dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     />
-                    <button
+                <button
                       onClick={handleClassNameChange}
                       className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
                     >
@@ -1090,25 +1090,25 @@ export default function ProfessorPage() {
                     <button
                       onClick={() => setActiveTab('questions')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'questions'
+                    activeTab === 'questions'
                           ? 'bg-blue-500 text-white dark:bg-blue-600'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Questions
-                    </button>
-                    <button
+                  }`}
+                >
+                  Questions
+                </button>
+                <button
                       onClick={() => setActiveTab('points')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'points'
+                    activeTab === 'points'
                           ? 'bg-blue-500 text-white dark:bg-blue-600'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Points
-                    </button>
-                  </div>
-                </div>
+                  }`}
+                >
+                  Points
+                </button>
+            </div>
+        </div>
 
                 <button
                   onClick={handleLogout}
@@ -1119,7 +1119,7 @@ export default function ProfessorPage() {
                   </svg>
                   <span>Logout</span>
                 </button>
-              </div>
+            </div>
             </div>
           </div>
 
@@ -1128,15 +1128,15 @@ export default function ProfessorPage() {
             {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
             {activeTab === 'questions' && showWelcome ? (
               <div className="bg-white dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)] shadow-md rounded-lg p-6 mb-6 relative">
-                <button 
+            <button 
                   onClick={handleCloseWelcome}
                   className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   aria-label="Close welcome message"
-                >
+            >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                </button>
+            </button>
                 <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
                   <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1148,10 +1148,10 @@ export default function ProfessorPage() {
                     ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
                     : "Start a new session to begin collecting questions and awarding points to your students."}
                 </p>
-              </div>
+          </div>
             ) : null}
             {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-          </div>
+        </div>
         </div>
       </div>
     </div>

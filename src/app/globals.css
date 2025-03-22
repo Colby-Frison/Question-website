@@ -7,14 +7,18 @@
     --background: 0 0% 100%;
     --foreground: 222.2 47.4% 11.2%;
   }
-  
-  /* Dark mode variables removed */
 }
 
-/* Simple styling for light mode only */
+/* Prevent flash of unstyled content */
 html {
   visibility: visible;
   opacity: 1;
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+/* Smooth transitions for changes */
+* {
+  @apply transition-colors duration-300;
 }
 
 body {
@@ -39,6 +43,7 @@ body {
   }
 }
 
+/* Desktop adjustments */
 @media (min-width: 1025px) {
   html {
     font-size: 16px;
@@ -47,25 +52,25 @@ body {
 
 /* Improved focus styles for accessibility */
 :focus-visible {
-  @apply outline-2 outline-offset-2 outline-primary;
+  @apply outline-2 outline-offset-2 ring-2 ring-blue-500;
 }
 
-/* Custom scrollbar for light mode only */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-background-secondary;
+  @apply bg-gray-100;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-primary-300 rounded-full;
+  @apply bg-gray-400 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary-400;
+  @apply bg-gray-500;
 }
 
 /* Utility classes for responsive design */
@@ -78,9 +83,10 @@ body {
 }
 
 .responsive-grid {
-  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
 }
 
+/* Responsive typography */
 .responsive-text-xs {
   @apply text-xs sm:text-sm;
 }
@@ -101,35 +107,39 @@ body {
   @apply text-xl sm:text-2xl;
 }
 
-/* UI Components */
+/* Shadow styles */
 .shadow-all-around {
-  @apply shadow-[0_0_15px_rgba(0,0,0,0.1)];
+  @apply shadow-[0_0_15px_rgba(73,84,100,0.1)];
 }
 
+/* Card styles */
 .card {
-  @apply bg-white rounded-lg overflow-hidden shadow-md;
+  @apply bg-white rounded-lg shadow-md p-4 transition-all duration-300 hover:shadow-lg;
 }
 
+/* Button styles */
 .btn-primary {
-  @apply bg-primary text-white rounded-md px-4 py-2 hover:bg-primary-hover;
+  @apply bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-blue-300 focus:ring-offset-2;
 }
 
 .btn-accent {
-  @apply bg-accent text-white rounded-md px-4 py-2 hover:bg-accent-hover;
+  @apply bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-purple-300 focus:ring-offset-2;
 }
 
 .btn-outline {
-  @apply border border-primary text-primary rounded-md px-4 py-2 hover:bg-primary hover:text-white;
+  @apply border border-blue-500 text-blue-500 hover:bg-blue-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-blue-200 focus:ring-offset-2;
 }
 
 .btn-ghost {
-  @apply text-primary bg-transparent hover:bg-background-secondary rounded-md px-4 py-2;
+  @apply text-blue-500 hover:bg-blue-50 px-4 py-2 rounded-md transition-colors duration-300 focus:ring-2 focus:ring-blue-200 focus:ring-offset-2;
 }
 
+/* Form input styles */
 .form-input {
-  @apply w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent;
+  @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all duration-300;
 }
 
+/* Responsive flex utilities */
 .responsive-flex {
   @apply flex flex-col sm:flex-row;
 }
@@ -138,22 +148,22 @@ body {
   @apply flex flex-col-reverse sm:flex-row;
 }
 
-/* Utility classes for aspect ratios */
+/* Aspect ratio containers for responsive media */
 .aspect-video {
-  aspect-ratio: 16 / 9;
+  @apply relative pb-[56.25%];
 }
 
 .aspect-square {
-  aspect-ratio: 1 / 1;
+  @apply relative pb-[100%];
 }
 
 .aspect-content {
-  aspect-ratio: 3 / 2;
+  @apply absolute inset-0 h-full w-full object-cover;
 }
 
-/* Badges and status indicators */
+/* Status badges */
 .badge {
-  @apply px-2 py-1 rounded-full text-xs font-medium;
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
 }
 
 .badge-primary {

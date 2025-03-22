@@ -122,7 +122,10 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             <input
               type="text"
               id="sessionCode"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-lg font-medium tracking-wider placeholder-gray-400 uppercase text-center"
+              className={`w-full pl-10 pr-4 py-3 border ${
+                error ? 'border-red-500 text-red-600 focus:ring-red-500 focus:border-red-500' : 
+                'border-gray-300 focus:ring-blue-500 focus:border-blue-500 text-gray-900'
+              } rounded-lg shadow-sm focus:outline-none focus:ring-2 transition-colors`}
               placeholder="ENTER SESSION CODE"
               value={sessionCode}
               onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
