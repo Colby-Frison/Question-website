@@ -863,59 +863,63 @@ export default function StudentPage() {
    */
   const renderQuestionsTab = () => {
     return (
-      <>
-        <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-            <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-              <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <div className="grid grid-cols-1 gap-6">
+        {/* Ask a Question Section */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Ask a Question
-            </h3>
-            <div className="mb-2 text-sm text-gray-600 dark:text-gray-300">
-              Your questions will be visible to the professor. Ask anything related to the current class session.
-            </div>
+            </h2>
             <QuestionForm 
               studentId={studentId}
               sessionCode={sessionCode}
             />
           </div>
+        </div>
 
-          <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-            <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        {/* Class Questions */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
               </svg>
               Class Questions
-            </h3>
-            <QuestionList 
+            </h2>
+            <QuestionList
               questions={classQuestions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
               showControls={false}
-              emptyMessage="No questions have been asked in this class yet." 
+              emptyMessage="No questions have been asked yet."
             />
           </div>
+        </div>
 
-          <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-            <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-              <svg className="mr-2 h-5 w-5 text-indigo-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        {/* My Questions */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               My Questions
-            </h3>
-            <QuestionList 
-              questions={myQuestions} 
+            </h2>
+            <QuestionList
+              questions={myQuestions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
               showControls={true}
-              emptyMessage="You haven't asked any questions yet." 
+              emptyMessage="You haven't asked any questions yet."
             />
           </div>
         </div>
-      </>
+      </div>
     );
   };
 
@@ -925,61 +929,41 @@ export default function StudentPage() {
   const renderPointsTab = () => {
     return (
       <div className="grid grid-cols-1 gap-6">
-        <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Your Points
           </h3>
           
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-gray-100">
-            <p className="text-sm text-blue-800 dark:text-blue-300">
-              Points are awarded by your professor when you answer questions correctly. You can also adjust your points using the controls below.
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
+            <p className="text-sm text-blue-800 dark:text-dark-text-secondary">
+              Earn points by participating in class activities and correctly answering questions from your professor.
             </p>
           </div>
           
-          <div className="bg-gray-50 rounded-lg p-6 mb-6 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-            <div className="flex flex-col items-center">
-              <div className="mb-6 flex items-center justify-center">
-                <button
-                  onClick={handleSubtractPoint}
-                  className="w-12 h-12 flex items-center justify-center bg-white border border-gray-300 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:focus:ring-blue-400"
-                  aria-label="Decrease points"
-                >
-                  <svg className="h-6 w-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
-                </button>
-                
-                <div className="relative mx-6">
-                  <div id="points-display" className="text-6xl font-bold text-blue-600 dark:text-blue-300 transition-all duration-300 transform">
-                    {points}
-                  </div>
-                  {isSavingPoints && (
-                    <div className="absolute -top-2 -right-2">
-                      <div className="animate-spin h-4 w-4 border-t-2 border-blue-500 dark:border-blue-400 rounded-full"></div>
-                    </div>
-                  )}
-                </div>
-
-                <button 
-                  onClick={handleAddPoint}
-                  className="w-12 h-12 flex items-center justify-center bg-white border border-gray-300 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:focus:ring-blue-400"
-                  aria-label="Increase points"
-                >
-                  <svg className="h-6 w-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6">
+            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-dark-text-primary">Current Points</h4>
+            <div className="flex justify-center items-center mb-4">
+              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-dark-primary transition-all transform">
+                {points}
+              </div>
+              
+              <div className="ml-2 relative group">
+                <button className="text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                 </button>
               </div>
               
-              <div className="text-sm text-blue-800 dark:text-blue-300 text-center mb-4">
+              <div className="text-sm text-blue-800 dark:text-dark-text-secondary text-center mb-4">
                 Total points earned in this class
               </div>
               
               {isSavingPoints && (
-                <div className="mb-4 text-xs text-blue-600 dark:text-blue-300 flex items-center">
+                <div className="mb-4 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
                   <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -991,7 +975,7 @@ export default function StudentPage() {
               <div className="w-full flex flex-col space-y-3">
                 <button
                   onClick={refreshStudentPoints}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted"
                 >
                   <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1004,12 +988,12 @@ export default function StudentPage() {
                     type="text" 
                     value={pointsInput}
                     onChange={handlePointsInputChange}
-                    className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-gray-700 dark:text-gray-100"
+                    className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-dark-background-tertiary dark:text-dark-text-primary focus:outline-none"
                     aria-label="Set points value"
                   />
                   <button
                     onClick={handleSetPoints}
-                    className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 transition-colors"
+                    className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-dark-text-secondary transition-colors"
                   >
                     Set
                   </button>
@@ -1019,9 +1003,9 @@ export default function StudentPage() {
           </div>
         </div>
         
-        <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Answer Professor's Question
@@ -1029,27 +1013,27 @@ export default function StudentPage() {
           
           {activeQuestion ? (
             <div>
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-gray-100">
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
                 <h3 className="font-semibold mb-2">Current Question:</h3>
                 <p className="font-medium">{activeQuestion.text}</p>
               </div>
               
               {answerSubmitted ? (
-                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-gray-100">
+                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-dark-text-primary">
                   <p className="font-semibold">Your answer has been submitted!</p>
                   <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
                 </div>
               ) : (
                 <form onSubmit={handleAnswerSubmit} className="mt-4">
                   <div className="mb-4">
-                    <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold text-gray-900 dark:text-gray-100">
+                    <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold text-gray-900 dark:text-dark-text-primary">
                       Your Answer:
                     </label>
                     <textarea
                       id="pointsTabAnswerText"
                       value={answerText}
                       onChange={(e) => setAnswerText(e.target.value)}
-                      className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition duration-200"
+                      className="w-full p-3 border rounded-lg dark:bg-dark-background-tertiary dark:text-dark-text-primary dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition duration-200"
                       rows={4}
                       disabled={cooldownActive}
                       required
@@ -1061,7 +1045,7 @@ export default function StudentPage() {
                     className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
                       cooldownActive || isSubmittingAnswer
                         ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white'
+                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted'
                     }`}
                     disabled={cooldownActive || isSubmittingAnswer}
                   >
@@ -1071,14 +1055,14 @@ export default function StudentPage() {
               )}
             </div>
           ) : (
-            <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700 text-center">
-              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700 text-center">
+              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-dark-text-tertiary mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-gray-600 dark:text-gray-300 mb-2">
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-2">
                 No active question at the moment
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-dark-text-tertiary">
                 When your professor asks a question, it will appear here for you to answer.
               </p>
             </div>
@@ -1135,15 +1119,15 @@ export default function StudentPage() {
   // Show network error if offline
   if (networkStatus === 'offline') {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex flex-col">
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
-          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-900 dark:border dark:border-gray-800">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Network Error</h2>
-            <p className="mb-4 text-gray-700 dark:text-gray-300">You are currently offline. Please check your internet connection and try again.</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">You are currently offline. Please check your internet connection and try again.</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white transition-colors"
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
             >
               Retry
             </button>
@@ -1156,22 +1140,22 @@ export default function StudentPage() {
   // Show error state if there's a problem
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex flex-col">
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
-          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-900 dark:border dark:border-gray-800">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
-            <p className="mb-4 text-gray-700 dark:text-gray-300">{error}</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setError(null)}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white transition-colors"
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
                 Dismiss
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-white transition-colors"
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-dark-text-inverted transition-colors"
               >
                 Refresh Page
               </button>
@@ -1185,13 +1169,12 @@ export default function StudentPage() {
   // Show loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex flex-col">
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
-        <div className="flex-grow flex items-center justify-center">
+        <div className="flex-grow flex justify-center items-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 dark:border-blue-400 mx-auto"></div>
-            <p className="mt-4 text-lg text-gray-700 dark:text-gray-300">Loading...</p>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stage: {initStage}</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 dark:border-dark-primary mx-auto"></div>
+            <p className="mt-4 text-lg text-gray-600 dark:text-dark-text-secondary">Loading...</p>
           </div>
         </div>
       </div>
@@ -1199,27 +1182,27 @@ export default function StudentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
-      
+
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
           <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
             <div className="max-w-sm w-full mx-auto">
-              <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+              <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
                 <div className="p-8">
-                  <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-gray-100">Join a Class</h2>
+                  <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-dark-text-primary">Join a Class</h2>
                   
                   <div className="group relative mb-4">
                     <div className="flex items-center mb-1 justify-center">
-                      <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">
                         Session Code
                       </label>
                       <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-60 p-2 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           Enter the 6-digit code provided by your professor
                         </div>
-                        <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
@@ -1235,15 +1218,15 @@ export default function StudentPage() {
           <div className="flex flex-col lg:flex-row items-start gap-6">
             {/* Sidebar */}
             <div className="w-full lg:w-1/3">
-              <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+              <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
                 {error && (
-                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-400 dark:border dark:border-red-800">
+                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
                     <p className="text-sm font-medium">{error}</p>
                   </div>
                 )}
 
-                <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-                  <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+                  <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                   Class Information
@@ -1251,66 +1234,43 @@ export default function StudentPage() {
 
                 <div className="space-y-4">
                   {/* Session Information Section */}
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                      <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       Session Details
                     </h3>
                     
                     <div className="space-y-3">
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-center dark:bg-blue-900/10 dark:border-blue-900 dark:text-gray-100">
-                        <p className="font-medium text-gray-700 dark:text-gray-300">Class:</p>
-                        <p className="text-lg font-bold text-blue-600 dark:text-blue-300">{className}</p>
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-center dark:bg-blue-900/10 dark:border-blue-900 dark:text-dark-text-primary">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Class:</p>
+                        <p className="text-lg font-bold text-blue-600 dark:text-dark-primary">{className}</p>
                       </div>
                       
-                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-gray-800 dark:border-gray-700">
-                        <p className="font-medium text-gray-700 dark:text-gray-300">Session Code:</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
                       </div>
-                      
-                      <button
-                        onClick={handleLeaveClass}
-                        disabled={isLeavingClass}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 dark:text-white flex items-center justify-center space-x-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                      >
-                        {isLeavingClass ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span>Leaving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                            </svg>
-                            <span>Leave Class</span>
-                          </>
-                        )}
-                      </button>
                     </div>
                   </div>
-
+                  
                   {/* Tab Navigation */}
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                      <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
                       </svg>
                       Dashboard Views
                     </h3>
                     
-                    <div className="flex border rounded-md overflow-hidden">
+                    <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
                       <button
                         onClick={() => setActiveTab('questions')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                           activeTab === 'questions'
-                            ? 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:border-r dark:border-gray-700'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                         }`}
                       >
                         Questions
@@ -1319,8 +1279,8 @@ export default function StudentPage() {
                         onClick={() => setActiveTab('points')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                           activeTab === 'points'
-                            ? 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                         }`}
                       >
                         My Points
@@ -1330,7 +1290,7 @@ export default function StudentPage() {
 
                   <button
                     onClick={handleLogout}
-                    className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-800 flex items-center justify-center space-x-2"
+                    className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-dark-text-secondary dark:border-gray-700 dark:hover:bg-dark-background-tertiary flex items-center justify-center space-x-2"
                   >
                     <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -1340,33 +1300,33 @@ export default function StudentPage() {
                 </div>
               </div>
             </div>
-
+            
             {/* Main Content Area */}
             <div className="w-full lg:w-2/3">
               {/* Welcome Message */}
               {showWelcome && (
-                <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 mb-6 relative dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 mb-6 relative dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
                   <button 
                     onClick={handleCloseWelcome}
-                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary"
                     aria-label="Close welcome message"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
-                  <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                    <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Welcome, Student!
                   </h2>
-                  <p className="text-gray-600 dark:text-gray-300">
+                  <p className="text-gray-600 dark:text-dark-text-secondary">
                     You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
                   </p>
                 </div>
               )}
-
+              
               {/* Tabs Content */}
               <div className="mb-6">
                 {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}

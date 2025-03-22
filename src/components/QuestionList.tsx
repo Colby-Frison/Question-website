@@ -251,130 +251,131 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    */
   const questionItems = useMemo(() => {
     return questions.map((question) => {
-      // Check if this question belongs to the current student
-      const isOwnQuestion = isStudent && studentId === question.studentId;
-
+      const isEditing = editingId === question.id;
+      const isBeingUpdated = updatingStatusId === question.id;
+      
+      // Get optimistic status if available, otherwise use the question's status
+      const effectiveStatus = optimisticStatusUpdates[question.id] || question.status || 'unanswered';
+      
+      // Is this question owned by the current student?
+      const isOwner = isStudent && studentId === question.studentId;
+      
       return (
-        <li key={question.id} className="py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700 last:border-0 relative">
-          {/* Status indicator for students and professors */}
-          <div className="absolute top-2 right-2 z-10">
+        <li 
+          key={question.id} 
+          className={`relative border-b border-gray-200 dark:border-gray-700 py-4 transition-all ${
+            isBeingUpdated ? 'opacity-50' : 'opacity-100'
+          }`}
+        >
+          {/* Status indicator */}
+          <div className="absolute top-4 left-0 w-1 h-5/6 rounded-r">
             <div 
-              className={`h-2 w-2 rounded-full ${
-                question.status === 'answered' 
+              className={`w-1 h-full rounded-r transition-all ${
+                effectiveStatus === 'answered' 
                   ? 'bg-green-400 dark:bg-green-500' 
                   : 'bg-red-400 dark:bg-red-500'
               }`}
-              title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
-            ></div>
+            />
           </div>
-
-          <div className="flex flex-col space-y-2 w-full">
-            <div className="w-full">
-              {editingId === question.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    className="w-full p-2 border rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                    rows={3}
-                  />
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleSaveEdit(question.id)}
-                      disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
-                    >
-                      {isUpdating ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={handleCancelEdit}
-                      disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div 
-                    className="text-sm sm:text-base text-gray-900 dark:text-gray-100 break-words whitespace-normal overflow-wrap-anywhere pr-8 pl-2"
+          
+          <div className="pl-4">
+            {/* Editing state */}
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea 
+                  value={editText} 
+                  onChange={(e) => setEditText(e.target.value)} 
+                  className="w-full p-2 border border-blue-300 dark:border-dark-primary rounded-md focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent dark:bg-dark-background-tertiary dark:text-dark-text-primary"
+                  rows={3}
+                />
+                <div className="flex space-x-2">
+                  <button 
+                    onClick={() => handleSaveEdit(question.id)} 
+                    disabled={isUpdating}
+                    className="px-3 py-1 bg-blue-500 dark:bg-dark-primary text-white dark:text-dark-text-inverted rounded hover:bg-blue-600 dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {question.text}
-                  </div>
-                  {/* Always show timestamp in smaller text */}
-                  <p className="text-xs text-gray-500 dark:text-gray-400 pl-2 mt-1">
-                    {new Date(question.timestamp).toLocaleString()}
-                  </p>
-                </>
-              )}
-            </div>
+                    {isUpdating ? (
+                      <span className="flex items-center">
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </span>
+                    ) : 'Save'}
+                  </button>
+                  <button 
+                    onClick={() => handleCancelEdit()} 
+                    className="px-3 py-1 bg-gray-200 dark:bg-dark-background-tertiary text-gray-800 dark:text-dark-text-secondary rounded hover:bg-gray-300 dark:hover:bg-dark-background-quaternary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Question text */}
+                <p className="mb-1 text-gray-900 dark:text-dark-text-primary">{question.text}</p>
+                
+                {/* Metadata */}
+                <div className="flex items-center text-xs text-gray-500 dark:text-dark-text-tertiary">
+                  <span>
+                    {new Date(question.timestamp).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                  
+                  <span className="mx-1">•</span>
+                  <span className={
+                    effectiveStatus === 'answered' 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }>
+                    {effectiveStatus === 'answered' ? 'Answered' : 'Unanswered'}
+                  </span>
+                </div>
+              </>
+            )}
             
-            {/* Action buttons for professors or students who own the question */}
-            {((isProfessor || isOwnQuestion) && editingId !== question.id && showControls) && (
-              <div className="flex items-center justify-end space-x-2 mt-2">
-                {/* Professor controls */}
+            {/* Action buttons for professors and students */}
+            {!isEditing && showControls && (
+              <div className="mt-3 flex gap-2">
                 {isProfessor && (
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => toggleQuestionStatus(question.id, question.status || 'unanswered')}
-                      disabled={updatingStatusId === question.id}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-gray-300 dark:bg-gray-600'
-                          : optimisticStatusUpdates[question.id] === 'answered' || (!optimisticStatusUpdates.hasOwnProperty(question.id) && question.status === 'answered')
-                            ? 'bg-green-400 dark:bg-green-500'
-                            : 'bg-red-400 dark:bg-red-500'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          updatingStatusId === question.id 
-                            ? 'translate-x-3 animate-pulse'
-                            : optimisticStatusUpdates[question.id] === 'answered' || (!optimisticStatusUpdates.hasOwnProperty(question.id) && question.status === 'answered')
-                              ? 'translate-x-6' 
-                              : 'translate-x-1'
-                        }`}
-                      ></span>
-                    </button>
-                    <span className="mx-2 text-xs text-gray-600 dark:text-gray-300 min-w-[70px] inline-block">
-                      {optimisticStatusUpdates[question.id] || question.status === 'answered' ? 'Answered' : 'Unanswered'}
-                    </span>
-                    <button
-                      onClick={() => handleDelete(question.id)}
-                      disabled={updatingStatusId === question.id}
-                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-                          : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30'
-                      }`}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => toggleQuestionStatus(question.id, effectiveStatus)}
+                    disabled={isBeingUpdated}
+                    className={`px-2.5 py-1 text-xs rounded ${
+                      effectiveStatus === 'answered'
+                        ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50'
+                        : 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-200 dark:hover:bg-green-900/50'
+                    }`}
+                  >
+                    {effectiveStatus === 'answered' ? 'Mark Unanswered' : 'Mark Answered'}
+                  </button>
                 )}
                 
-                {/* Student controls - only for their own questions */}
-                {isOwnQuestion && (
-                  <>
-                    <button
-                      onClick={() => handleEdit(question)}
-                      className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(question.id)}
-                      disabled={updatingStatusId === question.id}
-                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-                          : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30'
-                      }`}
-                    >
-                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
-                    </button>
-                  </>
+                {/* Delete button - shown to professors or if the student owns the question */}
+                {(isProfessor || isOwner) && (
+                  <button 
+                    onClick={() => handleDelete(question.id)}
+                    className="px-2.5 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200 dark:bg-red-900/30 dark:text-red-200 dark:hover:bg-red-900/50"
+                  >
+                    Delete
+                  </button>
+                )}
+                
+                {/* Edit button - shown only if the student owns the question */}
+                {isOwner && (
+                  <button 
+                    onClick={() => handleEdit(question)}
+                    className="px-2.5 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
+                  >
+                    Edit
+                  </button>
                 )}
               </div>
             )}
