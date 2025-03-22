@@ -6,12 +6,18 @@ import Link from 'next/link';
 /**
  * Interface for Navbar component props
  * @interface NavbarProps
- * @property {'student' | 'professor'} userType - The type of user currently logged in
- * @property {function} onLogout - Callback function to handle user logout/role change
+ * @property {'student' | 'professor'} [userType] - The type of user currently logged in (old interface)
+ * @property {function} [onLogout] - Callback function to handle user logout/role change (old interface)
+ * @property {string} [title] - Title to display in the navbar (new interface)
+ * @property {string} [subtitle] - Subtitle to display in the navbar (new interface)
+ * @property {React.ReactNode} [rightContent] - Custom content to display on the right side (new interface)
  */
 interface NavbarProps {
-  userType: 'student' | 'professor';
-  onLogout: () => void;
+  userType?: 'student' | 'professor';
+  onLogout?: () => void;
+  title?: string;
+  subtitle?: string;
+  rightContent?: React.ReactNode;
 }
 
 /**
@@ -22,11 +28,12 @@ interface NavbarProps {
  * - Provides a button to change user role (logout)
  * - Is responsive with different layouts for mobile and desktop
  * - Includes a collapsible menu for mobile view
+ * - Supports both old and new props interfaces
  * 
  * @param {NavbarProps} props - Component props
  * @returns {JSX.Element} Rendered component
  */
-const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
+const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout, title, subtitle, rightContent }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   /**
@@ -36,36 +43,50 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
     setIsMenuOpen(prev => !prev);
   }, []);
 
+  // Determine if we're using the new or old interface
+  const isNewInterface = title !== undefined || subtitle !== undefined || rightContent !== undefined;
+
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-800 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-white border-b border-background-tertiary shadow-sm dark:bg-dark-background-secondary dark:border-dark-background-tertiary">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between">
           {/* Logo and main nav */}
-          <div className="flex">
-            <div className="flex flex-shrink-0 items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900 dark:text-blue-300">
-                Classroom Q&A
-              </Link>
-            </div>
+          <div className="flex items-center">
+            {isNewInterface ? (
+              <div>
+                <h1 className="text-lg font-bold text-text-primary dark:text-dark-text-DEFAULT">{title || 'Classroom Q&A'}</h1>
+                {subtitle && <p className="text-sm text-text-secondary dark:text-dark-text-secondary">{subtitle}</p>}
+              </div>
+            ) : (
+              <div className="flex flex-shrink-0 items-center">
+                <Link href="/" className="text-xl font-bold text-text-primary dark:text-dark-primary">
+                  Classroom Q&A
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Desktop menu */}
           <div className="hidden items-center sm:flex">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={onLogout}
-                className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700"
-              >
-                Change Role
-              </button>
-            </div>
+            {isNewInterface ? (
+              rightContent
+            ) : (
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={onLogout}
+                  className="rounded-md bg-background-secondary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-background-tertiary border border-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:border-dark-background-tertiary dark:hover:bg-dark-background-quaternary"
+                >
+                  Change Role
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mobile menu button */}
           <div className="flex items-center space-x-2 sm:hidden">
             <button
               onClick={toggleMenu}
-              className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"
+              className="inline-flex items-center justify-center rounded-md p-2 text-text-secondary hover:bg-background-secondary hover:text-text-primary dark:text-dark-text-secondary dark:hover:bg-dark-background-tertiary dark:hover:text-dark-text-DEFAULT"
               aria-expanded={isMenuOpen}
             >
               <span className="sr-only">Open main menu</span>
@@ -102,12 +123,16 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
       {isMenuOpen && (
         <div className="sm:hidden">
           <div className="space-y-1 px-4 pb-3 pt-2">
-            <button
-              onClick={onLogout}
-              className="block w-full rounded-md bg-gray-100 px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700"
-            >
-              Change Role
-            </button>
+            {isNewInterface ? (
+              <div className="py-2">{rightContent}</div>
+            ) : (
+              <button
+                onClick={onLogout}
+                className="block w-full rounded-md bg-background-secondary px-3 py-2 text-left text-sm font-medium text-text-primary transition-colors hover:bg-background-tertiary border border-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:border-dark-background-tertiary dark:hover:bg-dark-background-quaternary"
+              >
+                Change Role
+              </button>
+            )}
           </div>
         </div>
       )}

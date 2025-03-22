@@ -70,6 +70,8 @@ export default function ProfessorPage() {
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
 
   // Tab state to switch between questions and points views
   const [activeTab, setActiveTab] = useState<TabType>('questions');
@@ -94,7 +96,10 @@ export default function ProfessorPage() {
   // Add showWelcome state near the top where other state variables are defined
   const [sessionStatus, setSessionStatus] = useState<'active' | 'closed' | 'archived'>('active');
   const [loading, setLoading] = useState(true);
-  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
+  
+  // Network status state
+  type NetworkStatusType = 'online' | 'offline';
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatusType>('online');
   
   // Add state to track welcome message visibility
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -283,38 +288,29 @@ export default function ProfessorPage() {
    * Creates a new session with a randomly generated code
    */
   const handleStartSession = async () => {
-    if (!className || !professorId) {
-      setError("Class name or professor ID is missing");
+    if (!className) {
+      setError("Please enter a class name before starting a session.");
       return;
     }
-    
+
+    setIsStartingSession(true);
     try {
-      // Reset welcome message when starting a new session
-      resetWelcomeMessage();
+      // Create a new class session
+      const result = await createClassSession(professorId, className);
       
-      setIsLoading(true);
-      const result = await createClassSession(className, professorId);
-      
-      setSessionId(result.sessionId);
-      setSessionCode(result.sessionCode);
-      setSessionActive(true);
-      setSessionStartTime(Date.now());
-      setLastActivity(Date.now());
-      
-      // Start listening for questions with optimized listener (5 second delay max)
-      const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
-        setQuestions(newQuestions);
-      }, { maxWaitTime: 5000, useCache: true });
-      
-      setIsLoading(false);
-      
-      return () => {
-        unsubscribe();
-      };
+      // Update state with the new session information
+      if (result) {
+        setSessionCode(result.sessionCode);
+        setSessionId(result.sessionId);
+        setSessionStartTime(Date.now());
+        setSessionActive(true);
+        console.log(`Started session with code: ${result.sessionCode}`);
+      }
     } catch (error) {
-      console.error("Error starting class session:", error);
-      setError("Failed to start class session. Please try again.");
-      setIsLoading(false);
+      console.error("Error starting session:", error);
+      setError(`Failed to start session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsStartingSession(false);
     }
   };
 
@@ -323,102 +319,27 @@ export default function ProfessorPage() {
    * Marks the session as closed in the database
    */
   const handleEndSession = async () => {
-    if (!sessionId) {
-      console.log("No session ID found to end session");
-      
-      // Session ID is missing but we still want to reset the UI
-      setSessionActive(false);
-      setSessionId('');
-      setSessionCode('');
-      setQuestions([]);
-      setIsLoading(false);
-      return;
-    }
+    if (!sessionId) return;
     
+    setIsEndingSession(true);
     try {
-      setIsLoading(true);
-      console.log(`Attempting to end session with ID: ${sessionId}`);
+      // End the current class session
+      await endClassSession(sessionId);
       
-      // Clear answers and active question if any
-      if (activeQuestionId) {
-        setActiveQuestionId(null);
-        setActiveQuestionText('');
-        setAnswers([]);
-        setPointsAwarded({});
-        // Clear points cache as session is ending
-        clearPointsCache();
-      }
-      
-      try {
-        // First try with the stored session ID
-        const success = await endClassSession(sessionId);
-        
-        if (success) {
-          console.log("Successfully ended session with stored ID");
-          setSessionActive(false);
-          setSessionId('');
-          setSessionCode('');
-          setQuestions([]);
-          setIsLoading(false);
-          return;
-        }
-      } catch (endError) {
-        // If the session doesn't exist with this ID, try to find it by session code
-        console.error("Error ending session with stored ID:", endError);
-        console.log("Trying alternative method to end session...");
-      }
-      
-      // Try to find the session by session code as a fallback
-      if (sessionCode) {
-        try {
-          console.log(`Looking up session by code: ${sessionCode}`);
-          const q = query(
-            collection(db, 'classSessions'),
-            where('sessionCode', '==', sessionCode),
-            where('status', '==', 'active'),
-            limit(1)
-          );
-          
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            const actualSessionId = querySnapshot.docs[0].id;
-            console.log(`Found session with ID: ${actualSessionId}`);
-            
-            // Try to end with the correct session ID
-            const success = await endClassSession(actualSessionId);
-            
-            if (success) {
-              console.log("Successfully ended session with looked up ID");
-              setSessionActive(false);
-              setSessionId('');
-              setSessionCode('');
-              setQuestions([]);
-              setIsLoading(false);
-              return;
-            }
-          } else {
-            console.log("No active session found with this code");
-          }
-        } catch (lookupError) {
-          console.error("Error looking up session by code:", lookupError);
-        }
-      }
-      
-      // If we get here, we couldn't end the session through normal means
-      // Just reset the UI state anyway
-      console.log("Couldn't properly end session, but resetting UI state");
-      setError("Warning: Session data may not have been properly cleaned up in the database.");
-      setSessionActive(false);
-      setSessionId('');
+      // Reset the session state
       setSessionCode('');
-      setQuestions([]);
+      setSessionId('');
+      setSessionStartTime(null);
+      setSessionActive(false);
+      setAnswers([]);
+      setActiveQuestionId(null);
       
-      setIsLoading(false);
+      console.log("Session ended successfully");
     } catch (error) {
-      console.error("Error in overall end session process:", error);
-      setError("Failed to end class session. Please try again.");
-      setIsLoading(false);
+      console.error("Error ending session:", error);
+      setError(`Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsEndingSession(false);
     }
   };
 
@@ -964,196 +885,206 @@ export default function ProfessorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      {/* Navbar with theme toggle */}
-      <Navbar userType="professor" onLogout={handleLogout} />
+    <div className="min-h-screen bg-white dark:bg-dark-background-DEFAULT">
+      <Navbar
+        title="Professor Dashboard"
+        subtitle={className || 'No active class'}
+        rightContent={
+          <button
+            onClick={handleLogout}
+            className="flex items-center justify-center rounded-md bg-background-tertiary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-background-secondary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:hover:bg-dark-background-quaternary"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Logout
+          </button>
+        }
+      />
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row items-start gap-6">
-          {/* Sidebar */}
-          <div className="w-full lg:w-1/3">
-            <div className="bg-white dark:bg-gray-900 shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-              {error && (
-                <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300">
-                  <p className="text-sm font-medium">{error}</p>
-                </div>
-              )}
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        {error && (
+          <div className="mb-4 rounded-md bg-error-light px-4 py-3 text-error-dark dark:bg-dark-background-secondary dark:text-error-light">
+            <p className="font-medium">Error: {error}</p>
+            <button 
+              onClick={() => setError(null)} 
+              className="mt-2 text-sm font-medium text-error-dark hover:underline dark:text-error-light"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        
+        {(networkStatus as NetworkStatusType) === ('offline' as NetworkStatusType) && (
+          <div className="mb-4 rounded-md bg-warning-light px-4 py-3 text-warning-dark dark:bg-dark-background-secondary dark:text-warning-light">
+            <p className="flex items-center font-medium">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              You're offline. Some features may not work until you reconnect.
+            </p>
+          </div>
+        )}
 
-              <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-                Class Management
-              </h2>
-
-              <div className="space-y-4">
-                {/* Class Name Section */}
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    Class Name
-                  </h3>
-                  
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={className}
-                      onChange={(e) => setClassName(e.target.value)}
-                      placeholder="Enter class name"
-                      className="flex-grow p-2 border rounded-md text-sm dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
-                    <button
-                      onClick={handleClassNameChange}
-                      className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
-                    >
-                      Update
-                    </button>
-                  </div>
-                </div>
-
-                {/* Session Management Section */}
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Class Session
-                  </h3>
-                  
-                  {!sessionCode ? (
-                    <button
-                      onClick={handleStartSession}
-                      disabled={isLoading}
-                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isLoading ? (
-                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                      ) : (
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      )}
-                      <span>{isLoading ? "Starting..." : "Start New Session"}</span>
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-gray-700 dark:border-gray-600">
-                        <p className="font-medium text-gray-700 dark:text-gray-300">Session Code:</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
-                      </div>
-                      
-                      <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <span>Active students:</span>
-                          <span className="font-medium">{studentJoinCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span>Session duration:</span>
-                          <span className="font-medium">{formatSessionDuration(sessionStartTime)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Activity timeout:</span>
-                          <span className="font-medium">{Math.floor(remainingMs() / 60000)} min</span>
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={handleEndSession}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2"
-                      >
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                        </svg>
-                        <span>End Session</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Tab Navigation */}
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                  <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                    </svg>
-                    Dashboard Views
-                  </h3>
-                  
-                  <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
-                    <button
-                      onClick={() => setActiveTab('questions')}
-                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'questions'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
-                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Questions
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('points')}
-                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                        activeTab === 'points'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
-                          : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Points
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleLogout}
-                  className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700 flex items-center justify-center space-x-2"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        {showWelcome && (
+          <div className="mb-6 rounded-lg bg-background-secondary p-4 shadow-md dark:bg-dark-background-secondary">
+            <div className="flex items-start justify-between">
+              <div className="flex space-x-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span>Logout</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-text-primary dark:text-dark-text-DEFAULT">Welcome to the Professor Dashboard!</h3>
+                  <p className="text-sm text-text-secondary dark:text-dark-text-secondary">
+                    Start a class session to get a unique code for students to join. You can view student questions
+                    and send them questions to answer.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowWelcome(false);
+                  localStorage.setItem('hideWelcomeProfessor', 'true');
+                }}
+                className="ml-4 rounded p-1 text-text-tertiary hover:bg-background-tertiary hover:text-text-primary dark:text-dark-text-tertiary dark:hover:bg-dark-background-tertiary dark:hover:text-dark-text-DEFAULT"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {isLoading ? (
+          <div className="flex h-64 flex-col items-center justify-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
+            <p className="mt-4 text-text-secondary dark:text-dark-text-secondary">Loading...</p>
+          </div>
+        ) : connectionStatus === 'error' ? (
+          <div className="rounded-lg bg-white p-6 shadow-md dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+            <div className="text-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-4 h-16 w-16 text-error dark:text-error-light" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h2 className="mb-2 text-xl font-bold text-text-primary dark:text-dark-text-DEFAULT">Connection Error</h2>
+              <p className="mb-4 text-text-secondary dark:text-dark-text-secondary">
+                {error || "Failed to connect to the database. Please check your internet connection and try again."}
+              </p>
+              <button
+                onClick={handleRetry}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
+              >
+                Retry Connection
+              </button>
+            </div>
+          </div>
+        ) : !sessionCode ? (
+          <div className="rounded-lg bg-white p-6 shadow-md dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-text-primary dark:text-dark-text-DEFAULT">Start a New Class Session</h2>
+              <div>
+                <button
+                  onClick={handleClassNameChange}
+                  className="rounded-md bg-background-secondary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:hover:bg-dark-background-quaternary"
+                >
+                  Change Class Name
                 </button>
               </div>
             </div>
+            
+            <div className="mb-6 rounded-lg bg-background-secondary p-4 dark:bg-dark-background-tertiary">
+              <p className="mb-2 text-text-secondary dark:text-dark-text-secondary">Current Class Name</p>
+              <p className="text-lg font-medium text-text-primary dark:text-dark-text-DEFAULT">{className || 'No class name set'}</p>
+            </div>
+            
+            <div className="mb-2 text-text-secondary dark:text-dark-text-secondary">
+              Starting a class session will generate a unique 6-digit code for students to join.
+            </div>
+            
+            <button
+              onClick={handleStartSession}
+              disabled={!className || isStartingSession}
+              className="flex w-full items-center justify-center rounded-md bg-primary py-3 px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover dark:focus:ring-dark-primary dark:focus:ring-offset-dark-background-DEFAULT dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
+            >
+              {isStartingSession ? (
+                <>
+                  <svg className="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Starting Session...
+                </>
+              ) : (
+                'Start Class Session'
+              )}
+            </button>
           </div>
-
-          {/* Main Content Area */}
-          <div className="w-full lg:w-2/3">
-            {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
-            {activeTab === 'questions' && showWelcome ? (
-              <div className="bg-white dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)] shadow-md rounded-lg p-6 mb-6 relative">
-                <button 
-                  onClick={handleCloseWelcome}
-                  className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  aria-label="Close welcome message"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                  <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Welcome, Professor!
-                </h2>
-                <p className="text-gray-600 dark:text-gray-300">
-                  {sessionCode 
-                    ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
-                    : "Start a new session to begin collecting questions and awarding points to your students."}
-                </p>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+              <div>
+                <h1 className="text-2xl font-bold text-text-primary dark:text-dark-text-DEFAULT">{className}</h1>
+                <div className="flex items-center">
+                  <p className="text-text-secondary dark:text-dark-text-secondary">
+                    Session Code: <span className="font-medium text-primary dark:text-dark-primary">{sessionCode}</span>
+                  </p>
+                  {sessionStartTime && (
+                    <p className="ml-4 text-text-secondary dark:text-dark-text-secondary">
+                      Duration: {formatSessionDuration(sessionStartTime)}
+                    </p>
+                  )}
+                </div>
               </div>
-            ) : null}
+              
+              <div className="flex space-x-2">
+                <button 
+                  onClick={() => handleTabChange('questions')}
+                  className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                    activeTab === 'questions' 
+                      ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted' 
+                      : 'bg-background-secondary text-text-primary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:hover:bg-dark-background-quaternary'
+                  }`}
+                >
+                  Questions
+                </button>
+                <button
+                  onClick={() => handleTabChange('points')}
+                  className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                    activeTab === 'points' 
+                      ? 'bg-primary text-white dark:bg-dark-primary dark:text-dark-text-inverted' 
+                      : 'bg-background-secondary text-text-primary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-DEFAULT dark:hover:bg-dark-background-quaternary'
+                  }`}
+                >
+                  Points
+                </button>
+                <button
+                  onClick={handleEndSession}
+                  disabled={isEndingSession}
+                  className="flex items-center rounded-md bg-error px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-error-dark disabled:bg-background-tertiary disabled:text-text-tertiary dark:bg-dark-background-tertiary dark:text-error-light dark:hover:bg-dark-background-quaternary dark:disabled:bg-dark-background-tertiary dark:disabled:text-dark-text-tertiary"
+                >
+                  {isEndingSession ? (
+                    <>
+                      <svg className="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Ending...
+                    </>
+                  ) : (
+                    'End Session'
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Render the active tab content */}
             {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
           </div>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   );
 } 
