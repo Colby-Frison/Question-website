@@ -38,10 +38,7 @@ import {
   updateSessionActivity,
   isSessionInactive,
   SESSION_INACTIVITY_TIMEOUT,
-  forceIndexCreation,
-  getSessionByCode,
-  listenForSessionStatus,
-  listenForStudentCount
+  forceIndexCreation
 } from '@/lib/classSession';
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
@@ -108,12 +105,6 @@ export default function ProfessorPage() {
     }
     return true;
   });
-
-  // Add state for student count
-  const [studentCount, setStudentCount] = useState<number>(0);
-
-  // Add state for unsubscribe functions
-  const [unsubscribeListeners, setUnsubscribeListeners] = useState<(() => void) | null>(null);
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -289,97 +280,144 @@ export default function ProfessorPage() {
 
   /**
    * Start a new class session
+   * Creates a new session with a randomly generated code
    */
   const handleStartSession = async () => {
-    if (isLoading) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
     if (!className || !professorId) {
       setError("Class name or professor ID is missing");
-      setIsLoading(false);
       return;
     }
     
     try {
-      console.log(`Starting session for class ${className}`);
+      // Reset welcome message when starting a new session
+      resetWelcomeMessage();
+      
+      setIsLoading(true);
       const result = await createClassSession(className, professorId);
-      console.log(`Session created with ID: ${result.sessionId}, code: ${result.sessionCode}`);
       
       setSessionId(result.sessionId);
       setSessionCode(result.sessionCode);
+      setSessionActive(true);
       setSessionStartTime(Date.now());
-      setActiveTab('questions');
+      setLastActivity(Date.now());
       
-      // Set up student count listener
-      const unsubscribeStudentCount = listenForStudentCount(result.sessionCode, (count) => {
-        console.log(`Current student count: ${count}`);
-        setStudentCount(count);
-      });
-
-      // Set up question listener
+      // Start listening for questions with optimized listener (5 second delay max)
       const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
-        console.log(`Received ${newQuestions.length} questions`);
-        setQuestions(newQuestions);
-      });
+          setQuestions(newQuestions);
+      }, { maxWaitTime: 5000, useCache: true });
       
-      // Return cleanup function
-      setUnsubscribeListeners(() => () => {
-        console.log("Cleaning up listeners");
-        unsubscribe();
-        unsubscribeStudentCount();
-      });
+          setIsLoading(false);
+        
+        return () => {
+          unsubscribe();
+        };
     } catch (error) {
-      console.error("Error starting session:", error);
-      setError("Failed to start class session");
-      setSessionId('');
-      setSessionCode('');
-    } finally {
-      setIsLoading(false);
-    }
+      console.error("Error starting class session:", error);
+      setError("Failed to start class session. Please try again.");
+        setIsLoading(false);
+      }
   };
 
   /**
    * End the current class session
+   * Marks the session as closed in the database
    */
   const handleEndSession = async () => {
     if (!sessionId) {
-      console.log("No active session to end");
+      console.log("No session ID found to end session");
+      
+      // Session ID is missing but we still want to reset the UI
+      setSessionActive(false);
+      setSessionId('');
+      setSessionCode('');
+      setQuestions([]);
+      setIsLoading(false);
       return;
     }
-    
-    // Confirm session end with the user
-    if (!window.confirm("Are you sure you want to end this class session? All students will be disconnected.")) {
-      return;
-    }
-    
-    setIsLoading(true);
     
     try {
-      console.log(`Ending session: ${sessionId}`);
-      const success = await endClassSession(sessionId);
+      setIsLoading(true);
+      console.log(`Attempting to end session with ID: ${sessionId}`);
       
-      if (success) {
-        console.log("Session ended successfully");
-        setSessionId('');
-        setSessionCode('');
-        setSessionStartTime(0);
-        setQuestions([]);
-        setStudentCount(0);
-        
-        // Clean up all listeners
-        if (unsubscribeListeners) {
-          unsubscribeListeners();
-          setUnsubscribeListeners(null);
-        }
-      } else {
-        setError("Failed to end session");
+      // Clear answers and active question if any
+      if (activeQuestionId) {
+        setActiveQuestionId(null);
+        setActiveQuestionText('');
+        setAnswers([]);
+        setPointsAwarded({});
+        // Clear points cache as session is ending
+        clearPointsCache();
       }
+      
+      try {
+        // First try with the stored session ID
+        const success = await endClassSession(sessionId);
+        
+        if (success) {
+          console.log("Successfully ended session with stored ID");
+          setSessionActive(false);
+          setSessionId('');
+          setSessionCode('');
+          setQuestions([]);
+          setIsLoading(false);
+          return;
+        }
+      } catch (endError) {
+        // If the session doesn't exist with this ID, try to find it by session code
+        console.error("Error ending session with stored ID:", endError);
+        console.log("Trying alternative method to end session...");
+      }
+      
+      // Try to find the session by session code as a fallback
+      if (sessionCode) {
+        try {
+          console.log(`Looking up session by code: ${sessionCode}`);
+          const q = query(
+            collection(db, 'classSessions'),
+            where('sessionCode', '==', sessionCode),
+            where('status', '==', 'active'),
+            limit(1)
+          );
+          
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            const actualSessionId = querySnapshot.docs[0].id;
+            console.log(`Found session with ID: ${actualSessionId}`);
+            
+            // Try to end with the correct session ID
+            const success = await endClassSession(actualSessionId);
+            
+            if (success) {
+              console.log("Successfully ended session with looked up ID");
+              setSessionActive(false);
+              setSessionId('');
+              setSessionCode('');
+              setQuestions([]);
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            console.log("No active session found with this code");
+          }
+        } catch (lookupError) {
+          console.error("Error looking up session by code:", lookupError);
+        }
+      }
+      
+      // If we get here, we couldn't end the session through normal means
+      // Just reset the UI state anyway
+      console.log("Couldn't properly end session, but resetting UI state");
+      setError("Warning: Session data may not have been properly cleaned up in the database.");
+      setSessionActive(false);
+      setSessionId('');
+      setSessionCode('');
+      setQuestions([]);
+      
+      setIsLoading(false);
     } catch (error) {
-      console.error("Error ending session:", error);
-      setError("Error ending session");
-    } finally {
+      console.error("Error in overall end session process:", error);
+      setError("Failed to end class session. Please try again.");
       setIsLoading(false);
     }
   };
@@ -1013,7 +1051,7 @@ export default function ProfessorPage() {
                       <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
                         <div className="flex items-center justify-between mb-1">
                           <span>Active students:</span>
-                          <span className="font-medium">{studentCount}</span>
+                          <span className="font-medium">{studentJoinCount}</span>
                         </div>
                         <div className="flex items-center justify-between mb-1">
                           <span>Session duration:</span>
@@ -1069,9 +1107,9 @@ export default function ProfessorPage() {
                 >
                   Points
                 </button>
+              </div>
             </div>
         </div>
-            </div>
             </div>
           </div>
 

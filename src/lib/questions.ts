@@ -46,33 +46,8 @@ const cache = {
   clearCache: () => {
     cache.questions.clear();
   },
-  // Cache expiration time - increased from 30 seconds to 2 minutes
-  CACHE_EXPIRATION: 2 * 60 * 1000, 
-  
-  // Track client listeners to optimize server calls
-  listeners: {
-    count: new Map<string, number>(), // Track number of listeners per session
-    increment: (key: string): number => {
-      const current = cache.listeners.count.get(key) || 0;
-      cache.listeners.count.set(key, current + 1);
-      return current + 1;
-    },
-    decrement: (key: string): number => {
-      const current = cache.listeners.count.get(key) || 0;
-      const newCount = Math.max(0, current - 1);
-      
-      if (newCount === 0) {
-        cache.listeners.count.delete(key);
-      } else {
-        cache.listeners.count.set(key, newCount);
-      }
-      
-      return newCount;
-    },
-    getCount: (key: string): number => {
-      return cache.listeners.count.get(key) || 0;
-    }
-  }
+  // Cache expiration time - 30 seconds
+  CACHE_EXPIRATION: 30 * 1000
 };
 
 // Cache for student points to reduce redundant callbacks
@@ -151,7 +126,6 @@ export const listenForQuestions = (
   options?: {
     maxWaitTime?: number; // Maximum time to wait between updates (in ms)
     useCache?: boolean;   // Whether to use cache for initial data
-    priority?: 'high' | 'normal' | 'low' // Priority of updates (default: normal)
   }
 ): (() => void) => {
   if (!sessionCode) {
@@ -162,22 +136,6 @@ export const listenForQuestions = (
 
   const maxWaitTime = options?.maxWaitTime || 0;
   const useCache = options?.useCache !== false;
-  const priority = options?.priority || 'normal';
-  
-  // Register this listener with our tracking system
-  const listenerKey = `questions_${sessionCode}`;
-  const listenerCount = cache.listeners.increment(listenerKey);
-  console.log(`[listenForQuestions] Now have ${listenerCount} listeners for session: ${sessionCode}`);
-  
-  // Dynamically adjust wait time based on number of listeners for load balancing
-  // More listeners = longer waits between refreshes to avoid overwhelming the server
-  let adjustedWaitTime = maxWaitTime;
-  if (listenerCount > 3) {
-    // Increase wait time by 25% for each additional listener beyond 3, up to double the original time
-    const scaleFactor = Math.min(2.0, 1 + (listenerCount - 3) * 0.25);
-    adjustedWaitTime = Math.round(maxWaitTime * scaleFactor);
-    console.log(`[listenForQuestions] Adjusted wait time to ${adjustedWaitTime}ms due to ${listenerCount} listeners`);
-  }
   
   try {
     // Try to use cached data first for immediate response
@@ -186,56 +144,10 @@ export const listenForQuestions = (
       if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
         console.log(`[listenForQuestions] Using cached data for session: ${sessionCode}`);
         callback(cachedData.data);
-        
-        // For low priority listeners with fresh cache data, we can delay initial server query
-        // to reduce number of simultaneous connections
-        if (priority === 'low' && Date.now() - cachedData.timestamp < 30000) {
-          console.log(`[listenForQuestions] Delaying initial server query for low priority listener`);
-          
-          // We'll set up the listener after a delay
-          let serverListener: (() => void) | null = null;
-          const setupTimeout = setTimeout(() => {
-            serverListener = setupListenerNow();
-          }, 5000);
-          
-          // Return a function that decrements listener count and unsubscribes
-          let isUnsubscribed = false;
-          
-          return () => {
-            if (isUnsubscribed) return;
-            isUnsubscribed = true;
-            
-            // Cancel the setup timeout if it hasn't fired yet
-            clearTimeout(setupTimeout);
-            
-            // Decrement the listener count
-            const remainingListeners = cache.listeners.decrement(listenerKey);
-            console.log(`[listenForQuestions] Removed listener. Remaining: ${remainingListeners} for ${sessionCode}`);
-            
-            // Unsubscribe from server listener if it's been set up
-            if (serverListener) {
-              serverListener();
-            }
-          };
-        }
       }
     }
 
-    // Set up the listener immediately if we haven't used the delayed approach
-    return setupListenerNow();
-  } catch (error) {
-    console.error("[listenForQuestions] Error setting up listener:", error);
-    
-    // Still decrement the listener count
-    cache.listeners.decrement(listenerKey);
-    
-    callback([]);
-    return () => {};
-  }
-  
-  // Function to set up the actual Firestore listener
-  function setupListenerNow(): () => void {
-    console.log(`[listenForQuestions] Setting up listener for session: ${sessionCode} with maxWaitTime: ${adjustedWaitTime}ms`);
+    console.log(`[listenForQuestions] Setting up listener for session: ${sessionCode} with maxWaitTime: ${maxWaitTime}ms`);
     
     // Query for all questions with this session code, newest first
     const q = query(
@@ -278,16 +190,16 @@ export const listenForQuestions = (
           console.log(`[listenForQuestions] Received ${snapshot.docs.length} questions`);
           
           const questions: Question[] = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              text: data.text || "No text provided",
-              timestamp: data.timestamp || Date.now(),
-              status: data.status || 'unanswered',
+          const data = doc.data();
+          return {
+            id: doc.id,
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
               studentId: data.studentId || "unknown",
               sessionCode: data.sessionCode || sessionCode
-            };
-          });
+          };
+        });
           
           // Store the pending update
           pendingData = questions;
@@ -301,11 +213,11 @@ export const listenForQuestions = (
           const timeSinceLastUpdate = now - lastUpdate;
           
           // If we've waited long enough, send the update immediately
-          if (timeSinceLastUpdate >= adjustedWaitTime) {
+          if (timeSinceLastUpdate >= maxWaitTime) {
             sendUpdate(questions);
           } else {
             // Otherwise, set a timer to send the update after the remaining wait time
-            const waitTime = Math.max(0, adjustedWaitTime - timeSinceLastUpdate);
+            const waitTime = Math.max(0, maxWaitTime - timeSinceLastUpdate);
             debounceTimer = setTimeout(() => {
               if (pendingData) {
                 sendUpdate(pendingData);
@@ -330,16 +242,15 @@ export const listenForQuestions = (
         if (debounceTimer) {
           clearTimeout(debounceTimer);
         }
-        
-        // Decrement the listener count for this session
-        const remainingListeners = cache.listeners.decrement(listenerKey);
-        console.log(`[listenForQuestions] Removed listener. Remaining: ${remainingListeners} for ${sessionCode}`);
-        
         unsubscribe();
-      } catch (error) {
+  } catch (error) {
         console.error("[listenForQuestions] Error during cleanup:", error);
       }
     };
+  } catch (error) {
+    console.error("[listenForQuestions] Error setting up listener:", error);
+    callback([]);
+    return () => {};
   }
 };
 
@@ -391,7 +302,7 @@ export const listenForUserQuestions = (
         console.log(`[listenForUserQuestions] Received ${snapshot.docs.length} user-question links`);
         
         if (snapshot.empty) {
-          callback([]);
+    callback([]);
           return;
         }
         
@@ -415,11 +326,11 @@ export const listenForUserQuestions = (
                   
                   if (questionDoc.exists()) {
                     const data = questionDoc.data();
-                    return {
+          return {
                       id: questionId,
-                      text: data.text || "No text provided",
-                      timestamp: data.timestamp || Date.now(),
-                      status: data.status || 'unanswered',
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
                       studentId: data.studentId || studentId,
                       sessionCode: data.sessionCode || sessionCode
                     } as Question;
@@ -442,9 +353,9 @@ export const listenForUserQuestions = (
             callback(questions);
             lastUpdate = Date.now();
             pendingOperation = null;
-          } catch (error) {
+  } catch (error) {
             console.error("[listenForUserQuestions] Error processing questions:", error);
-            callback([]);
+    callback([]);
           }
         };
         
@@ -518,14 +429,14 @@ export const updateQuestion = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestion] Question ${questionId} not found`);
-      return false;
-    }
+    return false;
+  }
     
     const data = questionDoc.data();
     if (data.studentId !== studentId) {
       console.error(`[updateQuestion] Student ${studentId} does not own question ${questionId}`);
-      return false;
-    }
+    return false;
+  }
 
     // Update question
     await updateDoc(questionRef, {
@@ -565,8 +476,8 @@ export const updateQuestionStatus = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestionStatus] Question ${questionId} not found`);
-      return false;
-    }
+    return false;
+  }
     
     // Get the session code from the question data to invalidate cache
     const questionData = questionDoc.data();
@@ -1012,8 +923,8 @@ export const listenForAnswers = (
           const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId));
           if (questionDoc.exists()) {
             questionText = questionDoc.data().text || "";
-          }
-        } catch (error) {
+            }
+          } catch (error) {
           console.error(`[listenForAnswers] Error fetching question text for ${activeQuestionId}:`, error);
         }
         
@@ -1187,7 +1098,7 @@ export const listenForStudentPoints = (
             
             // Update cache
             pointsCache.set(studentId, 0);
-            callback(0);
+    callback(0);
           }
           return;
         }
@@ -1220,7 +1131,7 @@ export const listenForStudentPoints = (
       // We don't remove from cache on unsubscribe to allow faster resubscription
       unsubscribe();
     };
-  } catch (error) {
+        } catch (error) {
     console.error("[listenForStudentPoints] Error setting up listener:", error);
     callback(pointsCache.get(studentId) || 0);
     return () => {};
@@ -1266,16 +1177,4 @@ export const runDatabaseMaintenance = async (): Promise<{
     orphanedQuestionsDeleted: 0,
       orphanedAnswersDeleted: 0
     };
-};
-
-// Add this function after the cache definition
-/**
- * Get the number of active listeners for a session
- * This is used for diagnostics and optimizing refresh rates
- * 
- * @param sessionKey - The key for the session to check
- * @returns Number of active listeners
- */
-export const getSessionCache = (sessionKey: string): number => {
-  return cache.listeners.getCount(sessionKey);
 }; 

@@ -31,8 +31,7 @@ import {
   updateStudentPoints,
   runDatabaseMaintenance,
   clearPointsCache,
-  ACTIVE_QUESTION_COLLECTION,
-  getSessionCache
+  ACTIVE_QUESTION_COLLECTION
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
@@ -159,66 +158,62 @@ export default function StudentPage() {
   const lastQuestionCheckRef = useRef<number>(0);
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
-  const [questionListeners, setQuestionListeners] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
-  const isMounted = useRef(true);
-  const [isJoining, setIsJoining] = useState(false);
 
-  /**
-   * Handle leaving a class
-   * Cleans up listeners and state when a student leaves a class
-   */
-  const handleLeaveClass = useCallback(async () => {
-    if (isLeavingClass) return; // Prevent multiple calls
+  // Define handleLeaveClass outside the component
+  const handleLeaveClass = useCallback(() => {
+    // Prevent multiple clicks
+    if (isLeavingClass) return;
     
+    console.log('Student leaving class');
     setIsLeavingClass(true);
-    console.log('Student leaving class...');
     
-    try {
-      // Clean up listeners first to prevent updates after unmounting
+    // Clean up Firebase data first
+    if (studentId) {
+      leaveClass(studentId)
+        .catch(error => {
+          console.error("Error leaving class:", error);
+          // Consider showing an error to the user here
+        })
+        .finally(() => {
+          // Only update UI after Firebase cleanup completes
+          // Update UI in a single batch to avoid race conditions
+          setJoined(false);
+          setClassName('');
+          setSessionCode('');
+          setMyQuestions([]);
+          setClassQuestions([]);
+          setActiveQuestion(null);
+          
+          // Clean up listeners
+          if (sessionListener) {
+            sessionListener();
+            setSessionListener(null);
+          }
+          
+          setIsLeavingClass(false);
+        });
+    } else {
+      // If no studentId, just update UI
+      setJoined(false);
+      setClassName('');
+      setSessionCode('');
+      setMyQuestions([]);
+      setClassQuestions([]);
+      setActiveQuestion(null);
+      
+      // Clean up listeners
       if (sessionListener) {
-        console.log('Cleaning up session listener');
         sessionListener();
-      }
-      
-      if (questionListeners) {
-        console.log('Cleaning up question listeners');
-        questionListeners();
-      }
-      
-      // Then call Firebase to update database
-      if (studentId) {
-        console.log(`Calling leaveClass for student ${studentId}`);
-        await leaveClass(studentId);
-      }
-      
-      // Only update state if component is still mounted
-      if (isMounted.current) {
         setSessionListener(null);
-        setQuestionListeners(null);
-        setJoined(false);
-        setClassName('');
-        setSessionCode('');
-        setMyQuestions([]);
-        setClassQuestions([]);
-        setActiveQuestion(null);
-        setAnswerText('');
-        setAnswerSubmitted(false);
-        console.log('Successfully left class, state cleared');
       }
-    } catch (error) {
-      console.error('Error leaving class:', error);
-      if (isMounted.current) {
-        setError('Failed to leave class. Please try again.');
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLeavingClass(false);
-      }
+      
+      setIsLeavingClass(false);
     }
-  }, [studentId, sessionListener, questionListeners, isLeavingClass]);
+  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
+      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
 
   /**
    * Handle adding a point to student's total
@@ -500,12 +495,12 @@ export default function StudentPage() {
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
-          // Set up listener for all class questions - refresh every 8 seconds to reduce load
+          // Set up listener for all class questions - refresh every 15 seconds to reduce load
           console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
+          }, { maxWaitTime: 3000, useCache: true });
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -562,28 +557,32 @@ export default function StudentPage() {
             // If the session is closed or archived, leave the class
             if (!status || status === 'closed' || status === 'archived') {
               console.log('Session ended by professor, leaving class...');
-              // Call handleLeaveClass if we're not already leaving
-              if (!isLeavingClass) {
-                handleLeaveClass();
-                alert('Class ended: The professor has ended this class session.');
+              // Call handleLeaveClass directly here
+              setJoined(false);
+              setClassName('');
+              setSessionCode('');
+              setMyQuestions([]);
+              setClassQuestions([]);
+              setActiveQuestion(null);
+              
+              if (studentId) {
+                leaveClass(studentId).catch(console.error);
               }
+              
+              alert('Class ended: The professor has ended this class session.');
             }
           });
           
           setSessionListener(() => unsubscribeSessionStatus);
-          setQuestionListeners(() => () => {
-            console.log('Cleaning up question listeners');
-            unsubscribePersonal();
-            unsubscribeClass();
-            unsubscribeActiveQuestion();
-          });
           setInitStage('listeners-setup-complete');
           
           // Return cleanup function
           cleanup = () => {
-            console.log('Cleaning up all listeners');
-            if (questionListeners) questionListeners();
-            if (sessionListener) sessionListener();
+            console.log('Cleaning up question listeners');
+            unsubscribePersonal();
+            unsubscribeClass();
+            unsubscribeActiveQuestion();
+            unsubscribeSessionStatus();
           };
         } else {
           console.log("Student has not joined a class");
@@ -685,12 +684,8 @@ export default function StudentPage() {
    * @param code - The session code of the joined class
    */
   const handleJoinSuccess = useCallback(async (code: string) => {
-    if (isJoining || !isMounted.current) return;
-    
-    setIsJoining(true);
-    setIsLoading(true);
-    
     try {
+      setIsLoading(true);
       console.log(`Attempting to join class with session code: ${code}`);
       
       // Reset welcome message when joining a new class
@@ -699,138 +694,100 @@ export default function StudentPage() {
       // Verify the session code is valid
       const session = await getSessionByCode(code);
       
-      if (!session || !isMounted.current) {
-        if (!session) {
-          console.error(`Invalid session code: ${code}. Session not found.`);
-          if (isMounted.current) {
-            setError("Invalid session code. The class may have ended or doesn't exist.");
-          }
-        }
-        if (isMounted.current) {
-          setIsLoading(false);
-          setIsJoining(false);
-        }
+      if (!session) {
+        console.error(`Invalid session code: ${code}. Session not found.`);
+        setError("Invalid session code. The class may have ended or doesn't exist.");
+        setIsLoading(false);
         return;
       }
       
       console.log(`Found valid session:`, session);
       
       // Set class and session info
-      if (isMounted.current) {
-        setClassName(session.code);
-        setSessionCode(code);
+      setClassName(session.code); // Original class name
+      setSessionCode(code);       // Session code
         setJoined(true);
-      } else {
-        return; // Exit if component unmounted during async operation
-      }
-      
+        
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listeners - make sure to clean these up properly
-      let unsubPersonal: (() => void) | undefined;
-      let unsubClass: (() => void) | undefined;
-      let unsubActiveQuestion: (() => void) | undefined;
-      let unsubSessionStatus: (() => void) | undefined;
-      
-      try {
-        // Set up listener for student's questions - refresh every 10 seconds
-        console.log(`Setting up personal questions listener...`);
-        unsubPersonal = listenForUserQuestions(studentId, code, (questions) => {
-          if (!isMounted.current) return; // Skip state update if component unmounted
-          console.log(`Received ${questions.length} personal questions`);
+      // Set up listener for student's questions - refresh every 10 seconds
+      console.log(`Setting up personal questions listener...`);
+      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
+        console.log(`Received ${questions.length} personal questions:`, questions);
           setMyQuestions(questions);
-        }, { maxWaitTime: 10000 });
-        
-        // Set up listener for all class questions - refresh every 8 seconds
-        console.log(`Setting up class questions listener...`);
-        unsubClass = listenForQuestions(code, (questions) => {
-          if (!isMounted.current) return; // Skip state update if component unmounted
-          console.log(`Received ${questions.length} class questions`);
+      }, { maxWaitTime: 10000 });
+      
+      // Set up listener for all class questions - refresh every 15 seconds
+      console.log(`Setting up class questions listener...`);
+      const unsubscribeClass = listenForQuestions(code, (questions) => {
+        console.log(`Received ${questions.length} class questions:`, questions);
           setClassQuestions(questions);
-        }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
+      }, { maxWaitTime: 3000, useCache: true });
         
-        // Set up listener for active question - refresh every 5 seconds
-        console.log(`Setting up active question listener...`);
-        if (isMounted.current) setIsLoadingQuestion(true);
-        unsubActiveQuestion = listenForActiveQuestion(code, (question) => {
-          if (!isMounted.current) return; // Skip state update if component unmounted
-          
+      // Set up listener for active question - refresh every 5 seconds
+      console.log(`Setting up active question listener...`);
+        setIsLoadingQuestion(true);
+      const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
           console.log("Active question update:", question);
-          
-          // If the active question changes, reset the answer state
-          if (question?.id !== activeQuestion?.id) {
-            setAnswerText('');
-            setAnswerSubmitted(false);
-            
-            // Notify user of new question (but only if not first load)
-            if (question && !isFirstLoad.current) {
-              notifyNewQuestion(question.text);
-            }
-          }
-          
-          // Mark as no longer first load after first update
-          isFirstLoad.current = false;
-          
-          setActiveQuestion(question);
+        
+        // If the active question changes, reset the answer state
+        if (question?.id !== activeQuestion?.id) {
+          setAnswerText('');
+          setAnswerSubmitted(false);
+        }
+        
+        setActiveQuestion(question);
           setIsLoadingQuestion(false);
           lastQuestionCheckRef.current = Date.now();
-        }, { maxWaitTime: 5000 });
-        
-        // Set up listener for session status changes
-        console.log(`Setting up session status listener...`);
-        unsubSessionStatus = listenForSessionStatus(code, (status) => {
-          if (!isMounted.current) return; // Skip state update if component unmounted
-          
-          console.log(`Session status changed to: ${status}`);
-          
-          // If the session is closed or archived, leave the class
-          if ((!status || status === 'closed' || status === 'archived') && !isLeavingClass) {
-            console.log('Session ended by professor, leaving class...');
-            handleLeaveClass();
-            if (isMounted.current) {
-              alert('Class ended: The professor has ended this class session.');
-            }
-          }
-        });
-        
-        // Store unsubscribe functions
-        if (isMounted.current) {
-          setSessionListener(() => unsubSessionStatus);
-          setQuestionListeners(() => () => {
-            if (unsubPersonal) unsubPersonal();
-            if (unsubClass) unsubClass();
-            if (unsubActiveQuestion) unsubActiveQuestion();
-          });
-        } else {
-          // Component unmounted during setup, clean up immediately
-          if (unsubPersonal) unsubPersonal();
-          if (unsubClass) unsubClass();
-          if (unsubActiveQuestion) unsubActiveQuestion();
-          if (unsubSessionStatus) unsubSessionStatus();
-        }
-      } catch (error) {
-        console.error("Error setting up listeners:", error);
-        // Clean up any listeners that were set up before the error
-        if (unsubPersonal) unsubPersonal();
-        if (unsubClass) unsubClass();
-        if (unsubActiveQuestion) unsubActiveQuestion();
-        if (unsubSessionStatus) unsubSessionStatus();
-        throw error; // Re-throw to be caught by outer try/catch
-      }
+      }, { maxWaitTime: 5000 });
       
+      // Set up listener for session status changes
+      console.log(`Setting up session status listener...`);
+      const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
+        console.log(`Session status changed to: ${status}`);
+        
+        // If the session is closed or archived, leave the class
+        if (!status || status === 'closed' || status === 'archived') {
+          console.log('Session ended by professor, leaving class...');
+          // Call handleLeaveClass directly
+      setJoined(false);
+          setClassName('');
+          setSessionCode('');
+      setMyQuestions([]);
+        setClassQuestions([]);
+        setActiveQuestion(null);
+          
+          if (studentId) {
+            leaveClass(studentId).catch(console.error);
+          }
+          
+          if (sessionListener) {
+            sessionListener();
+            setSessionListener(null);
+          }
+          
+          alert('Class ended: The professor has ended this class session.');
+        }
+      });
+      
+      setSessionListener(() => unsubscribeSessionStatus);
+      setIsLoading(false);
       console.log(`Join successful. All listeners set up.`);
+      
+      // Return cleanup function
+      return () => {
+        console.log('Cleaning up question listeners');
+        unsubscribePersonal();
+        unsubscribeClass();
+        unsubscribeActiveQuestion();
+        unsubscribeSessionStatus();
+      };
     } catch (error) {
       console.error('Error joining class:', error);
-      if (isMounted.current) {
-        setError('Failed to join class. Please try again.');
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-        setIsJoining(false);
-      }
+      setError('Failed to join class. Please try again.');
+      setIsLoading(false);
     }
-  }, [studentId, activeQuestion, handleLeaveClass, isLeavingClass, resetWelcomeMessage, isJoining]);
+  }, [studentId, activeQuestion]); // Remove handleLeaveClass dependency
 
   /**
    * Handle user logout
@@ -1025,15 +982,15 @@ export default function StudentPage() {
               <QuestionList 
                 questions={myQuestions} 
                 isProfessor={false}
-                isStudent={true}
-                studentId={studentId}
+              isStudent={true}
+              studentId={studentId}
                 showControls={true}
                 emptyMessage="You haven't asked any questions yet."
                 onDelete={handleQuestionDelete}
                 onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
-              />
-          </div>
+            />
         </div>
+      </div>
       </div>
     );
   };
@@ -1056,7 +1013,7 @@ export default function StudentPage() {
             <p className="text-sm text-blue-800 dark:text-white">
               Points are awarded by your professor for participation and correct answers.
             </p>
-          </div>
+              </div>
           
           <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6 relative">
             {isSavingPoints && (
@@ -1066,7 +1023,7 @@ export default function StudentPage() {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 Saving...
-              </div>
+            </div>
             )}
             
             <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
@@ -1088,7 +1045,7 @@ export default function StudentPage() {
                 title="Click to edit points"
               >
                 {points}
-              </div>
+        </div>
               
               <button
                 onClick={handleAddPoint}
@@ -1099,11 +1056,11 @@ export default function StudentPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
                 </svg>
               </button>
-            </div>
+      </div>
             
             <div className="text-sm text-blue-800 dark:text-white text-center mb-2">
               Total points earned in this class
-            </div>
+    </div>
             
             <button
               onClick={handleOpenPointsModal}
@@ -1112,7 +1069,7 @@ export default function StudentPage() {
               Edit Points
             </button>
           </div>
-        </div>
+            </div>
         
         {/* Points Modal */}
         {showPointsModal && (
@@ -1130,7 +1087,7 @@ export default function StudentPage() {
                     aria-label="Set points value"
                     autoFocus
                   />
-                </div>
+          </div>
                 
                 {/* Numpad */}
                 <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1347,59 +1304,6 @@ export default function StudentPage() {
       </div>
     );
   }
-
-  // Add a function near the top of the studentPage component
-  /**
-   * Optimize listener refresh rates based on active tab
-   * This reduces database reads when components aren't visible
-   */
-  const optimizeListeners = useCallback(() => {
-    if (!sessionCode || !joined) return;
-    
-    // Get all current listeners for this session
-    const listenerCount = getSessionCache(`questions_${sessionCode}`) || 0;
-    
-    console.log(`[optimizeListeners] Checking listeners for tab: ${activeTab}, count: ${listenerCount}`);
-    
-    if (activeTab === 'questions') {
-      // When on questions tab, we need fresh question data
-      // This is handled automatically through the priority system
-      console.log('[optimizeListeners] On questions tab, ensuring fresh question data');
-    } else {
-      // When on points tab, we can pause question updates to reduce load
-      console.log('[optimizeListeners] On points tab, reducing question refresh frequency');
-      
-      // Cache invalidation is handled by the questions module
-    }
-  }, [activeTab, sessionCode, joined]);
-
-  // Then use this in the tab change handler
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    // Optimize listener behavior when tab changes
-    setTimeout(optimizeListeners, 100);
-  };
-
-  // And add an effect to ensure it runs when the session state changes
-  useEffect(() => {
-    optimizeListeners();
-  }, [joined, sessionCode, optimizeListeners]);
-
-  // Add this effect at the end for cleaning up on unmount
-  useEffect(() => {
-    // Set the isMounted flag to true on mount
-    isMounted.current = true;
-    
-    // Return a cleanup function to handle component unmounting
-    return () => {
-      console.log('Student page unmounting - cleaning up');
-      isMounted.current = false;
-      
-      // Clean up listeners when component unmounts
-      if (sessionListener) sessionListener();
-      if (questionListeners) questionListeners();
-    };
-  }, [sessionListener, questionListeners]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
