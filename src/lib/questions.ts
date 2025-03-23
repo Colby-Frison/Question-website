@@ -429,20 +429,71 @@ export const updateQuestion = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestion] Question ${questionId} not found`);
-    return false;
-  }
+      return false;
+    }
     
     const data = questionDoc.data();
     if (data.studentId !== studentId) {
       console.error(`[updateQuestion] Student ${studentId} does not own question ${questionId}`);
-    return false;
-  }
+      return false;
+    }
 
-    // Update question
-    await updateDoc(questionRef, {
-      text: newText.trim(),
-      updatedAt: Date.now()
-    });
+    // Get session code for cache invalidation
+    const sessionCode = data.sessionCode;
+    
+    // Update question with retry mechanism
+    const MAX_RETRIES = 3;
+    let success = false;
+    let retryCount = 0;
+    
+    while (!success && retryCount < MAX_RETRIES) {
+      try {
+        // Update question with important timestamps
+        await updateDoc(questionRef, {
+          text: newText.trim(),
+          updatedAt: Date.now(),
+          lastModified: Date.now() // Add this to force a document update
+        });
+        
+        // Verify the update was applied
+        const updatedDoc = await getDoc(questionRef);
+        if (updatedDoc.exists() && updatedDoc.data().text === newText.trim()) {
+          console.log(`[updateQuestion] Verified text change for question ${questionId}`);
+        } else {
+          throw new Error("Text update verification failed");
+        }
+        
+        // Invalidate caches to ensure listeners get fresh data
+        if (sessionCode) {
+          cache.questions.delete(sessionCode);
+          console.log(`[updateQuestion] Invalidated cache for session: ${sessionCode}`);
+          
+          // Force an immediate refresh
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestion] Error in delayed refresh:", err));
+          }, 250);
+          
+          // Add a second delayed refresh for better reliability
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestion] Error in second delayed refresh:", err));
+          }, 1500);
+        }
+        
+        success = true;
+      } catch (err) {
+        retryCount++;
+        console.warn(`[updateQuestion] Retry ${retryCount}/${MAX_RETRIES} after error:`, err);
+        
+        if (retryCount >= MAX_RETRIES) {
+          throw err; // Re-throw if we've exhausted retries
+        }
+        
+        // Wait briefly before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retryCount - 1)));
+      }
+    }
     
     console.log(`[updateQuestion] Question ${questionId} updated successfully`);
     return true;
@@ -490,11 +541,23 @@ export const updateQuestionStatus = async (
     
     while (!success && retryCount < MAX_RETRIES) {
       try {
-        // Update status with transaction to ensure atomicity
-        await updateDoc(questionRef, {
+        // Use serverTimestamp for better synchronization
+        const updateData = {
           status,
-          statusUpdatedAt: Date.now()
-        });
+          statusUpdatedAt: Date.now(),
+          lastModified: Date.now() // Add this to force a document update
+        };
+        
+        // Update status to ensure atomicity
+        await updateDoc(questionRef, updateData);
+        
+        // Double-check that the update was actually applied
+        const updatedDoc = await getDoc(questionRef);
+        if (updatedDoc.exists() && updatedDoc.data().status === status) {
+          console.log(`[updateQuestionStatus] Verified status change to ${status} for question ${questionId}`);
+        } else {
+          throw new Error("Status update verification failed");
+        }
         
         // Immediately force a refresh of questions for this session to propagate changes faster
         if (sessionCode) {
@@ -507,6 +570,12 @@ export const updateQuestionStatus = async (
             forceRefreshQuestions(sessionCode)
               .catch(err => console.error("[updateQuestionStatus] Error in delayed refresh:", err));
           }, 250); // Small delay to ensure Firestore has propagated the change
+          
+          // Add a second delayed refresh for better reliability
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestionStatus] Error in second delayed refresh:", err));
+          }, 1500);
         }
         
         success = true;

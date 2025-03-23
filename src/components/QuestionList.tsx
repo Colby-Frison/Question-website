@@ -107,6 +107,20 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       const success = await updateQuestion(questionId, editText, studentId);
       
       if (success) {
+        // Update local state to reflect changes immediately
+        if (questions) {
+          const updatedQuestions = questions.map(q => 
+            q.id === questionId 
+              ? { ...q, text: editText } 
+              : q
+          );
+          
+          // Force a UI update through the parent component
+          if (onStatusUpdated) {
+            onStatusUpdated(updatedQuestions);
+          }
+        }
+        
         setEditingId(null);
         setEditText('');
       } else {
@@ -158,7 +172,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setUpdatingStatusId(questionId);
     
     // Add delay to show loading state (prevents double clicks and UI flashing)
-    const MIN_LOADING_TIME = 1000; // ms - increased to ensure better user feedback
+    const MIN_LOADING_TIME = 1500; // ms - increased to ensure better user feedback
     const startTime = Date.now();
     
     try {
@@ -182,6 +196,9 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           }
         }
       }
+      
+      // Keep optimistic update even after making the API call
+      // Don't clear it immediately, let it persist until loading state is complete
       
       // Call the onToggleStatus callback if provided
       if (onToggleStatus) {
@@ -208,16 +225,19 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
       }
       
-      // Clear optimistic update after success
-      setOptimisticStatusUpdates(prev => {
-        const updated = { ...prev };
-        delete updated[questionId];
-        return updated;
-      });
+      // Only now clear optimistic update, to avoid any flicker between states
+      if (success) {
+        setOptimisticStatusUpdates(prev => {
+          const updated = { ...prev };
+          // Only delete if status was successfully changed
+          delete updated[questionId];
+          return updated;
+        });
+      }
     } catch (error) {
       console.error('Error toggling question status:', error);
       
-      // Revert optimistic update on error
+      // Only revert optimistic update on error
       setOptimisticStatusUpdates(prev => {
         const updated = { ...prev };
         delete updated[questionId];

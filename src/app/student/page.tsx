@@ -867,7 +867,7 @@ export default function StudentPage() {
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
-  // Add a more robust handler to synchronize status updates across question lists
+  // Add a more robust handler to synchronize status updates and edits across question lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
     // Update the specified list directly
     if (listType === 'my') {
@@ -879,23 +879,30 @@ export default function StudentPage() {
     // Current session code - needed for force refresh
     const currentSessionCode = joinedClass?.sessionCode || '';
     
-    // Find any questions that exist in both lists and sync their status
+    // Find any questions that exist in both lists and sync their status and text
     const otherList = listType === 'my' ? classQuestions : myQuestions;
     const otherSetter = listType === 'my' ? setClassQuestions : setMyQuestions;
     
-    // Create a map of updated question statuses by ID
-    const statusMap = updatedQuestions.reduce((map, q) => {
-      map[q.id] = q.status;
+    // Create a map of updated questions by ID
+    const updatedMap = updatedQuestions.reduce((map, q) => {
+      map[q.id] = q;
       return map;
-    }, {} as Record<string, 'answered' | 'unanswered' | undefined>);
+    }, {} as Record<string, Question>);
     
     // Always update the other list (whether it needs updating or not)
     // This ensures consistency even if Firebase events are delayed
-    const updatedOtherList = otherList.map(q => 
-      statusMap[q.id] !== undefined
-        ? { ...q, status: statusMap[q.id] }
-        : q
-    );
+    const updatedOtherList = otherList.map(q => {
+      const updatedQuestion = updatedMap[q.id];
+      if (updatedQuestion) {
+        // If the question exists in both lists, sync all properties
+        return {
+          ...q,
+          status: updatedQuestion.status,
+          text: updatedQuestion.text  // Also sync the text for edits
+        };
+      }
+      return q;
+    });
     
     otherSetter(updatedOtherList);
     
@@ -908,6 +915,14 @@ export default function StudentPage() {
           forceRefreshQuestions(currentSessionCode).catch(console.error);
         });
       }, 500);
+      
+      // Add a second delayed refresh for better reliability
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Second refresh for session: ${currentSessionCode}`);
+        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
+          forceRefreshQuestions(currentSessionCode).catch(console.error);
+        });
+      }, 2000);
     }
   }, [myQuestions, classQuestions, joinedClass?.sessionCode]);
   
