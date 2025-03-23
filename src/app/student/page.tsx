@@ -159,62 +159,54 @@ export default function StudentPage() {
   const lastQuestionCheckRef = useRef<number>(0);
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
+  const [questionListeners, setQuestionListeners] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
 
   // Define handleLeaveClass outside the component
-  const handleLeaveClass = useCallback(() => {
-    // Prevent multiple clicks
-    if (isLeavingClass) return;
-    
-    console.log('Student leaving class');
+  const handleLeaveClass = useCallback(async () => {
+    // Set flag to indicate we're in the process of leaving
     setIsLeavingClass(true);
     
-    // Clean up Firebase data first
-    if (studentId) {
-      leaveClass(studentId)
-        .catch(error => {
-          console.error("Error leaving class:", error);
-          // Consider showing an error to the user here
-        })
-        .finally(() => {
-          // Only update UI after Firebase cleanup completes
-          // Update UI in a single batch to avoid race conditions
-          setJoined(false);
-          setClassName('');
-          setSessionCode('');
-          setMyQuestions([]);
-          setClassQuestions([]);
-          setActiveQuestion(null);
-          
-          // Clean up listeners
-          if (sessionListener) {
-            sessionListener();
-            setSessionListener(null);
-          }
-          
-          setIsLeavingClass(false);
-        });
-    } else {
-      // If no studentId, just update UI
+    try {
+      console.log('Student leaving class...');
+      if (studentId) {
+        const success = await leaveClass(studentId);
+        console.log(`Leave class result: ${success ? 'success' : 'failed'}`);
+      }
+      
+      // Clear the session listener first to prevent updates to unmounted component
+      if (sessionListener) {
+        sessionListener();
+        setSessionListener(null);
+      }
+      
+      // Clean up all listener states
+      if (questionListeners) {
+        questionListeners();
+        setQuestionListeners(null);
+      }
+      
+      // Reset all class-related state
       setJoined(false);
       setClassName('');
       setSessionCode('');
       setMyQuestions([]);
       setClassQuestions([]);
       setActiveQuestion(null);
+      setAnswerText('');
+      setAnswerSubmitted(false);
       
-      // Clean up listeners
-      if (sessionListener) {
-        sessionListener();
-        setSessionListener(null);
-      }
-      
+      console.log('Successfully left class, state cleared');
+    } catch (error) {
+      console.error('Error leaving class:', error);
+      setError('Failed to leave class. Please try again.');
+    } finally {
+      // Reset the leaving flag
       setIsLeavingClass(false);
     }
-  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
-      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
+  }, [studentId, sessionListener, questionListeners]);
 
   /**
    * Handle adding a point to student's total
@@ -558,32 +550,28 @@ export default function StudentPage() {
             // If the session is closed or archived, leave the class
             if (!status || status === 'closed' || status === 'archived') {
               console.log('Session ended by professor, leaving class...');
-              // Call handleLeaveClass directly here
-              setJoined(false);
-              setClassName('');
-              setSessionCode('');
-              setMyQuestions([]);
-              setClassQuestions([]);
-              setActiveQuestion(null);
-              
-              if (studentId) {
-                leaveClass(studentId).catch(console.error);
+              // Call handleLeaveClass if we're not already leaving
+              if (!isLeavingClass) {
+                handleLeaveClass();
+                alert('Class ended: The professor has ended this class session.');
               }
-              
-              alert('Class ended: The professor has ended this class session.');
             }
           });
           
           setSessionListener(() => unsubscribeSessionStatus);
-          setInitStage('listeners-setup-complete');
-          
-          // Return cleanup function
-          cleanup = () => {
+          setQuestionListeners(() => () => {
             console.log('Cleaning up question listeners');
             unsubscribePersonal();
             unsubscribeClass();
             unsubscribeActiveQuestion();
-            unsubscribeSessionStatus();
+          });
+          setInitStage('listeners-setup-complete');
+          
+          // Return cleanup function
+          cleanup = () => {
+            console.log('Cleaning up all listeners');
+            if (questionListeners) questionListeners();
+            if (sessionListener) sessionListener();
           };
         } else {
           console.log("Student has not joined a class");
@@ -750,45 +738,36 @@ export default function StudentPage() {
         // If the session is closed or archived, leave the class
         if (!status || status === 'closed' || status === 'archived') {
           console.log('Session ended by professor, leaving class...');
-          // Call handleLeaveClass directly
-      setJoined(false);
-          setClassName('');
-          setSessionCode('');
-      setMyQuestions([]);
-        setClassQuestions([]);
-        setActiveQuestion(null);
-          
-          if (studentId) {
-            leaveClass(studentId).catch(console.error);
+          // Call handleLeaveClass if we're not already leaving
+          if (!isLeavingClass) {
+            handleLeaveClass();
+            alert('Class ended: The professor has ended this class session.');
           }
-          
-          if (sessionListener) {
-            sessionListener();
-            setSessionListener(null);
-          }
-          
-          alert('Class ended: The professor has ended this class session.');
         }
       });
       
       setSessionListener(() => unsubscribeSessionStatus);
+      setQuestionListeners(() => () => {
+        console.log('Cleaning up question listeners');
+        unsubscribePersonal();
+        unsubscribeClass();
+        unsubscribeActiveQuestion();
+      });
       setIsLoading(false);
       console.log(`Join successful. All listeners set up.`);
       
       // Return cleanup function
       return () => {
-        console.log('Cleaning up question listeners');
-        unsubscribePersonal();
-        unsubscribeClass();
-        unsubscribeActiveQuestion();
-        unsubscribeSessionStatus();
+        console.log('Cleaning up all listeners');
+        if (questionListeners) questionListeners();
+        if (sessionListener) sessionListener();
       };
     } catch (error) {
       console.error('Error joining class:', error);
       setError('Failed to join class. Please try again.');
       setIsLoading(false);
     }
-  }, [studentId, activeQuestion]); // Remove handleLeaveClass dependency
+  }, [studentId, activeQuestion, handleLeaveClass, isLeavingClass, resetWelcomeMessage]);
 
   /**
    * Handle user logout
