@@ -163,50 +163,62 @@ export default function StudentPage() {
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
+  const isMounted = useRef(true);
+  const [isJoining, setIsJoining] = useState(false);
 
-  // Define handleLeaveClass outside the component
+  /**
+   * Handle leaving a class
+   * Cleans up listeners and state when a student leaves a class
+   */
   const handleLeaveClass = useCallback(async () => {
-    // Set flag to indicate we're in the process of leaving
+    if (isLeavingClass) return; // Prevent multiple calls
+    
     setIsLeavingClass(true);
+    console.log('Student leaving class...');
     
     try {
-      console.log('Student leaving class...');
-      if (studentId) {
-        const success = await leaveClass(studentId);
-        console.log(`Leave class result: ${success ? 'success' : 'failed'}`);
-      }
-      
-      // Clear the session listener first to prevent updates to unmounted component
+      // Clean up listeners first to prevent updates after unmounting
       if (sessionListener) {
+        console.log('Cleaning up session listener');
         sessionListener();
-        setSessionListener(null);
       }
       
-      // Clean up all listener states
       if (questionListeners) {
+        console.log('Cleaning up question listeners');
         questionListeners();
-        setQuestionListeners(null);
       }
       
-      // Reset all class-related state
-      setJoined(false);
-      setClassName('');
-      setSessionCode('');
-      setMyQuestions([]);
-      setClassQuestions([]);
-      setActiveQuestion(null);
-      setAnswerText('');
-      setAnswerSubmitted(false);
+      // Then call Firebase to update database
+      if (studentId) {
+        console.log(`Calling leaveClass for student ${studentId}`);
+        await leaveClass(studentId);
+      }
       
-      console.log('Successfully left class, state cleared');
+      // Only update state if component is still mounted
+      if (isMounted.current) {
+        setSessionListener(null);
+        setQuestionListeners(null);
+        setJoined(false);
+        setClassName('');
+        setSessionCode('');
+        setMyQuestions([]);
+        setClassQuestions([]);
+        setActiveQuestion(null);
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        console.log('Successfully left class, state cleared');
+      }
     } catch (error) {
       console.error('Error leaving class:', error);
-      setError('Failed to leave class. Please try again.');
+      if (isMounted.current) {
+        setError('Failed to leave class. Please try again.');
+      }
     } finally {
-      // Reset the leaving flag
-      setIsLeavingClass(false);
+      if (isMounted.current) {
+        setIsLeavingClass(false);
+      }
     }
-  }, [studentId, sessionListener, questionListeners]);
+  }, [studentId, sessionListener, questionListeners, isLeavingClass]);
 
   /**
    * Handle adding a point to student's total
@@ -673,8 +685,12 @@ export default function StudentPage() {
    * @param code - The session code of the joined class
    */
   const handleJoinSuccess = useCallback(async (code: string) => {
+    if (isJoining || !isMounted.current) return;
+    
+    setIsJoining(true);
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
       console.log(`Attempting to join class with session code: ${code}`);
       
       // Reset welcome message when joining a new class
@@ -683,91 +699,138 @@ export default function StudentPage() {
       // Verify the session code is valid
       const session = await getSessionByCode(code);
       
-      if (!session) {
-        console.error(`Invalid session code: ${code}. Session not found.`);
-        setError("Invalid session code. The class may have ended or doesn't exist.");
-        setIsLoading(false);
+      if (!session || !isMounted.current) {
+        if (!session) {
+          console.error(`Invalid session code: ${code}. Session not found.`);
+          if (isMounted.current) {
+            setError("Invalid session code. The class may have ended or doesn't exist.");
+          }
+        }
+        if (isMounted.current) {
+          setIsLoading(false);
+          setIsJoining(false);
+        }
         return;
       }
       
       console.log(`Found valid session:`, session);
       
       // Set class and session info
-      setClassName(session.code); // Original class name
-      setSessionCode(code);       // Session code
+      if (isMounted.current) {
+        setClassName(session.code);
+        setSessionCode(code);
         setJoined(true);
-        
+      } else {
+        return; // Exit if component unmounted during async operation
+      }
+      
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions - refresh every 10 seconds
-      console.log(`Setting up personal questions listener...`);
-      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
-        console.log(`Received ${questions.length} personal questions:`, questions);
-          setMyQuestions(questions);
-      }, { maxWaitTime: 10000 });
+      // Set up listeners - make sure to clean these up properly
+      let unsubPersonal: (() => void) | undefined;
+      let unsubClass: (() => void) | undefined;
+      let unsubActiveQuestion: (() => void) | undefined;
+      let unsubSessionStatus: (() => void) | undefined;
       
-      // Set up listener for all class questions - refresh every 8 seconds
-      console.log(`Setting up class questions listener...`);
-      const unsubscribeClass = listenForQuestions(code, (questions) => {
-        console.log(`Received ${questions.length} class questions:`, questions);
+      try {
+        // Set up listener for student's questions - refresh every 10 seconds
+        console.log(`Setting up personal questions listener...`);
+        unsubPersonal = listenForUserQuestions(studentId, code, (questions) => {
+          if (!isMounted.current) return; // Skip state update if component unmounted
+          console.log(`Received ${questions.length} personal questions`);
+          setMyQuestions(questions);
+        }, { maxWaitTime: 10000 });
+        
+        // Set up listener for all class questions - refresh every 8 seconds
+        console.log(`Setting up class questions listener...`);
+        unsubClass = listenForQuestions(code, (questions) => {
+          if (!isMounted.current) return; // Skip state update if component unmounted
+          console.log(`Received ${questions.length} class questions`);
           setClassQuestions(questions);
-      }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
+        }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
         
-      // Set up listener for active question - refresh every 5 seconds
-      console.log(`Setting up active question listener...`);
-        setIsLoadingQuestion(true);
-      const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
+        // Set up listener for active question - refresh every 5 seconds
+        console.log(`Setting up active question listener...`);
+        if (isMounted.current) setIsLoadingQuestion(true);
+        unsubActiveQuestion = listenForActiveQuestion(code, (question) => {
+          if (!isMounted.current) return; // Skip state update if component unmounted
+          
           console.log("Active question update:", question);
-        
-        // If the active question changes, reset the answer state
-        if (question?.id !== activeQuestion?.id) {
-          setAnswerText('');
-          setAnswerSubmitted(false);
-        }
-        
-        setActiveQuestion(question);
+          
+          // If the active question changes, reset the answer state
+          if (question?.id !== activeQuestion?.id) {
+            setAnswerText('');
+            setAnswerSubmitted(false);
+            
+            // Notify user of new question (but only if not first load)
+            if (question && !isFirstLoad.current) {
+              notifyNewQuestion(question.text);
+            }
+          }
+          
+          // Mark as no longer first load after first update
+          isFirstLoad.current = false;
+          
+          setActiveQuestion(question);
           setIsLoadingQuestion(false);
           lastQuestionCheckRef.current = Date.now();
-      }, { maxWaitTime: 5000 });
-      
-      // Set up listener for session status changes
-      console.log(`Setting up session status listener...`);
-      const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
-        console.log(`Session status changed to: ${status}`);
+        }, { maxWaitTime: 5000 });
         
-        // If the session is closed or archived, leave the class
-        if (!status || status === 'closed' || status === 'archived') {
-          console.log('Session ended by professor, leaving class...');
-          // Call handleLeaveClass if we're not already leaving
-          if (!isLeavingClass) {
+        // Set up listener for session status changes
+        console.log(`Setting up session status listener...`);
+        unsubSessionStatus = listenForSessionStatus(code, (status) => {
+          if (!isMounted.current) return; // Skip state update if component unmounted
+          
+          console.log(`Session status changed to: ${status}`);
+          
+          // If the session is closed or archived, leave the class
+          if ((!status || status === 'closed' || status === 'archived') && !isLeavingClass) {
+            console.log('Session ended by professor, leaving class...');
             handleLeaveClass();
-            alert('Class ended: The professor has ended this class session.');
+            if (isMounted.current) {
+              alert('Class ended: The professor has ended this class session.');
+            }
           }
+        });
+        
+        // Store unsubscribe functions
+        if (isMounted.current) {
+          setSessionListener(() => unsubSessionStatus);
+          setQuestionListeners(() => () => {
+            if (unsubPersonal) unsubPersonal();
+            if (unsubClass) unsubClass();
+            if (unsubActiveQuestion) unsubActiveQuestion();
+          });
+        } else {
+          // Component unmounted during setup, clean up immediately
+          if (unsubPersonal) unsubPersonal();
+          if (unsubClass) unsubClass();
+          if (unsubActiveQuestion) unsubActiveQuestion();
+          if (unsubSessionStatus) unsubSessionStatus();
         }
-      });
+      } catch (error) {
+        console.error("Error setting up listeners:", error);
+        // Clean up any listeners that were set up before the error
+        if (unsubPersonal) unsubPersonal();
+        if (unsubClass) unsubClass();
+        if (unsubActiveQuestion) unsubActiveQuestion();
+        if (unsubSessionStatus) unsubSessionStatus();
+        throw error; // Re-throw to be caught by outer try/catch
+      }
       
-      setSessionListener(() => unsubscribeSessionStatus);
-      setQuestionListeners(() => () => {
-        console.log('Cleaning up question listeners');
-        unsubscribePersonal();
-        unsubscribeClass();
-        unsubscribeActiveQuestion();
-      });
-      setIsLoading(false);
       console.log(`Join successful. All listeners set up.`);
-      
-      // Return cleanup function
-      return () => {
-        console.log('Cleaning up all listeners');
-        if (questionListeners) questionListeners();
-        if (sessionListener) sessionListener();
-      };
     } catch (error) {
       console.error('Error joining class:', error);
-      setError('Failed to join class. Please try again.');
-      setIsLoading(false);
+      if (isMounted.current) {
+        setError('Failed to join class. Please try again.');
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+        setIsJoining(false);
+      }
     }
-  }, [studentId, activeQuestion, handleLeaveClass, isLeavingClass, resetWelcomeMessage]);
+  }, [studentId, activeQuestion, handleLeaveClass, isLeavingClass, resetWelcomeMessage, isJoining]);
 
   /**
    * Handle user logout
@@ -1321,6 +1384,22 @@ export default function StudentPage() {
   useEffect(() => {
     optimizeListeners();
   }, [joined, sessionCode, optimizeListeners]);
+
+  // Add this effect at the end for cleaning up on unmount
+  useEffect(() => {
+    // Set the isMounted flag to true on mount
+    isMounted.current = true;
+    
+    // Return a cleanup function to handle component unmounting
+    return () => {
+      console.log('Student page unmounting - cleaning up');
+      isMounted.current = false;
+      
+      // Clean up listeners when component unmounts
+      if (sessionListener) sessionListener();
+      if (questionListeners) questionListeners();
+    };
+  }, [sessionListener, questionListeners]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
