@@ -304,7 +304,7 @@ export default function ProfessorPage() {
       // Start listening for questions with optimized listener (5 second delay max)
       const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
           setQuestions(newQuestions);
-      }, { maxWaitTime: 5000, useCache: true });
+      }, { maxWaitTime: 1000, useCache: false });
       
           setIsLoading(false);
         
@@ -454,10 +454,42 @@ export default function ProfessorPage() {
       const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
       console.log(`Updating question ${id} status to ${newStatus}`);
       
-      await updateQuestionStatus(id, newStatus);
-      console.log(`Question ${id} status updated to ${newStatus}`);
+      // Set optimistic update in the UI for immediate feedback
+      setQuestions(currentQuestions => 
+        currentQuestions.map(q => 
+          q.id === id ? { ...q, status: newStatus } : q
+        )
+      );
       
-      // The questions list will update automatically via the listener
+      // Make the actual status update
+      const success = await updateQuestionStatus(id, newStatus);
+      
+      if (success) {
+        console.log(`Question ${id} status updated to ${newStatus}`);
+        
+        // Force a refresh of questions after a small delay
+        if (sessionCode) {
+          setTimeout(() => {
+            import('@/lib/questions').then(({ forceRefreshQuestions }) => {
+              console.log(`Forcing refresh for session: ${sessionCode}`);
+              forceRefreshQuestions(sessionCode).catch(err => {
+                console.error("Error in forced refresh:", err);
+              });
+            });
+          }, 200);
+        }
+      } else {
+        console.error(`Question ${id} status update failed`);
+        // Revert optimistic update if the API call failed
+        setQuestions(currentQuestions => 
+          currentQuestions.map(q => 
+            q.id === id ? { ...q, status: currentStatus } : q
+          )
+        );
+        throw new Error("Status update returned false");
+      }
+      
+      // The questions list will also update automatically via the listener
     } catch (error) {
       console.error("Error updating question status:", error);
       setError("Failed to update question status. Please try again.");

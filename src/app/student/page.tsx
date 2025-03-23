@@ -161,6 +161,7 @@ export default function StudentPage() {
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
+  const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -483,6 +484,7 @@ export default function StudentPage() {
           setClassName(joinedClass.className);
           setSessionCode(joinedClass.sessionCode);
           setJoined(true);
+          setJoinedClass(joinedClass);
           setInitStage('setting-up-listeners');
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
@@ -495,12 +497,12 @@ export default function StudentPage() {
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
-          // Set up listener for all class questions - refresh every 15 seconds to reduce load
+          // Set up listener for all class questions - refresh every 3 seconds to reduce load
           console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 3000, useCache: true });
+          }, { maxWaitTime: 1000, useCache: false });
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -717,12 +719,12 @@ export default function StudentPage() {
           setMyQuestions(questions);
       }, { maxWaitTime: 10000 });
       
-      // Set up listener for all class questions - refresh every 15 seconds
+      // Set up listener for all class questions - refresh every 3 seconds to reduce load
       console.log(`Setting up class questions listener...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
           setClassQuestions(questions);
-      }, { maxWaitTime: 3000, useCache: true });
+      }, { maxWaitTime: 1000, useCache: false });
         
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
@@ -865,7 +867,7 @@ export default function StudentPage() {
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
-  // Add a handler to synchronize status updates across question lists
+  // Add a more robust handler to synchronize status updates across question lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
     // Update the specified list directly
     if (listType === 'my') {
@@ -873,6 +875,9 @@ export default function StudentPage() {
     } else {
       setClassQuestions(updatedQuestions);
     }
+    
+    // Current session code - needed for force refresh
+    const currentSessionCode = joinedClass?.sessionCode || '';
     
     // Find any questions that exist in both lists and sync their status
     const otherList = listType === 'my' ? classQuestions : myQuestions;
@@ -884,18 +889,27 @@ export default function StudentPage() {
       return map;
     }, {} as Record<string, 'answered' | 'unanswered' | undefined>);
     
-    // Check if any questions in the other list need updating
-    const needsUpdate = otherList.some(q => q.status !== statusMap[q.id] && statusMap[q.id] !== undefined);
+    // Always update the other list (whether it needs updating or not)
+    // This ensures consistency even if Firebase events are delayed
+    const updatedOtherList = otherList.map(q => 
+      statusMap[q.id] !== undefined
+        ? { ...q, status: statusMap[q.id] }
+        : q
+    );
     
-    if (needsUpdate) {
-      // Apply updates to the other list
-      otherSetter(otherList.map(q => 
-        statusMap[q.id] !== undefined && q.status !== statusMap[q.id]
-          ? { ...q, status: statusMap[q.id] }
-          : q
-      ));
+    otherSetter(updatedOtherList);
+    
+    // Force refresh from server to ensure we have latest data
+    if (currentSessionCode) {
+      // Trigger a reset of any stale data after a short delay
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Forcing question refresh for session: ${currentSessionCode}`);
+        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
+          forceRefreshQuestions(currentSessionCode).catch(console.error);
+        });
+      }, 500);
     }
-  }, [myQuestions, classQuestions]);
+  }, [myQuestions, classQuestions, joinedClass?.sessionCode]);
   
   /**
    * Handle opening the modal for manual point entry

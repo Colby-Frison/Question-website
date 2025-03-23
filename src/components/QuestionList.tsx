@@ -158,14 +158,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setUpdatingStatusId(questionId);
     
     // Add delay to show loading state (prevents double clicks and UI flashing)
-    const MIN_LOADING_TIME = 400; // ms
+    const MIN_LOADING_TIME = 1000; // ms - increased to ensure better user feedback
     const startTime = Date.now();
     
     try {
       // Try to update status with multiple attempts if needed
       let success = false;
       let attempts = 0;
-      const maxAttempts = 2;
+      const maxAttempts = 3; // Increased for reliability
       
       while (!success && attempts < maxAttempts) {
         try {
@@ -174,8 +174,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         } catch (err) {
           attempts++;
           if (attempts < maxAttempts) {
-            // Small delay before retry
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Small delay before retry with longer wait times
+            await new Promise(resolve => setTimeout(resolve, 500 * attempts));
             console.log(`Retrying status update for ${questionId}, attempt ${attempts+1}`);
           } else {
             throw err; // Re-throw the error if max attempts reached
@@ -187,19 +187,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       if (onToggleStatus) {
         onToggleStatus(questionId, newStatus);
       }
-      
-      // Make sure we show loading state for at least MIN_LOADING_TIME
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < MIN_LOADING_TIME) {
-        await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
-      }
-      
-      // Clear optimistic update after success
-      setOptimisticStatusUpdates(prev => {
-        const updated = { ...prev };
-        delete updated[questionId];
-        return updated;
-      });
       
       // Force refresh UI
       if (questions) {
@@ -214,6 +201,19 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           onStatusUpdated(updatedQuestions);
         }
       }
+      
+      // Make sure we show loading state for at least MIN_LOADING_TIME
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime < MIN_LOADING_TIME) {
+        await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
+      }
+      
+      // Clear optimistic update after success
+      setOptimisticStatusUpdates(prev => {
+        const updated = { ...prev };
+        delete updated[questionId];
+        return updated;
+      });
     } catch (error) {
       console.error('Error toggling question status:', error);
       
@@ -382,37 +382,44 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   <div className="flex space-x-1 ml-2">
                     {/* Professor controls */}
                     {isProfessor && (
-                      <button
-                        onClick={() => handleToggleStatus(question.id, effectiveStatus)}
-                        disabled={isUpdatingStatus}
-                        className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                          effectiveStatus === 'answered' 
-                            ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30' 
-                            : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30'
-                        }`}
-                        title={effectiveStatus === 'answered' ? 'Mark as unanswered' : 'Mark as answered'}
-                      >
-                        {isUpdatingStatus ? (
-                          <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      isUpdatingStatus ? (
+                        <button
+                          disabled={true}
+                          className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                            effectiveStatus === 'answered' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
+                          }`}
+                        >
+                          <svg className="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                        ) : effectiveStatus === 'answered' ? (
-                          <>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>Answered</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>Mark Answered</span>
-                          </>
-                        )}
-                      </button>
+                          <span>Updating...</span>
+                        </button>
+                      ) : effectiveStatus === 'answered' ? (
+                        <button
+                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
+                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30"
+                          title="Mark as unanswered"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Answered</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
+                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
+                          title="Mark as answered"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Mark Answered</span>
+                        </button>
+                      )
                     )}
                     
                     {/* Student edit controls */}

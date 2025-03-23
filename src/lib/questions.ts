@@ -476,8 +476,8 @@ export const updateQuestionStatus = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestionStatus] Question ${questionId} not found`);
-    return false;
-  }
+      return false;
+    }
     
     // Get the session code from the question data to invalidate cache
     const questionData = questionDoc.data();
@@ -496,10 +496,17 @@ export const updateQuestionStatus = async (
           statusUpdatedAt: Date.now()
         });
         
-        // Invalidate cache for this session to ensure listeners get fresh data
+        // Immediately force a refresh of questions for this session to propagate changes faster
         if (sessionCode) {
+          // Invalidate cache for this session to ensure listeners get fresh data
           cache.questions.delete(sessionCode);
           console.log(`[updateQuestionStatus] Invalidated cache for session: ${sessionCode}`);
+          
+          // Force an immediate refresh - the key improvement for faster updates
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestionStatus] Error in delayed refresh:", err));
+          }, 250); // Small delay to ensure Firestore has propagated the change
         }
         
         success = true;
@@ -1177,4 +1184,35 @@ export const runDatabaseMaintenance = async (): Promise<{
     orphanedQuestionsDeleted: 0,
       orphanedAnswersDeleted: 0
     };
+};
+
+// Add a new method for forcibly refreshing questions
+export const forceRefreshQuestions = async (sessionCode: string): Promise<boolean> => {
+  if (!sessionCode) {
+    console.error("[forceRefreshQuestions] No session code provided");
+    return false;
+  }
+
+  console.log(`[forceRefreshQuestions] Forcing refresh for session: ${sessionCode}`);
+  
+  try {
+    // Clear cache for this session
+    cache.questions.delete(sessionCode);
+    
+    // For additional reliability, fetch the latest questions directly
+    const q = query(
+      collection(db, QUESTIONS_COLLECTION), 
+      where('sessionCode', '==', sessionCode),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    console.log(`[forceRefreshQuestions] Fetched ${snapshot.docs.length} fresh questions`);
+    
+    // Don't need to do anything with the snapshot - the next listener update will use fresh data
+    return true;
+  } catch (error) {
+    console.error("[forceRefreshQuestions] Error refreshing questions:", error);
+    return false;
+  }
 }; 
