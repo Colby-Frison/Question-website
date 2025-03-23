@@ -533,6 +533,15 @@ export const updateQuestionStatus = async (
     // Get the session code from the question data to invalidate cache
     const questionData = questionDoc.data();
     const sessionCode = questionData.sessionCode;
+    const currentStatus = questionData.status;
+    
+    console.log(`[updateQuestionStatus] Current status: ${currentStatus}, new status: ${status}`);
+    
+    // Don't update if status is already the same - this prevents flicker
+    if (currentStatus === status) {
+      console.log(`[updateQuestionStatus] Status already set to ${status}, no update needed`);
+      return true;
+    }
     
     // Update status with retry mechanism
     const MAX_RETRIES = 3;
@@ -541,23 +550,36 @@ export const updateQuestionStatus = async (
     
     while (!success && retryCount < MAX_RETRIES) {
       try {
-        // Use serverTimestamp for better synchronization
+        // Create a unique modified timestamp to force update
+        const timestamp = Date.now();
         const updateData = {
           status,
-          statusUpdatedAt: Date.now(),
-          lastModified: Date.now() // Add this to force a document update
+          statusUpdatedAt: timestamp,
+          lastModified: timestamp // Add this to force a document update
         };
+        
+        console.log(`[updateQuestionStatus] Applying update with timestamp ${timestamp}`);
         
         // Update status to ensure atomicity
         await updateDoc(questionRef, updateData);
         
+        // Add a small delay before verification to ensure Firestore has time to propagate
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         // Double-check that the update was actually applied
         const updatedDoc = await getDoc(questionRef);
-        if (updatedDoc.exists() && updatedDoc.data().status === status) {
-          console.log(`[updateQuestionStatus] Verified status change to ${status} for question ${questionId}`);
-        } else {
-          throw new Error("Status update verification failed");
+        
+        if (!updatedDoc.exists()) {
+          throw new Error("Question no longer exists");
         }
+        
+        const updatedData = updatedDoc.data();
+        if (updatedData.status !== status) {
+          console.error(`[updateQuestionStatus] Verification failed: Expected ${status}, got ${updatedData.status}`);
+          throw new Error(`Status update verification failed: ${updatedData.status} instead of ${status}`);
+        }
+        
+        console.log(`[updateQuestionStatus] Verified status change to ${status} for question ${questionId}`);
         
         // Immediately force a refresh of questions for this session to propagate changes faster
         if (sessionCode) {
@@ -568,14 +590,20 @@ export const updateQuestionStatus = async (
           // Force an immediate refresh - the key improvement for faster updates
           setTimeout(() => {
             forceRefreshQuestions(sessionCode)
-              .catch(err => console.error("[updateQuestionStatus] Error in delayed refresh:", err));
-          }, 250); // Small delay to ensure Firestore has propagated the change
+              .catch(err => console.error("[updateQuestionStatus] Error in immediate refresh:", err));
+          }, 100); // Very small delay to ensure Firestore has propagated the change
           
           // Add a second delayed refresh for better reliability
           setTimeout(() => {
             forceRefreshQuestions(sessionCode)
               .catch(err => console.error("[updateQuestionStatus] Error in second delayed refresh:", err));
-          }, 1500);
+          }, 1000);
+          
+          // Add a third even more delayed refresh for maximum reliability
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestionStatus] Error in third delayed refresh:", err));
+          }, 3000);
         }
         
         success = true;

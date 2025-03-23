@@ -172,48 +172,68 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setUpdatingStatusId(questionId);
     
     // Add delay to show loading state (prevents double clicks and UI flashing)
-    const MIN_LOADING_TIME = 1500; // ms - increased to ensure better user feedback
+    const MIN_LOADING_TIME = 2000; // ms - increased for better user feedback and to ensure updates complete
     const startTime = Date.now();
     
     try {
       // Try to update status with multiple attempts if needed
       let success = false;
       let attempts = 0;
-      const maxAttempts = 3; // Increased for reliability
+      const maxAttempts = 5; // Increased for reliability
       
-      while (!success && attempts < maxAttempts) {
-        try {
-          success = await updateQuestionStatus(questionId, newStatus);
-          if (!success) throw new Error("Update returned false");
-        } catch (err) {
-          attempts++;
-          if (attempts < maxAttempts) {
-            // Small delay before retry with longer wait times
-            await new Promise(resolve => setTimeout(resolve, 500 * attempts));
-            console.log(`Retrying status update for ${questionId}, attempt ${attempts+1}`);
-          } else {
-            throw err; // Re-throw the error if max attempts reached
-          }
-        }
-      }
-      
-      // Keep optimistic update even after making the API call
-      // Don't clear it immediately, let it persist until loading state is complete
-      
-      // Call the onToggleStatus callback if provided
-      if (onToggleStatus) {
-        onToggleStatus(questionId, newStatus);
-      }
-      
-      // Force refresh UI
+      // Ensure we persist the optimistic update
       if (questions) {
+        // Make a local update to the questions array
         const updatedQuestions = questions.map(q => 
           q.id === questionId 
             ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
             : q
         );
         
-        // This can help force a re-render if the DB update doesn't trigger callback
+        // This can help force a re-render
+        if (onStatusUpdated) {
+          onStatusUpdated(updatedQuestions);
+        }
+      }
+
+      while (!success && attempts < maxAttempts) {
+        try {
+          console.log(`Attempt ${attempts + 1}: Updating question ${questionId} status to ${newStatus}`);
+          success = await updateQuestionStatus(questionId, newStatus);
+          if (!success) {
+            throw new Error("Update returned false");
+          } else {
+            console.log(`Successfully updated question ${questionId} status to ${newStatus}`);
+          }
+        } catch (err) {
+          attempts++;
+          console.warn(`Retry ${attempts}/${maxAttempts} after error:`, err);
+          
+          if (attempts < maxAttempts) {
+            // Exponential backoff with longer initial delay
+            const delay = 800 * Math.pow(1.5, attempts - 1);
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            throw err; // Re-throw the error if max attempts reached
+          }
+        }
+      }
+      
+      // Call the onToggleStatus callback if provided
+      if (onToggleStatus) {
+        onToggleStatus(questionId, newStatus);
+      }
+      
+      // Force refresh UI again after successful update
+      if (questions && success) {
+        const updatedQuestions = questions.map(q => 
+          q.id === questionId 
+            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+            : q
+        );
+        
+        // This helps force another re-render after the API update
         if (onStatusUpdated) {
           onStatusUpdated(updatedQuestions);
         }
@@ -225,28 +245,32 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
       }
       
-      // Only now clear optimistic update, to avoid any flicker between states
+      // Only now clear optimistic update if successful, to avoid any flicker between states
       if (success) {
-        setOptimisticStatusUpdates(prev => {
-          const updated = { ...prev };
-          // Only delete if status was successfully changed
-          delete updated[questionId];
-          return updated;
-        });
+        // Keep the optimistic update a bit longer to ensure everything syncs
+        setTimeout(() => {
+          setOptimisticStatusUpdates(prev => {
+            const updated = { ...prev };
+            delete updated[questionId];
+            return updated;
+          });
+        }, 1000); // Wait 1 second after loading completes before removing optimistic update
       }
     } catch (error) {
       console.error('Error toggling question status:', error);
       
-      // Only revert optimistic update on error
-      setOptimisticStatusUpdates(prev => {
-        const updated = { ...prev };
-        delete updated[questionId];
-        return updated;
-      });
-      
-      // Show error feedback
-      setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}`);
-      setTimeout(() => setError(null), 3000);
+      // Only revert optimistic update on error after a delay
+      setTimeout(() => {
+        setOptimisticStatusUpdates(prev => {
+          const updated = { ...prev };
+          delete updated[questionId];
+          return updated;
+        });
+        
+        // Show error feedback
+        setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. Please try again.`);
+        setTimeout(() => setError(null), 5000);
+      }, 1000);
     } finally {
       setUpdatingStatusId(null);
     }
