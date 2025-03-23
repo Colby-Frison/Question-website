@@ -50,6 +50,9 @@ const cache = {
   CACHE_EXPIRATION: 30 * 1000
 };
 
+// Cache for student points to reduce redundant callbacks
+const pointsCache = new Map<string, number>();
+
 // =====================================================================
 // STUDENT QUESTIONS (Questions that students ask professors)
 // =====================================================================
@@ -187,16 +190,16 @@ export const listenForQuestions = (
           console.log(`[listenForQuestions] Received ${snapshot.docs.length} questions`);
           
           const questions: Question[] = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              text: data.text || "No text provided",
-              timestamp: data.timestamp || Date.now(),
-              status: data.status || 'unanswered',
+          const data = doc.data();
+          return {
+            id: doc.id,
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
               studentId: data.studentId || "unknown",
               sessionCode: data.sessionCode || sessionCode
-            };
-          });
+          };
+        });
           
           // Store the pending update
           pendingData = questions;
@@ -240,7 +243,7 @@ export const listenForQuestions = (
           clearTimeout(debounceTimer);
         }
         unsubscribe();
-      } catch (error) {
+  } catch (error) {
         console.error("[listenForQuestions] Error during cleanup:", error);
       }
     };
@@ -299,7 +302,7 @@ export const listenForUserQuestions = (
         console.log(`[listenForUserQuestions] Received ${snapshot.docs.length} user-question links`);
         
         if (snapshot.empty) {
-          callback([]);
+    callback([]);
           return;
         }
         
@@ -323,11 +326,11 @@ export const listenForUserQuestions = (
                   
                   if (questionDoc.exists()) {
                     const data = questionDoc.data();
-                    return {
+          return {
                       id: questionId,
-                      text: data.text || "No text provided",
-                      timestamp: data.timestamp || Date.now(),
-                      status: data.status || 'unanswered',
+            text: data.text || "No text provided",
+            timestamp: data.timestamp || Date.now(),
+            status: data.status || 'unanswered',
                       studentId: data.studentId || studentId,
                       sessionCode: data.sessionCode || sessionCode
                     } as Question;
@@ -350,9 +353,9 @@ export const listenForUserQuestions = (
             callback(questions);
             lastUpdate = Date.now();
             pendingOperation = null;
-          } catch (error) {
+  } catch (error) {
             console.error("[listenForUserQuestions] Error processing questions:", error);
-            callback([]);
+    callback([]);
           }
         };
         
@@ -434,12 +437,63 @@ export const updateQuestion = async (
       console.error(`[updateQuestion] Student ${studentId} does not own question ${questionId}`);
       return false;
     }
+
+    // Get session code for cache invalidation
+    const sessionCode = data.sessionCode;
     
-    // Update question
-    await updateDoc(questionRef, {
-      text: newText.trim(),
-      updatedAt: Date.now()
-    });
+    // Update question with retry mechanism
+    const MAX_RETRIES = 3;
+    let success = false;
+    let retryCount = 0;
+    
+    while (!success && retryCount < MAX_RETRIES) {
+      try {
+        // Update question with important timestamps
+        await updateDoc(questionRef, {
+          text: newText.trim(),
+          updatedAt: Date.now(),
+          lastModified: Date.now() // Add this to force a document update
+        });
+        
+        // Verify the update was applied
+        const updatedDoc = await getDoc(questionRef);
+        if (updatedDoc.exists() && updatedDoc.data().text === newText.trim()) {
+          console.log(`[updateQuestion] Verified text change for question ${questionId}`);
+        } else {
+          throw new Error("Text update verification failed");
+        }
+        
+        // Invalidate caches to ensure listeners get fresh data
+        if (sessionCode) {
+          cache.questions.delete(sessionCode);
+          console.log(`[updateQuestion] Invalidated cache for session: ${sessionCode}`);
+          
+          // Force an immediate refresh
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestion] Error in delayed refresh:", err));
+          }, 250);
+          
+          // Add a second delayed refresh for better reliability
+          setTimeout(() => {
+            forceRefreshQuestions(sessionCode)
+              .catch(err => console.error("[updateQuestion] Error in second delayed refresh:", err));
+          }, 1500);
+        }
+        
+        success = true;
+      } catch (err) {
+        retryCount++;
+        console.warn(`[updateQuestion] Retry ${retryCount}/${MAX_RETRIES} after error:`, err);
+        
+        if (retryCount >= MAX_RETRIES) {
+          throw err; // Re-throw if we've exhausted retries
+        }
+        
+        // Wait briefly before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retryCount - 1)));
+      }
+    }
     
     console.log(`[updateQuestion] Question ${questionId} updated successfully`);
     return true;
@@ -468,7 +522,10 @@ export const updateQuestionStatus = async (
   try {
     console.log(`[updateQuestionStatus] Updating question ${questionId} status to ${status}`);
     
+    // Reference to the question document
     const questionRef = doc(db, QUESTIONS_COLLECTION, questionId);
+    
+    // First, verify the question exists and get its current data
     const questionDoc = await getDoc(questionRef);
     
     if (!questionDoc.exists()) {
@@ -476,14 +533,116 @@ export const updateQuestionStatus = async (
       return false;
     }
     
-    // Update status
-    await updateDoc(questionRef, {
-      status,
-      statusUpdatedAt: Date.now()
-    });
+    // Get the question data
+    const questionData = questionDoc.data();
+    const sessionCode = questionData.sessionCode;
+    const currentStatus = questionData.status;
     
-    console.log(`[updateQuestionStatus] Question ${questionId} status updated to ${status}`);
-    return true;
+    // If status is already correct, return success
+    if (currentStatus === status) {
+      console.log(`[updateQuestionStatus] Question status already set to ${status}, no update needed`);
+      return true;
+    }
+    
+    console.log(`[updateQuestionStatus] Changing status from ${currentStatus} to ${status}`);
+    
+    // Create a unique timestamp
+    const timestamp = Date.now();
+    
+    // 1. DIRECT UPDATE with simple retry mechanism
+    let success = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 3;
+    
+    while (!success && attempts < MAX_ATTEMPTS) {
+      attempts++;
+      
+      try {
+        console.log(`[updateQuestionStatus] Attempt ${attempts}/${MAX_ATTEMPTS}`);
+        
+        // Update with a unique timestamp to force the update
+        await updateDoc(questionRef, {
+          status,
+          statusUpdatedAt: timestamp,
+          lastModified: timestamp
+        });
+        
+        // Wait for Firestore to process the update
+        console.log(`[updateQuestionStatus] Waiting after update...`);
+        await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+        
+        // Verify the update succeeded
+        const verifyDoc = await getDoc(questionRef);
+        if (!verifyDoc.exists()) {
+          throw new Error("Question no longer exists during verification");
+        }
+        
+        const updatedData = verifyDoc.data();
+        if (updatedData.status !== status) {
+          throw new Error(`Status verification failed: got ${updatedData.status} instead of ${status}`);
+        }
+        
+        console.log(`[updateQuestionStatus] Verified status changed to ${status}`);
+        success = true;
+        
+      } catch (error) {
+        console.error(`[updateQuestionStatus] Attempt ${attempts} failed:`, error);
+        
+        // Wait longer between retries
+        if (attempts < MAX_ATTEMPTS) {
+          const delay = 1000 * Math.pow(2, attempts - 1);
+          console.log(`[updateQuestionStatus] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // If we couldn't update after all attempts, try a different approach
+    if (!success) {
+      console.log(`[updateQuestionStatus] All direct update attempts failed, trying a full document rewrite`);
+      
+      try {
+        // 2. FULL DOCUMENT REWRITE - Copy all data and set the new status
+        const fullData = questionDoc.data();
+        await setDoc(questionRef, {
+          ...fullData,
+          status,
+          statusUpdatedAt: Date.now(),
+          lastModified: Date.now()
+        });
+        
+        // Check if this worked
+        const finalCheck = await getDoc(questionRef);
+        if (finalCheck.exists() && finalCheck.data().status === status) {
+          console.log(`[updateQuestionStatus] Full document rewrite succeeded`);
+          success = true;
+        } else {
+          console.error(`[updateQuestionStatus] Even full document rewrite failed`);
+        }
+      } catch (error) {
+        console.error(`[updateQuestionStatus] Full document rewrite failed:`, error);
+      }
+    }
+    
+    // If we updated successfully, invalidate cache and trigger refreshes
+    if (success && sessionCode) {
+      // Clear cache
+      cache.questions.delete(sessionCode);
+      console.log(`[updateQuestionStatus] Invalidated cache for session: ${sessionCode}`);
+      
+      // Schedule multiple refreshes with increasing delays
+      const refreshDelays = [300, 1500, 4000];
+      
+      for (const delay of refreshDelays) {
+        setTimeout(() => {
+          console.log(`[updateQuestionStatus] Triggering refresh after ${delay}ms`);
+          forceRefreshQuestions(sessionCode)
+            .catch(err => console.error(`[updateQuestionStatus] Error in ${delay}ms refresh:`, err));
+        }, delay);
+      }
+    }
+    
+    return success;
   } catch (error) {
     console.error("[updateQuestionStatus] Error updating question status:", error);
     return false;
@@ -613,7 +772,7 @@ export const listenForActiveQuestion = (
     
     // Query for the most recent active question in this session
     const q = query(
-      collection(db, ACTIVE_QUESTION_COLLECTION),
+      collection(db, ACTIVE_QUESTION_COLLECTION), 
       where('sessionCode', '==', sessionCode),
       where('active', '==', true),
       orderBy('timestamp', 'desc'),
@@ -694,7 +853,7 @@ export const listenForActiveQuestion = (
             }
           }, waitTime);
         }
-      },
+      }, 
       (error) => {
         console.error("[listenForActiveQuestion] Error in listener:", error);
         callback(null);
@@ -806,7 +965,7 @@ export const addAnswer = async (
     
     // Check if this student has already answered this question
     const q = query(
-      collection(db, ANSWERS_COLLECTION),
+      collection(db, ANSWERS_COLLECTION), 
       where('activeQuestionId', '==', activeQuestionId),
       where('studentId', '==', studentId)
     );
@@ -853,7 +1012,7 @@ export const addAnswer = async (
  * @returns Unsubscribe function to stop listening
  */
 export const listenForAnswers = (
-  activeQuestionId: string,
+  activeQuestionId: string, 
   callback: (answers: {id: string, text: string, timestamp: number, studentId: string, questionText?: string}[]) => void
 ): (() => void) => {
   if (!activeQuestionId) {
@@ -867,7 +1026,7 @@ export const listenForAnswers = (
   try {
     // Query for answers to this active question
     const q = query(
-      collection(db, ANSWERS_COLLECTION),
+      collection(db, ANSWERS_COLLECTION), 
       where('activeQuestionId', '==', activeQuestionId),
       orderBy('timestamp', 'asc')
     );
@@ -889,8 +1048,8 @@ export const listenForAnswers = (
           const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId));
           if (questionDoc.exists()) {
             questionText = questionDoc.data().text || "";
-          }
-        } catch (error) {
+            }
+          } catch (error) {
           console.error(`[listenForAnswers] Error fetching question text for ${activeQuestionId}:`, error);
         }
         
@@ -908,7 +1067,7 @@ export const listenForAnswers = (
         });
         
         callback(answers);
-      },
+      }, 
       (error) => {
         console.error("[listenForAnswers] Error in listener:", error);
         callback([]);
@@ -1028,33 +1187,95 @@ export const listenForStudentPoints = (
   console.log(`[listenForStudentPoints] Setting up listener for student: ${studentId}`);
   
   try {
+    // Check if we already have cached points for this student
+    if (pointsCache.has(studentId)) {
+      const cachedPoints = pointsCache.get(studentId);
+      console.log(`[listenForStudentPoints] Using cached points for student ${studentId}: ${cachedPoints}`);
+      // Use setTimeout to ensure the callback is asynchronous
+      setTimeout(() => callback(cachedPoints!), 0);
+    }
+    
     // Set up listener for this student's points document
     const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
     
+    // Use includeMetadataChanges but with a special setting to reduce unnecessary callbacks
     const unsubscribe = onSnapshot(
       pointsRef,
+      { 
+        includeMetadataChanges: true 
+      },
       (doc) => {
+        // Check if the data comes from cache or server
+        const source = doc.metadata.hasPendingWrites ? "local" : "server";
+        
         if (!doc.exists()) {
           console.log(`[listenForStudentPoints] No points record for student ${studentId}`);
-          callback(0);
+          
+          // Only initialize if we don't have it in cache
+          if (!pointsCache.has(studentId)) {
+            // Initialize with 0 points if no record exists
+            setDoc(pointsRef, { 
+              total: 0,
+              lastUpdated: Date.now() 
+            }).catch(err => {
+              console.error("[listenForStudentPoints] Error initializing points record:", err);
+            });
+            
+            // Update cache
+            pointsCache.set(studentId, 0);
+    callback(0);
+          }
           return;
         }
         
         const total = doc.data().total || 0;
-        console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points`);
-        callback(total);
+        
+        // Only update and trigger callback if points have changed or it's from server
+        const cachedValue = pointsCache.get(studentId);
+        if (cachedValue !== total || source === "server") {
+          console.log(`[listenForStudentPoints] Student ${studentId} has ${total} points (source: ${source})`);
+          
+          // Update cache
+          pointsCache.set(studentId, total);
+          
+          // Trigger callback
+          callback(total);
+        } else {
+          console.log(`[listenForStudentPoints] Skipping redundant update for student ${studentId}`);
+        }
       },
       (error) => {
         console.error("[listenForStudentPoints] Error in listener:", error);
-        callback(0);
+        callback(pointsCache.get(studentId) || 0);
       }
     );
     
-    return unsubscribe;
-  } catch (error) {
+    // Return a cleanup function that also cleans the cache for this student
+    return () => {
+      console.log(`[listenForStudentPoints] Cleaning up listener for student ${studentId}`);
+      // We don't remove from cache on unsubscribe to allow faster resubscription
+      unsubscribe();
+    };
+        } catch (error) {
     console.error("[listenForStudentPoints] Error setting up listener:", error);
-    callback(0);
+    callback(pointsCache.get(studentId) || 0);
     return () => {};
+  }
+};
+
+/**
+ * Clear the points cache for all students or a specific student
+ * Useful when major changes happen or for testing
+ * 
+ * @param studentId - Optional ID of the student to clear cache for
+ */
+export const clearPointsCache = (studentId?: string): void => {
+  if (studentId) {
+    console.log(`[clearPointsCache] Clearing cache for student ${studentId}`);
+    pointsCache.delete(studentId);
+  } else {
+    console.log(`[clearPointsCache] Clearing cache for all students`);
+    pointsCache.clear();
   }
 };
 
@@ -1076,9 +1297,40 @@ export const runDatabaseMaintenance = async (): Promise<{
   // For brevity, returning a simple result
   console.log('[runDatabaseMaintenance] Maintenance operations would run here');
   
-  return {
-    inactiveSessionsDeleted: 0,
+    return {
+      inactiveSessionsDeleted: 0,
     orphanedQuestionsDeleted: 0,
-    orphanedAnswersDeleted: 0
-  };
+      orphanedAnswersDeleted: 0
+    };
+};
+
+// Add a new method for forcibly refreshing questions
+export const forceRefreshQuestions = async (sessionCode: string): Promise<boolean> => {
+  if (!sessionCode) {
+    console.error("[forceRefreshQuestions] No session code provided");
+    return false;
+  }
+
+  console.log(`[forceRefreshQuestions] Forcing refresh for session: ${sessionCode}`);
+  
+  try {
+    // Clear cache for this session
+    cache.questions.delete(sessionCode);
+    
+    // For additional reliability, fetch the latest questions directly
+    const q = query(
+      collection(db, QUESTIONS_COLLECTION), 
+      where('sessionCode', '==', sessionCode),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    console.log(`[forceRefreshQuestions] Fetched ${snapshot.docs.length} fresh questions`);
+    
+    // Don't need to do anything with the snapshot - the next listener update will use fresh data
+    return true;
+  } catch (error) {
+    console.error("[forceRefreshQuestions] Error refreshing questions:", error);
+    return false;
+  }
 }; 

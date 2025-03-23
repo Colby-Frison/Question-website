@@ -30,6 +30,7 @@ import {
   listenForStudentPoints,
   updateStudentPoints,
   runDatabaseMaintenance,
+  clearPointsCache,
   ACTIVE_QUESTION_COLLECTION
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
@@ -122,6 +123,16 @@ export default function StudentPage() {
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
   
+  // Add state to track welcome message visibility
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('hideWelcomeStudent');
+      return savedState ? false : true; // Show by default unless explicitly hidden
+    }
+    return true;
+  });
+  
   // Points management state
   const [points, setPoints] = useState<number>(() => {
     // Initialize from localStorage if available
@@ -133,6 +144,7 @@ export default function StudentPage() {
   });
   const [pointsInput, setPointsInput] = useState<string>('0');
   const [isSavingPoints, setIsSavingPoints] = useState(false);
+  const [showPointsModal, setShowPointsModal] = useState(false);
   const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Active question and answer state
@@ -148,87 +160,169 @@ export default function StudentPage() {
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
+  const [isLeavingClass, setIsLeavingClass] = useState(false);
+  const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
+
+  // Track recent status updates to prevent them from being overwritten
+  const [recentStatusUpdates, setRecentStatusUpdates] = useState<Record<string, {status: 'answered' | 'unanswered', timestamp: number}>>({});
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
+    // Prevent multiple clicks
+    if (isLeavingClass) return;
+    
     console.log('Student leaving class');
-    setJoined(false);
-    setClassName('');
-    setSessionCode('');
-    setMyQuestions([]);
-    setClassQuestions([]);
-    setActiveQuestion(null);
-
-    // Clean up Firebase data
+    setIsLeavingClass(true);
+    
+    // Clean up Firebase data first
     if (studentId) {
-      leaveClass(studentId).catch(console.error);
+      leaveClass(studentId)
+        .catch(error => {
+          console.error("Error leaving class:", error);
+          // Consider showing an error to the user here
+        })
+        .finally(() => {
+          // Only update UI after Firebase cleanup completes
+          // Update UI in a single batch to avoid race conditions
+          setJoined(false);
+          setClassName('');
+          setSessionCode('');
+          setMyQuestions([]);
+          setClassQuestions([]);
+          setActiveQuestion(null);
+          
+          // Clean up listeners
+          if (sessionListener) {
+            sessionListener();
+            setSessionListener(null);
+          }
+          
+          setIsLeavingClass(false);
+        });
+    } else {
+      // If no studentId, just update UI
+      setJoined(false);
+      setClassName('');
+      setSessionCode('');
+      setMyQuestions([]);
+      setClassQuestions([]);
+      setActiveQuestion(null);
+      
+      // Clean up listeners
+      if (sessionListener) {
+        sessionListener();
+        setSessionListener(null);
+      }
+      
+      setIsLeavingClass(false);
     }
-
-    // Clean up listeners
-    if (sessionListener) {
-      sessionListener();
-      setSessionListener(null);
-    }
-  }, [studentId, sessionListener]);
+  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
+      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
 
   /**
-   * Effect to save points to localStorage and database when they change
-   * Uses a debounce pattern to avoid excessive database writes
+   * Handle adding a point to student's total
+   * Increments points by 1
    */
-  useEffect(() => {
-    // Save points to localStorage whenever they change
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('studentPoints', points.toString());
+  const handleAddPoint = () => {
+    // Trigger the points update with a 1-point increment
+    handlePointsChange(points + 1);
+  };
+
+  /**
+   * Handle subtracting a point from student's total
+   * Decrements points by 1, but not below 0
+   */
+  const handleSubtractPoint = () => {
+    // Trigger the points update with a 1-point decrement, but not below 0
+    handlePointsChange(Math.max(0, points - 1));
+  };
+
+  /**
+   * Handle setting points to a specific value
+   * Validates input and updates points state
+   */
+  const handleSetPoints = () => {
+    const newPoints = parseInt(pointsInput, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      handlePointsChange(newPoints);
+    } else {
+      // Reset input to current points if invalid
       setPointsInput(points.toString());
-      
-      // Set up debounced save to database
+    }
+  };
+
+  /**
+   * Centralized function to handle all points changes and sync with database
+   * @param newValue - The new points value to set
+   */
+  const handlePointsChange = (newValue: number) => {
+    if (newValue === points) return; // No change, skip processing
+    
+    // Update UI immediately for responsiveness
+    setPoints(newValue);
+    setPointsInput(newValue.toString());
+    
+    // Sync with database if student is authenticated
       if (studentId) {
-        // Clear any existing timeout
+      // Indicate saving status
+      setIsSavingPoints(true);
+      
+      // Clear any existing timeout to avoid multiple saves
         if (pointsSaveTimeoutRef.current) {
           clearTimeout(pointsSaveTimeoutRef.current);
         }
         
-        setIsSavingPoints(true);
-        
-        // Set a new timeout to save to database after 2 seconds of inactivity
+      // Debounce database update to avoid excessive writes
         pointsSaveTimeoutRef.current = setTimeout(async () => {
           try {
-            console.log(`Saving points to database: ${points}`);
+          console.log(`Syncing points to database: ${newValue}`);
+          
             // Get current points from database
-            let currentPoints = 0;
+          let currentDbPoints = 0;
             
             // Use a promise to get the current points value
             await new Promise<void>((resolve) => {
               const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
-                currentPoints = dbPoints;
+              currentDbPoints = dbPoints;
                 unsubscribe();
                 resolve();
               });
             });
             
-            // Calculate the difference to update
-            const pointsDifference = points - currentPoints;
+          // Only update if there's a difference with what's in the database
+          const pointsDifference = newValue - currentDbPoints;
             
             if (pointsDifference !== 0) {
-              await updateStudentPoints(studentId, pointsDifference);
-              console.log(`Points saved to database. Difference: ${pointsDifference}`);
+            console.log(`Updating database with points difference: ${pointsDifference}`);
+            const success = await updateStudentPoints(studentId, pointsDifference);
+            
+            if (success) {
+              console.log(`Points saved to database. New total: ${newValue}`);
+            } else {
+              console.error("Failed to update points in database");
+              // Don't revert UI here - let the listener handle any discrepancies
+            }
+          } else {
+            console.log("Points already in sync with database");
             }
           } catch (error) {
             console.error("Error saving points to database:", error);
           } finally {
             setIsSavingPoints(false);
           }
-        }, 2000);
-      }
+      }, 1500); // Reduced from 2000ms to 1500ms for better responsiveness while still limiting calls
     }
-    
-    // Cleanup function to clear timeout
-    return () => {
-      if (pointsSaveTimeoutRef.current) {
-        clearTimeout(pointsSaveTimeoutRef.current);
-      }
-    };
-  }, [points, studentId]);
+  };
+
+  /**
+   * Effect to save points to localStorage when they change
+   */
+  useEffect(() => {
+    // Save points to localStorage whenever they change
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('studentPoints', points.toString());
+    }
+  }, [points]);
 
   /**
    * Set up real-time listener for student points from Firestore
@@ -238,16 +332,44 @@ export default function StudentPage() {
     if (!studentId) return () => {};
     
     console.log("Setting up points listener for student:", studentId);
+    let isInitialLoad = true;
+    
     const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
-      console.log("Received points update:", newPoints);
+      console.log("Received points update from database:", newPoints);
+      
+      // If it's the initial load or the points are different from local state
+      if (isInitialLoad || newPoints !== points) {
+        console.log(`Updating points from ${points} to ${newPoints} (initial load: ${isInitialLoad})`);
+        
+        // Update the local state
       setPoints(newPoints);
+        setPointsInput(newPoints.toString());
+        
+        // Only show animation if it's not the initial load
+        if (!isInitialLoad) {
+          // Visual feedback for points change
+          const pointsDisplay = document.getElementById('points-display');
+          if (pointsDisplay) {
+            // Add a temporary scale effect to highlight changes
+            pointsDisplay.classList.add('scale-110');
+            pointsDisplay.classList.add(newPoints > points ? 'text-green-500' : 'text-red-500');
+            
+            setTimeout(() => {
+              pointsDisplay.classList.remove('scale-110');
+              pointsDisplay.classList.remove(newPoints > points ? 'text-green-500' : 'text-red-500');
+            }, 1000);
+          }
+        }
+      }
+      
+      isInitialLoad = false;
     });
     
     return () => {
       console.log("Cleaning up points listener");
       unsubscribe();
     };
-  }, [studentId]);
+  }, [studentId]); // Remove points dependency to avoid constant re-subscriptions
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -268,7 +390,7 @@ export default function StudentPage() {
     const userId = getUserId();
     console.log("User ID retrieved:", userId ? "success" : "failed");
     setStudentId(userId);
-    
+
     // Check network status
     const handleOnline = () => {
       console.log("Network connection restored");
@@ -303,13 +425,24 @@ export default function StudentPage() {
     
     console.log("== STUDENT PAGE MOUNT EFFECT COMPLETED ==");
     
+    // Cleanup function
     return () => {
+      // Clean up event listeners
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      console.log("== STUDENT PAGE UNMOUNTED ==");
+      
+      // Clean up any pending timeouts
+      if (pointsSaveTimeoutRef.current) {
+        clearTimeout(pointsSaveTimeoutRef.current);
+      }
+      
+      // Clear points cache for this student when the component unmounts
+      if (userId) {
+        clearPointsCache(userId);
+      }
+      
+      console.log("== STUDENT PAGE CLEANUP COMPLETED ==");
     };
-    
-    // This effect should only run once on mount and when router changes
   }, [router]);
 
   /**
@@ -354,6 +487,7 @@ export default function StudentPage() {
           setClassName(joinedClass.className);
           setSessionCode(joinedClass.sessionCode);
           setJoined(true);
+          setJoinedClass(joinedClass);
           setInitStage('setting-up-listeners');
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
@@ -366,12 +500,12 @@ export default function StudentPage() {
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
-          // Set up listener for all class questions - refresh every 15 seconds to reduce load
+          // Set up listener for all class questions - refresh every 3 seconds to reduce load
           console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 15000, useCache: true });
+          }, { maxWaitTime: 1000, useCache: false });
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -389,8 +523,8 @@ export default function StudentPage() {
                 console.log("New active question detected!");
                 
                 // Reset answer state for the new question
-                setAnswerText('');
-                setAnswerSubmitted(false);
+              setAnswerText('');
+              setAnswerSubmitted(false);
                 
                 // Notify user of new question (but only if not first load)
                 if (!isFirstLoad.current) {
@@ -467,7 +601,7 @@ export default function StudentPage() {
         setInitStage('joined-class-error');
       }
     };
-    
+
     checkJoinedClass();
     console.log("== JOINED CLASS EFFECT COMPLETED ==");
     
@@ -475,7 +609,7 @@ export default function StudentPage() {
     return () => {
       if (cleanup) cleanup();
     };
-  }, [studentId, activeQuestion]); // Remove handleLeaveClass from the dependency array
+  }, [studentId, activeQuestion, isLeavingClass]);
 
   /**
    * Record user activity
@@ -528,6 +662,27 @@ export default function StudentPage() {
   }, [lastActivity, sessionCode, handleLeaveClass, recordActivity]);
 
   /**
+   * Handle closing the welcome message
+   * Stores preference in localStorage to keep it closed between sessions
+   */
+  const handleCloseWelcome = useCallback(() => {
+    setShowWelcome(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hideWelcomeStudent', 'true');
+    }
+  }, []);
+
+  /**
+   * Reset welcome message when joining a new class
+   */
+  const resetWelcomeMessage = useCallback(() => {
+    setShowWelcome(true);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('hideWelcomeStudent');
+    }
+  }, []);
+
+  /**
    * Handle successful class join
    * Sets up state and listeners for the joined class
    * 
@@ -537,6 +692,9 @@ export default function StudentPage() {
     try {
       setIsLoading(true);
       console.log(`Attempting to join class with session code: ${code}`);
+      
+      // Reset welcome message when joining a new class
+      resetWelcomeMessage();
       
       // Verify the session code is valid
       const session = await getSessionByCode(code);
@@ -553,29 +711,29 @@ export default function StudentPage() {
       // Set class and session info
       setClassName(session.code); // Original class name
       setSessionCode(code);       // Session code
-      setJoined(true);
-      
+        setJoined(true);
+        
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
       // Set up listener for student's questions - refresh every 10 seconds
       console.log(`Setting up personal questions listener...`);
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions:`, questions);
-        setMyQuestions(questions);
+          setMyQuestions(questions);
       }, { maxWaitTime: 10000 });
       
-      // Set up listener for all class questions - refresh every 15 seconds
+      // Set up listener for all class questions - refresh every 3 seconds to reduce load
       console.log(`Setting up class questions listener...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
-        setClassQuestions(questions);
-      }, { maxWaitTime: 15000, useCache: true });
-      
+          setClassQuestions(questions);
+      }, { maxWaitTime: 1000, useCache: false });
+        
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
-      setIsLoadingQuestion(true);
+        setIsLoadingQuestion(true);
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
-        console.log("Active question update:", question);
+          console.log("Active question update:", question);
         
         // If the active question changes, reset the answer state
         if (question?.id !== activeQuestion?.id) {
@@ -584,8 +742,8 @@ export default function StudentPage() {
         }
         
         setActiveQuestion(question);
-        setIsLoadingQuestion(false);
-        lastQuestionCheckRef.current = Date.now();
+          setIsLoadingQuestion(false);
+          lastQuestionCheckRef.current = Date.now();
       }, { maxWaitTime: 5000 });
       
       // Set up listener for session status changes
@@ -597,12 +755,12 @@ export default function StudentPage() {
         if (!status || status === 'closed' || status === 'archived') {
           console.log('Session ended by professor, leaving class...');
           // Call handleLeaveClass directly
-          setJoined(false);
+      setJoined(false);
           setClassName('');
           setSessionCode('');
-          setMyQuestions([]);
-          setClassQuestions([]);
-          setActiveQuestion(null);
+      setMyQuestions([]);
+        setClassQuestions([]);
+        setActiveQuestion(null);
           
           if (studentId) {
             leaveClass(studentId).catch(console.error);
@@ -646,24 +804,6 @@ export default function StudentPage() {
   };
 
   /**
-   * Handle adding a point to student's total
-   * Increments points by 1
-   */
-  const handleAddPoint = () => {
-    const newPoints = points + 1;
-    setPoints(newPoints);
-    setPointsInput(newPoints.toString());
-  };
-
-  /**
-   * Handle subtracting a point from student's total
-   * Decrements points by 1, but not below 0
-   */
-  const handleSubtractPoint = () => {
-    setPoints(prevPoints => Math.max(0, prevPoints - 1));
-  };
-
-  /**
    * Handle input change for the points field
    * Validates input to ensure it's a positive number
    * 
@@ -674,20 +814,6 @@ export default function StudentPage() {
     // Only allow digits
     if (/^\d*$/.test(value)) {
       setPointsInput(value);
-    }
-  };
-
-  /**
-   * Handle setting points to a specific value
-   * Validates input and updates points state
-   */
-  const handleSetPoints = () => {
-    const newPoints = parseInt(pointsInput, 10);
-    if (!isNaN(newPoints) && newPoints >= 0) {
-      setPoints(newPoints);
-    } else {
-      // Reset input to current points if invalid
-      setPointsInput(points.toString());
     }
   };
 
@@ -738,113 +864,587 @@ export default function StudentPage() {
     }
   };
 
+  // Add a handler to delete questions from both myQuestions and classQuestions
+  const handleQuestionDelete = useCallback((questionId: string) => {
+    setMyQuestions(prev => prev.filter(q => q.id !== questionId));
+    setClassQuestions(prev => prev.filter(q => q.id !== questionId));
+  }, []);
+  
+  // Add a more robust handler to synchronize status updates and edits across question lists
+  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
+    // Current time for tracking recent updates
+    const updateTime = Date.now();
+    
+    // Track which questions had status changes in this update
+    const newStatusUpdates: Record<string, {status: 'answered' | 'unanswered', timestamp: number}> = {};
+    
+    // Find questions with modified status by comparing with existing lists
+    const existingList = listType === 'my' ? myQuestions : classQuestions;
+    updatedQuestions.forEach(updatedQ => {
+      const existingQ = existingList.find(q => q.id === updatedQ.id);
+      if (existingQ && existingQ.status !== updatedQ.status && updatedQ.status) {
+        console.log(`[handleQuestionStatusUpdate] Status changed for ${updatedQ.id}: ${existingQ.status} -> ${updatedQ.status}`);
+        newStatusUpdates[updatedQ.id] = {
+          status: updatedQ.status as 'answered' | 'unanswered', 
+          timestamp: updateTime
+        };
+      }
+    });
+    
+    // Update the recent status updates tracker
+    if (Object.keys(newStatusUpdates).length > 0) {
+      setRecentStatusUpdates(prev => ({
+        ...prev,
+        ...newStatusUpdates
+      }));
+    }
+    
+    // Update the specified list directly
+    if (listType === 'my') {
+      setMyQuestions(updatedQuestions);
+    } else {
+      setClassQuestions(updatedQuestions);
+    }
+    
+    // Current session code - needed for force refresh
+    const currentSessionCode = joinedClass?.sessionCode || '';
+    
+    // Find any questions that exist in both lists and sync their status and text
+    const otherList = listType === 'my' ? classQuestions : myQuestions;
+    const otherSetter = listType === 'my' ? setClassQuestions : setMyQuestions;
+    
+    // Create a map of updated questions by ID
+    const updatedMap = updatedQuestions.reduce((map, q) => {
+      map[q.id] = q;
+      return map;
+    }, {} as Record<string, Question>);
+    
+    // Always update the other list (whether it needs updating or not)
+    // This ensures consistency even if Firebase events are delayed
+    const updatedOtherList = otherList.map(q => {
+      const updatedQuestion = updatedMap[q.id];
+      if (updatedQuestion) {
+        // If the question exists in both lists, sync all properties
+        return {
+          ...q,
+          status: updatedQuestion.status,
+          text: updatedQuestion.text  // Also sync the text for edits
+        };
+      }
+      return q;
+    });
+    
+    otherSetter(updatedOtherList);
+    
+    // Only force refresh from server if it's not a status update that we just made
+    // This prevents our recent changes from being overwritten by stale server data
+    if (currentSessionCode && Object.keys(newStatusUpdates).length === 0) {
+      // Use longer delays to give database time to complete updates
+      // First refresh after a moderate delay
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Forcing question refresh for session: ${currentSessionCode}`);
+        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
+          forceRefreshQuestions(currentSessionCode).catch(console.error);
+        });
+      }, 1500);
+      
+      // Second refresh after a longer delay
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Second refresh for session: ${currentSessionCode}`);
+        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
+          forceRefreshQuestions(currentSessionCode).catch(console.error);
+        });
+      }, 4000);
+    } else if (Object.keys(newStatusUpdates).length > 0) {
+      console.log(`[handleQuestionStatusUpdate] Skipping immediate refresh for session: ${currentSessionCode} to preserve recent status updates`);
+      
+      // Add a longer delayed refresh that will preserve our recent changes
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Delayed refresh after status update for session: ${currentSessionCode}`);
+        
+        // This is a custom implementation to refresh data while preserving recent changes
+        const preserveRecentChanges = async () => {
+          try {
+            // Get fresh questions from server but preserve our recent changes
+            const { listenForQuestions, listenForUserQuestions } = await import('@/lib/questions');
+            
+            // We'll use a one-time callback pattern to get fresh data
+            const getRefreshedQuestions = (sessionCode: string, studentId: string): Promise<{
+              classQuestions: Question[],
+              myQuestions: Question[]
+            }> => {
+              return new Promise((resolve) => {
+                let classQuestionsReceived = false;
+                let myQuestionsReceived = false;
+                let refreshedClassQuestions: Question[] = [];
+                let refreshedMyQuestions: Question[] = [];
+                
+                // Get fresh class questions
+                const classUnsubscribe = listenForQuestions(
+                  sessionCode,
+                  (questions) => {
+                    refreshedClassQuestions = questions;
+                    classQuestionsReceived = true;
+                    checkComplete();
+                  },
+                  { useCache: false }
+                );
+                
+                // Get fresh my questions
+                const myUnsubscribe = listenForUserQuestions(
+                  studentId,
+                  sessionCode,
+                  (questions) => {
+                    refreshedMyQuestions = questions;
+                    myQuestionsReceived = true;
+                    checkComplete();
+                  }
+                );
+                
+                // Check if both sets of questions have been received
+                const checkComplete = () => {
+                  if (classQuestionsReceived && myQuestionsReceived) {
+                    classUnsubscribe();
+                    myUnsubscribe();
+                    resolve({
+                      classQuestions: refreshedClassQuestions,
+                      myQuestions: refreshedMyQuestions
+                    });
+                  }
+                };
+                
+                // Ensure we resolve even if callbacks never fire
+                setTimeout(() => {
+                  if (!classQuestionsReceived || !myQuestionsReceived) {
+                    console.error('[handleQuestionStatusUpdate] Timed out waiting for refreshed questions');
+                    classUnsubscribe();
+                    myUnsubscribe();
+                    resolve({
+                      classQuestions: refreshedClassQuestions.length ? refreshedClassQuestions : classQuestions,
+                      myQuestions: refreshedMyQuestions.length ? refreshedMyQuestions : myQuestions
+                    });
+                  }
+                }, 5000);
+              });
+            };
+            
+            if (studentId && currentSessionCode) {
+              // Get refreshed questions
+              const { classQuestions: refreshedClass, myQuestions: refreshedMy } = 
+                await getRefreshedQuestions(currentSessionCode, studentId);
+              
+              // Preserve recent status updates in the refreshed data
+              const now = Date.now();
+              const RECENT_WINDOW = 30000; // 30 seconds
+              
+              // Only preserve very recent updates (last 30 seconds)
+              const recentUpdates = Object.entries(recentStatusUpdates)
+                .filter(([_, {timestamp}]) => now - timestamp < RECENT_WINDOW)
+                .reduce((acc, [id, data]) => {
+                  acc[id] = data;
+                  return acc;
+                }, {} as Record<string, {status: 'answered' | 'unanswered', timestamp: number}>);
+              
+              // Apply recent updates to the fresh data
+              if (Object.keys(recentUpdates).length > 0) {
+                console.log(`[handleQuestionStatusUpdate] Preserving ${Object.keys(recentUpdates).length} recent status updates`);
+                
+                const mergedClass = refreshedClass.map(q => {
+                  const recentUpdate = recentUpdates[q.id];
+                  if (recentUpdate) {
+                    console.log(`[handleQuestionStatusUpdate] Preserving status ${recentUpdate.status} for question ${q.id}`);
+                    return { ...q, status: recentUpdate.status };
+                  }
+                  return q;
+                });
+                
+                const mergedMy = refreshedMy.map(q => {
+                  const recentUpdate = recentUpdates[q.id];
+                  if (recentUpdate) {
+                    return { ...q, status: recentUpdate.status };
+                  }
+                  return q;
+                });
+                
+                // Update state with the merged data
+                setClassQuestions(mergedClass);
+                setMyQuestions(mergedMy);
+              } else {
+                // No recent updates to preserve, just use the fresh data
+                setClassQuestions(refreshedClass);
+                setMyQuestions(refreshedMy);
+              }
+              
+              // Clean up old status updates
+              if (Object.keys(recentStatusUpdates).length !== Object.keys(recentUpdates).length) {
+                setRecentStatusUpdates(recentUpdates);
+              }
+            }
+          } catch (error) {
+            console.error('[handleQuestionStatusUpdate] Error refreshing questions:', error);
+          }
+        };
+        
+        preserveRecentChanges();
+      }, 6000);
+    }
+  }, [myQuestions, classQuestions, joinedClass?.sessionCode, studentId, recentStatusUpdates]);
+  
+  /**
+   * Handle opening the modal for manual point entry
+   */
+  const handleOpenPointsModal = () => {
+    setPointsInput(points.toString());
+    setShowPointsModal(true);
+  };
+  
+  /**
+   * Handle closing the points modal
+   */
+  const handleClosePointsModal = () => {
+    setShowPointsModal(false);
+  };
+  
+  /**
+   * Handle manual point entry from modal
+   */
+  const handleManualPointsEntry = () => {
+    const newPoints = parseInt(pointsInput, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      handlePointsChange(newPoints);
+      setShowPointsModal(false);
+    } else {
+      // Reset input to current points if invalid
+      setPointsInput(points.toString());
+    }
+  };
+
   /**
    * Render the questions tab content
    */
-  const renderQuestionsTab = () => (
-    <div className="p-4">
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Ask a Question</h2>
-        <QuestionForm 
-          studentId={studentId}
-          sessionCode={sessionCode}
-        />
+  const renderQuestionsTab = () => {
+    return (
+      <div className="grid grid-cols-1 gap-6">
+        {/* Ask a Question Section */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Ask a Question
+            </h2>
+            <QuestionForm 
+              studentId={studentId}
+              sessionCode={sessionCode}
+            />
+          </div>
+                </div>
+
+        {/* Class Questions */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+              </svg>
+              Class Questions
+            </h2>
+            <QuestionList
+              questions={classQuestions}
+              isProfessor={false}
+              isStudent={true}
+              studentId={studentId}
+              showControls={false}
+              emptyMessage="No questions have been asked yet."
+              onDelete={handleQuestionDelete}
+              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
+            />
+              </div>
+            </div>
+
+        {/* My Questions */}
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <div className="p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              My Questions
+            </h2>
+              <QuestionList 
+                questions={myQuestions} 
+                isProfessor={false}
+              isStudent={true}
+              studentId={studentId}
+                showControls={true}
+                emptyMessage="You haven't asked any questions yet."
+                onDelete={handleQuestionDelete}
+                onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
+            />
+        </div>
       </div>
-      
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">My Questions</h2>
-        {myQuestions.length > 0 ? (
-          <QuestionList 
-            questions={myQuestions}
-            isProfessor={false}
-            isStudent={true}
-            studentId={studentId}
-            emptyMessage="You haven't asked any questions yet."
-          />
-        ) : (
-          <p>You haven't asked any questions yet.</p>
-        )}
       </div>
-      
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Class Questions</h2>
-        {classQuestions.length > 0 ? (
-          <QuestionList 
-            questions={classQuestions}
-            isProfessor={false}
-            isStudent={true}
-            studentId={studentId}
-            emptyMessage="No questions from the class yet."
-          />
-        ) : (
-          <p>No questions from other students yet.</p>
-        )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   /**
    * Render the points tab content
    */
-  const renderPointsTab = () => (
-    <div className="p-4">
-      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">Your Points: {points}</h2>
-        
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-center mb-4">
-          <div className="flex items-center justify-center">
-            <button
-              onClick={() => handleAddPoint()}
-              className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700"
-            >
-              +1
-            </button>
-          </div>
+  const renderPointsTab = () => {
+    return (
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Your Points
+          </h3>
           
-          <div className="flex items-center justify-center">
-            <input
-              type="text"
-              value={pointsInput}
-              onChange={handlePointsInputChange}
-              className="w-20 p-2 border rounded text-center mr-2 dark:bg-gray-700 dark:text-white dark:border-gray-600"
-            />
-            <button
-              onClick={handleSetPoints}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
-            >
-              Set Points
-            </button>
-          </div>
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
+            <p className="text-sm text-blue-800 dark:text-white">
+              Points are awarded by your professor for participation and correct answers.
+            </p>
+              </div>
           
-          {/* Removing refresh button */}
+          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6 relative">
+            {isSavingPoints && (
+              <div className="absolute top-2 right-2 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
+                <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
+            </div>
+            )}
+            
+            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
+            <div className="flex justify-center items-center mb-4">
+              <button
+                onClick={handleSubtractPoint}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-dark-red-400 transition-colors mr-4"
+                title="Subtract 1 point"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                </svg>
+              </button>
+              
+              <div 
+                id="points-display" 
+                className="text-5xl font-bold text-blue-600 dark:text-dark-primary transition-all transform cursor-pointer"
+                onClick={handleOpenPointsModal}
+                title="Click to edit points"
+              >
+                {points}
         </div>
+              
+              <button
+                onClick={handleAddPoint}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors ml-4"
+                title="Add 1 point"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
+                </svg>
+              </button>
       </div>
-      
-      <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
-        <h2 className="text-xl font-bold mb-4">How Points Work</h2>
-        <p className="mb-4">
-          You can earn points by answering questions from your professor.
-          The professor will award points based on the quality of your answers.
-        </p>
-        <p className="mb-4">
-          Points are updated in real-time as your professor rewards your participation.
-        </p>
-      </div>
+            
+            <div className="text-sm text-blue-800 dark:text-white text-center mb-2">
+              Total points earned in this class
     </div>
-  );
+            
+            <button
+              onClick={handleOpenPointsModal}
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-dark-primary transition-colors"
+            >
+              Edit Points
+            </button>
+          </div>
+            </div>
+        
+        {/* Points Modal */}
+        {showPointsModal && (
+          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
+              <div className="p-5">
+                <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Edit Points</h3>
+                
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={pointsInput}
+                    onChange={handlePointsInputChange}
+                    className="w-full text-center p-3 text-2xl font-bold border rounded-md dark:bg-dark-background-tertiary dark:border-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary"
+                    aria-label="Set points value"
+                    autoFocus
+                  />
+          </div>
+                
+                {/* Numpad */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setPointsInput(prev => num === 0 && prev === '0' ? '0' : prev === '0' ? num.toString() : prev + num.toString())}
+                      className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPointsInput('0')}
+                    className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
+                  >
+                    Clear
+                  </button>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleClosePointsModal}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-dark-background-tertiary dark:text-white dark:hover:bg-dark-background-quaternary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleManualPointsEntry}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Answer Professor's Question
+          </h3>
+          
+          {activeQuestion ? (
+            <div>
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
+                <h3 className="font-semibold mb-2">Current Question:</h3>
+                <p className="font-medium">{activeQuestion.text}</p>
+            </div>
+            
+            {answerSubmitted ? (
+                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
+                  <p className="font-semibold">Your answer has been submitted!</p>
+                  <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
+              </div>
+            ) : (
+                <form onSubmit={handleAnswerSubmit} className="mt-4">
+                <div className="mb-4">
+                    <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold text-gray-900 dark:text-dark-text-primary">
+                      Your Answer:
+                  </label>
+                  <textarea
+                      id="pointsTabAnswerText"
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                      className="w-full p-3 border rounded-lg dark:bg-dark-background-tertiary dark:text-dark-text-primary dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition duration-200"
+                      rows={4}
+                      disabled={cooldownActive}
+                    required
+                      placeholder="Type your answer here..."
+                  />
+                </div>
+                <button
+                  type="submit"
+                    className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
+                      cooldownActive || isSubmittingAnswer
+                        ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
+                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted'
+                    }`}
+                    disabled={cooldownActive || isSubmittingAnswer}
+                  >
+                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
+                </button>
+              </form>
+            )}
+          </div>
+        ) : (
+            <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700 text-center">
+              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-dark-text-tertiary mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-2">
+                No active question at the moment
+              </p>
+              <p className="text-sm text-gray-500 dark:text-dark-text-tertiary">
+                When your professor asks a question, it will appear here for you to answer.
+            </p>
+          </div>
+        )}
+      </div>
+      </div>
+    );
+  };
+
+  /**
+   * Function to manually refresh student points from the database
+   */
+  const refreshStudentPoints = async () => {
+    if (!studentId) {
+      console.log("Cannot refresh points: no student ID available");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log(`Manually refreshing points for student: ${studentId}`);
+      
+      // Clear cache first to ensure we get fresh data
+      clearPointsCache(studentId);
+      
+      // Get the points data from Firestore
+      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      const pointsDoc = await getDoc(pointsRef);
+      
+      if (pointsDoc.exists()) {
+        const pointsData = pointsDoc.data();
+        console.log(`Retrieved points data:`, pointsData);
+        setPoints(pointsData.total || 0);
+        setPointsInput((pointsData.total || 0).toString());
+      } else {
+        console.log(`No points record found for student: ${studentId}, initializing with 0`);
+        // Initialize with 0 points if no record exists
+        await setDoc(pointsRef, { 
+          total: 0,
+          lastUpdated: Date.now() 
+        });
+        setPoints(0);
+        setPointsInput('0');
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error refreshing student points:", error);
+      setError("Failed to refresh points data. Please try again.");
+      setIsLoading(false);
+    }
+  };
 
   // Show network error if offline
   if (networkStatus === 'offline') {
     return (
-      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
-          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Network Error</h2>
-            <p className="mb-4">You are currently offline. Please check your internet connection and try again.</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">You are currently offline. Please check your internet connection and try again.</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
             >
               Retry
             </button>
@@ -857,42 +1457,41 @@ export default function StudentPage() {
   // Show error state if there's a problem
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
-          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-gray-800">
+          <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
-            <p className="mb-4">{error}</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
             <div className="flex flex-col gap-2">
-              <button
+        <button
                 onClick={() => setError(null)}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
                 Dismiss
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-dark-text-inverted transition-colors"
               >
                 Refresh Page
-              </button>
+        </button>
             </div>
           </div>
-        </div>
       </div>
-    );
+    </div>
+  );
   }
 
   // Show loading state
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
-        <Navbar userType="student" onLogout={handleLogout} />
-        <div className="flex-grow flex items-center justify-center">
+  return (
+      <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
+      <Navbar userType="student" onLogout={handleLogout} />
+        <div className="flex-grow flex justify-center items-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="mt-4 text-lg">Loading...</p>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Stage: {initStage}</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 dark:border-dark-primary mx-auto"></div>
+            <p className="mt-4 text-lg text-gray-600 dark:text-dark-text-secondary">Loading...</p>
           </div>
         </div>
       </div>
@@ -900,125 +1499,157 @@ export default function StudentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col dark:bg-gray-900 dark:text-white">
+    <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
-      
+
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
-          <div className="max-w-md mx-auto">
-            <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800">
-              <h1 className="text-2xl font-bold mb-4">Student Dashboard</h1>
-              <h2 className="text-xl font-bold mb-4">Join a Class</h2>
-              <p className="mb-4">
-                Enter the session code provided by your professor to join the current class session.
-              </p>
-              <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
+          <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
+            <div className="max-w-sm w-full mx-auto">
+              <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                <div className="p-8">
+                  <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-dark-text-primary">Join a Class</h2>
+                  
+                  <div className="group relative mb-4">
+                    <div className="flex items-center mb-1 justify-center">
+                      <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">
+                        Session Code
+                      </label>
+                      <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-60 p-2 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          Enter the 6-digit code provided by your professor
+                        </div>
+                        <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
+                </div>
+              </div>
             </div>
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row items-start gap-6">
-            {/* Main Content Area */}
-            <div className="w-full lg:w-2/3">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-                <div>
-                  <h1 className="text-2xl font-bold mb-2">Student Dashboard</h1>
-                  <h2 className="text-lg mb-1">Class: {className}</h2>
-                </div>
-              </div>
-              
-              <div className="bg-white shadow-md rounded-lg p-4 mb-6 dark:bg-gray-800">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <span className="font-medium">Session Code:</span> <span className="font-mono bg-gray-100 dark:bg-gray-700 p-1 rounded text-lg">{sessionCode}</span>
+            {/* Sidebar */}
+            <div className="w-full lg:w-1/3">
+              <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                {error && (
+                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
+                    <p className="text-sm font-medium">{error}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleLeaveClass}
-                      className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                    >
-                      Leave Class
-                    </button>
+                )}
+
+                <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+                  <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  Class Information
+                </h2>
+
+                <div className="space-y-4">
+                  {/* Session Information Section */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Session Details
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-center dark:bg-blue-900/10 dark:border-blue-900 dark:text-dark-text-primary">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Class:</p>
+                        <p className="text-lg font-bold text-blue-600 dark:text-dark-primary">{className}</p>
+                      </div>
+                      
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              
-              <div className="mb-6">
-                <div className="border-b dark:border-gray-700">
-                  <div className="flex">
-                    <button
-                      className={`px-4 py-2 ${
-                        activeTab === 'questions' 
-                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}
-                      onClick={() => setActiveTab('questions')}
-                    >
-                      Questions
-                    </button>
-                    <button
-                      className={`px-4 py-2 ${
-                        activeTab === 'points' 
-                          ? 'border-b-2 border-blue-500 text-blue-500 dark:text-blue-400' 
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}
-                      onClick={() => setActiveTab('points')}
-                    >
-                      My Points
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="mt-4">
-                  {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-                </div>
+                  
+                  {/* Tab Navigation */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                      </svg>
+                      Dashboard Views
+                    </h3>
+                    
+                    <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
+              <button
+                onClick={() => setActiveTab('questions')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                  activeTab === 'questions'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                }`}
+              >
+                Questions
+              </button>
+              <button
+                onClick={() => setActiveTab('points')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                  activeTab === 'points'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                }`}
+              >
+                        My Points
+              </button>
+            </div>
+          </div>
+          
+          {/* Leave Class Button */}
+          <button
+            onClick={handleLeaveClass}
+            className="w-full px-4 py-2 mt-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center"
+          >
+            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Leave Class
+          </button>
+            </div>
               </div>
             </div>
             
-            {/* Active Question Sidebar - show in any tab when there's an active question */}
-            {activeQuestion && (
-              <div className="w-full lg:w-1/3 mt-6 lg:mt-0">
-                <div className="bg-yellow-50 shadow-md rounded-lg p-4 sticky top-4 dark:bg-yellow-900 dark:text-white">
-                  <h2 className="text-xl font-bold mb-4">Professor's Question</h2>
-                  <div className="mb-4 p-3 bg-white rounded dark:bg-gray-800">
-                    {activeQuestion.text}
-                  </div>
-                  
-                  {answerSubmitted ? (
-                    <div className="bg-green-100 p-3 rounded dark:bg-green-800 dark:text-white">
-                      <p className="font-semibold">Your answer has been submitted!</p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleAnswerSubmit}>
-                      <div className="mb-4">
-                        <label htmlFor="answerText" className="block mb-1 font-semibold">
-                          Your Answer:
-                        </label>
-                        <textarea
-                          id="answerText"
-                          value={answerText}
-                          onChange={(e) => setAnswerText(e.target.value)}
-                          className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                          rows={3}
-                          disabled={cooldownActive}
-                          required
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        className={`w-full px-4 py-2 rounded ${
-                          cooldownActive || isSubmittingAnswer
-                            ? 'bg-gray-400 cursor-not-allowed'
-                            : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700'
-                        }`}
-                        disabled={cooldownActive || isSubmittingAnswer}
-                      >
-                        {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Main Content Area */}
+            <div className="w-full lg:w-2/3">
+              {/* Welcome Message */}
+              {showWelcome && (
+                <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 mb-6 relative dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                  <button 
+                    onClick={handleCloseWelcome}
+                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary"
+                    aria-label="Close welcome message"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                    <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Welcome, Student!
+                  </h2>
+                  <p className="text-gray-600 dark:text-dark-text-secondary">
+                    You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
+                  </p>
+            </div>
+          )}
+          
+              {/* Tabs Content */}
+              <div className="mb-6">
+          {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+        </div>
+            </div>
           </div>
         )}
       </div>

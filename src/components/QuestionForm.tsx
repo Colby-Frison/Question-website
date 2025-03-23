@@ -112,30 +112,25 @@ export default function QuestionForm({
   };
 
   return (
-    <div className="rounded-lg bg-white p-4 sm:p-6 shadow-all-around transition-all dark:bg-dark-background-secondary">
-      <h2 className="mb-3 sm:mb-4 text-lg sm:text-xl font-semibold text-text dark:text-dark-text">Ask a Question</h2>
-      
+    <div className="w-full transition-all">
       {error && (
-        <div className="mb-3 sm:mb-4 rounded-md bg-error-light/20 p-3 sm:p-4 text-xs sm:text-sm text-error-dark dark:bg-error-light/10 dark:text-error-light">
+        <div className="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300 border border-red-200 dark:border-red-800">
           {error}
         </div>
       )}
       
       {success && (
-        <div className="mb-3 sm:mb-4 rounded-md bg-success-light/20 p-3 sm:p-4 text-xs sm:text-sm text-success-dark dark:bg-success-light/10 dark:text-success-light">
+        <div className="mb-3 rounded-md bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-300 border border-green-200 dark:border-green-800">
           Your question has been submitted!
         </div>
       )}
       
-      <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto">
-        <div className="mb-3 sm:mb-4">
-          <label htmlFor="question" className="block text-xs sm:text-sm font-medium text-text-secondary dark:text-dark-text-secondary">
-            Your Question
-          </label>
+      <form onSubmit={handleSubmit} className="w-full">
+        <div className="mb-3">
           <textarea
             id="question"
             rows={3}
-            className="form-input"
+            className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition"
             placeholder="Type your question here..."
             value={question}
             onChange={handleQuestionChange}
@@ -143,8 +138,8 @@ export default function QuestionForm({
           ></textarea>
           <div className={`mt-1 text-right text-xs ${
             charCount > MAX_CHARS 
-              ? 'text-error-dark dark:text-error-light' 
-              : 'text-text-tertiary dark:text-dark-text-tertiary'
+              ? 'text-red-600 dark:text-red-400' 
+              : 'text-gray-500 dark:text-gray-400'
           }`}>
             {charCount}/{MAX_CHARS} characters
           </div>
@@ -153,7 +148,7 @@ export default function QuestionForm({
           <button
             type="submit"
             disabled={isSubmitting || charCount > MAX_CHARS}
-            className="btn-primary"
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>

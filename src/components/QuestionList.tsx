@@ -11,8 +11,10 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [isProfessor] - Whether the current user is a professor
  * @property {boolean} [isStudent] - Whether the current user is a student
  * @property {string} [studentId] - ID of the current student, if applicable
+ * @property {boolean} [showControls] - Whether to show edit and delete buttons (defaults to true)
  * @property {function} [onDelete] - Optional callback for when a question is deleted
  * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
+ * @property {function} [onStatusUpdated] - Optional callback when questions are updated (for forcing refresh)
  * @property {string} [emptyMessage] - Message to display when there are no questions
  * @property {boolean} [isLoading] - Whether questions are currently loading
  */
@@ -22,8 +24,10 @@ interface QuestionListProps {
   isStudent?: boolean;
   studentId?: string;
   emptyMessage?: string;
+  showControls?: boolean;
   onDelete?: (questionId: string) => void;
   onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
+  onStatusUpdated?: (updatedQuestions: Question[]) => void;
 }
 
 /**
@@ -44,14 +48,17 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   isStudent = false,
   studentId = '',
   emptyMessage = "No questions yet.",
+  showControls = true,
   onDelete,
-  onToggleStatus
+  onToggleStatus,
+  onStatusUpdated
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [optimisticStatusUpdates, setOptimisticStatusUpdates] = useState<Record<string, 'answered' | 'unanswered'>>({});
 
   /**
    * Format timestamp to a readable date/time
@@ -100,6 +107,20 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       const success = await updateQuestion(questionId, editText, studentId);
       
       if (success) {
+        // Update local state to reflect changes immediately
+        if (questions) {
+          const updatedQuestions = questions.map(q => 
+            q.id === questionId 
+              ? { ...q, text: editText } 
+              : q
+          );
+          
+          // Force a UI update through the parent component
+          if (onStatusUpdated) {
+            onStatusUpdated(updatedQuestions);
+          }
+        }
+        
         setEditingId(null);
         setEditText('');
       } else {
@@ -114,67 +135,154 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   };
   
   /**
-   * Delete a question
+   * Delete a question with confirmation
    */
-  const handleDelete = async (questionId: string) => {
-    if (window.confirm('Are you sure you want to delete this question?')) {
-      try {
-        // If a custom delete handler is provided, use it
-        if (onDelete) {
-          onDelete(questionId);
-          return;
-        }
-        
-        // Otherwise use the default implementation
-        const success = await deleteQuestion(questionId);
-        
-        if (!success) {
-          setError('Failed to delete question');
-        }
-      } catch (error) {
-        console.error('Error deleting question:', error);
-        setError('An error occurred while deleting the question');
-      }
-    }
-  };
-  
-  /**
-   * Toggle a question's answered/unanswered status
-   */
-  const toggleQuestionStatus = async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
-    // If a custom toggle handler is provided, use it
-    if (onToggleStatus) {
-      try {
-        setUpdatingStatusId(questionId);
-        onToggleStatus(questionId, currentStatus);
-      } catch (error) {
-        console.error('Error toggling question status:', error);
-        setError('Failed to update question status');
-      } finally {
-        // Update UI optimistically
-        setUpdatingStatusId(null);
-      }
+  const handleDelete = useCallback(async (questionId: string) => {
+    // Confirm before deleting
+    if (!confirm('Are you sure you want to delete this question?')) {
       return;
     }
     
-    // Otherwise use the default implementation
+    try {
+      await deleteQuestion(questionId);
+      
+      // Call the onDelete callback if provided
+      if (onDelete) {
+        onDelete(questionId);
+      }
+    } catch (error) {
+      console.error('Error deleting question:', error);
+      setError('Failed to delete question. Please try again.');
+    }
+  }, [onDelete]);
+  
+  /**
+   * Toggle a question's status between answered and unanswered
+   */
+  const handleToggleStatus = useCallback(async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
+    const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
+    
+    console.log(`⏳ Beginning status toggle for question ${questionId}: ${currentStatus} -> ${newStatus}`);
+    
+    // Mark this question as being updated
     setUpdatingStatusId(questionId);
     setError(null);
     
-    try {
-      const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
-      const success = await updateQuestionStatus(questionId, newStatus);
+    // Set optimistic update immediately
+    setOptimisticStatusUpdates(prev => ({
+      ...prev,
+      [questionId]: newStatus
+    }));
+    
+    // Update the local state right away
+    if (questions && onStatusUpdated) {
+      const updatedQuestions = questions.map(q => 
+        q.id === questionId 
+          ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+          : q
+      );
       
-      if (!success) {
-        setError('Failed to update question status');
-      }
-    } catch (error) {
-      console.error('Error updating question status:', error);
-      setError('An error occurred while updating the question status');
-    } finally {
-      setUpdatingStatusId(null);
+      // Update UI immediately
+      onStatusUpdated(updatedQuestions);
+      console.log(`✅ Applied optimistic UI update for question ${questionId} to ${newStatus}`);
     }
-  };
+    
+    // Ensure the loading indicator shows for a minimum amount of time
+    // This both prevents rapid clicking and ensures the server has time to process
+    const MIN_LOADING_TIME = 2500; // ms
+    const startTime = Date.now();
+    
+    try {
+      let success = false;
+      const MAX_RETRIES = 3;
+      
+      for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
+        try {
+          console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES}: Calling updateQuestionStatus for ${questionId}`);
+          
+          // Make the actual API call to update the status
+          success = await updateQuestionStatus(questionId, newStatus);
+          
+          if (success) {
+            console.log(`✅ Successfully updated question ${questionId} status to ${newStatus} on attempt ${attempt + 1}`);
+            break;
+          } else {
+            console.warn(`⚠️ updateQuestionStatus returned false on attempt ${attempt + 1}`);
+            if (attempt < MAX_RETRIES - 1) {
+              // Wait with exponential backoff before retrying
+              const backoffTime = 1000 * Math.pow(2, attempt);
+              console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, backoffTime));
+            }
+          }
+        } catch (err) {
+          console.error(`❌ Error on attempt ${attempt + 1}:`, err);
+          if (attempt < MAX_RETRIES - 1) {
+            // Wait with exponential backoff before retrying
+            const backoffTime = 1000 * Math.pow(2, attempt);
+            console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, backoffTime));
+          }
+        }
+      }
+      
+      // Call the parent's status toggle callback if provided
+      if (onToggleStatus) {
+        console.log(`📣 Calling onToggleStatus callback for question ${questionId} with ${newStatus}`);
+        onToggleStatus(questionId, newStatus);
+      }
+      
+      // If update was successful, make one more update to the question list
+      // This ensures any other components see the latest state
+      if (success && questions && onStatusUpdated) {
+        // Double-check that we're using the latest questions
+        const finalQuestions = questions.map(q => 
+          q.id === questionId 
+            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+            : q
+        );
+        
+        console.log(`📊 Final UI update for question ${questionId}`);
+        onStatusUpdated(finalQuestions);
+      }
+      
+      // If the update failed after all retries
+      if (!success) {
+        throw new Error("Failed to update question status after multiple attempts");
+      }
+      
+    } catch (error) {
+      console.error('❌ Error toggling question status:', error);
+      
+      // Show error message to the user
+      setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. The UI will show the updated status, but it may not be saved.`);
+      
+      // Do NOT revert the optimistic update immediately
+      // This prevents UI flicker and confusing the user
+      // The background refresh will correct it if needed
+      
+      // Clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      // Ensure minimum loading time for UI feedback
+      const elapsed = Date.now() - startTime;
+      const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
+      
+      // Wait for minimum time to complete before removing loading state
+      if (remainingTime > 0) {
+        console.log(`⏱️ Waiting ${remainingTime}ms to ensure minimum loading display time`);
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+      
+      setUpdatingStatusId(null);
+      
+      // Important: Don't clear optimistic updates here
+      // Keep them in place to avoid UI flickers
+      // Backend processes will correct any inconsistencies
+      
+      console.log(`🏁 Status toggle operation complete for question ${questionId}`);
+    }
+  }, [onToggleStatus, questions, onStatusUpdated]);
   
   /**
    * Check if user can edit the question
@@ -200,8 +308,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     if (questions.length === 0) {
       return (
         <div className="flex items-center justify-center py-6 sm:py-8">
-          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-primary dark:border-dark-primary"></div>
-          <span className="ml-2 text-xs sm:text-sm text-text-secondary dark:text-dark-text-secondary">Loading questions...</span>
+          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-blue-500 dark:border-dark-primary"></div>
+          <span className="ml-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300">Loading questions...</span>
         </div>
       );
     }
@@ -209,160 +317,201 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   }, [questions.length]);
 
   /**
-   * Renders an empty state when no questions are available
-   * @returns {JSX.Element|null} Empty state UI or null
+   * Render empty state for when there are no questions
    */
-  const renderEmptyState = useMemo(() => {
-    if (questions.length === 0) {
-      return (
-        <div className="rounded-md bg-background-secondary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
-          <p className="text-sm sm:text-base text-text-secondary dark:text-dark-text-secondary">{emptyMessage}</p>
-        </div>
-      );
-    }
-    return null;
-  }, [questions.length, emptyMessage]);
+  const renderEmptyState = useMemo(() => (
+    <div className="py-8 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md">
+      <svg 
+        className="w-10 h-10 mx-auto text-gray-400 dark:text-gray-500 mb-4" 
+        fill="none" 
+        stroke="currentColor" 
+        viewBox="0 0 24 24" 
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path 
+          strokeLinecap="round" 
+          strokeLinejoin="round" 
+          strokeWidth={1.5} 
+          d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+        />
+      </svg>
+      <p className="text-gray-600 dark:text-gray-400">{emptyMessage}</p>
+    </div>
+  ), [emptyMessage]);
 
   /**
-   * Renders the list of question items with appropriate controls
-   * @returns {JSX.Element[]} Array of question item elements
+   * Render all questions
    */
-  const questionItems = useMemo(() => {
+  const renderQuestions = useMemo(() => {
     return questions.map((question) => {
-      // Check if this question belongs to the current student
-      const isOwnQuestion = isStudent && studentId === question.studentId;
-
+      const isEditing = editingId === question.id;
+      const isUpdatingThis = isUpdating && editingId === question.id;
+      const isUpdatingStatus = updatingStatusId === question.id;
+      
+      // Get effective status accounting for optimistic updates
+      const effectiveStatus = optimisticStatusUpdates[question.id] || question.status;
+      
+      // Determine status indicator color
+      const statusClass = effectiveStatus === 'answered' 
+        ? 'bg-green-500 dark:bg-dark-primary' 
+        : 'bg-yellow-500 dark:bg-dark-primary-light';
+      
+      // Only show edit/delete for students who own the question or professors
+      const canControl = showControls && (
+        (isProfessor) || 
+        (isStudent && studentId === question.studentId)
+      );
+      
       return (
-        <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
-          {/* Status indicator for students and professors */}
-          <div className="absolute top-2 right-2 z-10">
-            <div 
-              className={`h-2 w-2 rounded-full ${
-                question.status === 'answered' 
-                  ? 'bg-success-light dark:bg-success-dark' 
-                  : 'bg-error-light dark:bg-error-dark'
-              }`}
-              title={question.status === 'answered' ? 'Answered' : 'Unanswered'}
-            ></div>
+        <li 
+          key={question.id} 
+          className={`py-4 px-4 border-b border-gray-200 dark:border-gray-700 ${
+            isEditing ? 'bg-blue-50 dark:bg-blue-900/10' : ''
+          }`}
+        >
+          {isEditing ? (
+            // Edit mode
+            <div>
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
+                  rows={3}
+                placeholder="Edit your question..."
+              />
+              
+              {error && (
+                <p className="text-red-500 dark:text-red-400 text-sm mt-1">{error}</p>
+              )}
+              
+              <div className="flex justify-end mt-2 space-x-2">
+                  <button
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                <button
+                  onClick={() => handleSaveEdit(question.id)}
+                  disabled={isUpdatingThis}
+                  className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors flex items-center"
+                >
+                  {isUpdatingThis ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save'
+                  )}
+                </button>
+              </div>
           </div>
-
-          <div className="flex flex-col space-y-2 w-full">
-            <div className="w-full">
-              {editingId === question.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    className="form-input w-full"
-                    rows={3}
-                  />
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleSaveEdit(question.id)}
-                      disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-primary text-white hover:bg-primary-hover dark:bg-dark-primary dark:text-dark-text-inverted dark:hover:bg-dark-primary-hover"
-                    >
-                      {isUpdating ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={handleCancelEdit}
-                      disabled={isUpdating}
-                      className="rounded-md px-2 py-1 text-xs font-medium bg-background-secondary text-text-secondary hover:bg-background-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-secondary"
-                    >
-                      Cancel
-                    </button>
+          ) : (
+            // View mode
+            <div>
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800 dark:text-white mb-2">{question.text}</p>
+                  <div className="text-sm text-gray-500 dark:text-gray-300 flex items-center flex-wrap">
+                    <span className="inline-block mr-2 text-gray-600 dark:text-gray-300">
+                      {formatTimestamp(question.timestamp)}
+                    </span>
+                    <span className="flex items-center">
+                      <span className={`inline-block w-2 h-2 rounded-full mr-1 ${statusClass}`}></span>
+                      <span className="text-gray-600 dark:text-gray-300">
+                        {effectiveStatus === 'answered' ? 'Answered' : 'Waiting for answer'}
+                      </span>
+                    </span>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div 
-                    className="text-sm sm:text-base text-text dark:text-dark-text break-words whitespace-normal overflow-wrap-anywhere pr-8 pl-2"
-                  >
-                    {question.text}
-                  </div>
-                  {/* Always show timestamp in smaller text */}
-                  <p className="text-xs text-text-tertiary dark:text-dark-text-tertiary pl-2 mt-1">
-                    {new Date(question.timestamp).toLocaleString()}
-                  </p>
-                </>
-              )}
-            </div>
-            
-            {/* Action buttons for professors or students who own the question */}
-            {(isProfessor || isOwnQuestion) && editingId !== question.id && (
-              <div className="flex items-center justify-end space-x-2 mt-2">
-                {/* Professor controls */}
-                {isProfessor && (
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => toggleQuestionStatus(question.id, question.status || 'unanswered')}
-                      disabled={updatingStatusId === question.id}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-background-tertiary dark:bg-dark-background-tertiary'
-                          : question.status === 'answered'
-                            ? 'bg-success-light dark:bg-success-dark'
-                            : 'bg-error-light dark:bg-error-dark'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          question.status === 'answered' ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                    <span className="mx-2 text-xs text-text-secondary dark:text-dark-text-secondary">
-                      {question.status === 'answered' ? 'Answered' : 'Unanswered'}
-                    </span>
-                    <button
-                      onClick={() => handleDelete(question.id)}
-                      disabled={updatingStatusId === question.id}
-                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
-                      }`}
-                    >
-                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
-                    </button>
-                  </div>
-                )}
                 
-                {/* Student controls - only for their own questions */}
-                {isOwnQuestion && (
-                  <>
+                {/* Action buttons */}
+                {canControl && (
+                  <div className="flex space-x-1 ml-2">
+                    {/* Professor controls */}
+                    {isProfessor && (
+                      isUpdatingStatus ? (
+                        <button
+                          disabled={true}
+                          className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                            effectiveStatus === 'answered' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
+                          }`}
+                        >
+                          <svg className="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Updating...</span>
+                        </button>
+                      ) : effectiveStatus === 'answered' ? (
+                        <button
+                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
+                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30"
+                          title="Mark as unanswered"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Answered</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
+                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
+                          title="Mark as answered"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Mark Answered</span>
+                        </button>
+                      )
+                    )}
+                    
+                    {/* Student edit controls */}
+                    {isStudent && studentId === question.studentId && (
                     <button
-                      onClick={() => handleEdit(question)}
-                      className="rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors bg-primary-100 text-primary-800 hover:bg-primary-200 dark:bg-dark-primary-900/30 dark:text-dark-primary-300 dark:hover:bg-dark-primary-900/50"
+                        onClick={() => handleEdit(question)}
+                        className="p-1 text-gray-500 dark:text-gray-300 hover:text-blue-500 dark:hover:text-dark-primary transition-colors"
+                        title="Edit question"
                     >
-                      Edit
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                     </button>
+                    )}
+                    
+                    {/* Delete button for both roles */}
                     <button
                       onClick={() => handleDelete(question.id)}
-                      disabled={updatingStatusId === question.id}
-                      className={`rounded-md px-2 py-1 sm:px-3 sm:py-1 text-xs font-medium transition-colors ${
-                        updatingStatusId === question.id
-                          ? 'bg-background-tertiary text-text-tertiary dark:bg-dark-background-tertiary dark:text-dark-text-tertiary'
-                          : 'bg-error-light/20 text-error-dark hover:bg-error-light/30 dark:bg-error-light/10 dark:text-error-light dark:hover:bg-error-light/20'
-                      }`}
+                      className="p-1 text-gray-500 dark:text-gray-300 hover:text-red-500 dark:hover:text-dark-red-400 transition-colors"
+                      title="Delete question"
                     >
-                      {updatingStatusId === question.id ? 'Updating...' : 'Delete'}
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        </li>
+            </div>
+          )}
+      </li>
       );
     });
-  }, [questions, isProfessor, isStudent, studentId, editingId, updatingStatusId, handleEdit, handleSaveEdit, handleCancelEdit, handleDelete, toggleQuestionStatus, isUpdating, editText]);
+  }, [questions, editingId, editText, isUpdating, updatingStatusId, optimisticStatusUpdates, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit]);
 
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary w-full overflow-hidden">
-      {questionItems}
+    <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 w-full rounded-md overflow-hidden p-4">
+      {renderQuestions}
     </ul>
   );
 });

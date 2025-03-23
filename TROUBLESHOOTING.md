@@ -350,7 +350,7 @@ If you're still experiencing problems after trying these solutions:
 2. Clear your browser cache and cookies
 3. Try using a different browser
 4. Verify your internet connection is stable
-5. Check if your Firebase project has reached any usage limits
+5. Check if your Firebase project has reached any usage limits 
 6. Look for detailed error messages in the browser console
 
 For development issues, consider using the React DevTools and Firebase Emulator Suite for local debugging. 
