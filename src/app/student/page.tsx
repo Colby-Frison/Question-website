@@ -144,6 +144,7 @@ export default function StudentPage() {
   });
   const [pointsInput, setPointsInput] = useState<string>('0');
   const [isSavingPoints, setIsSavingPoints] = useState(false);
+  const [showPointsModal, setShowPointsModal] = useState(false);
   const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Active question and answer state
@@ -865,6 +866,35 @@ export default function StudentPage() {
   }, []);
 
   /**
+   * Handle opening the modal for manual point entry
+   */
+  const handleOpenPointsModal = () => {
+    setPointsInput(points.toString());
+    setShowPointsModal(true);
+  };
+  
+  /**
+   * Handle closing the points modal
+   */
+  const handleClosePointsModal = () => {
+    setShowPointsModal(false);
+  };
+  
+  /**
+   * Handle manual point entry from modal
+   */
+  const handleManualPointsEntry = () => {
+    const newPoints = parseInt(pointsInput, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      handlePointsChange(newPoints);
+      setShowPointsModal(false);
+    } else {
+      // Reset input to current points if invalid
+      setPointsInput(points.toString());
+    }
+  };
+
+  /**
    * Render the questions tab content
    */
   const renderQuestionsTab = () => {
@@ -949,80 +979,119 @@ export default function StudentPage() {
             <p className="text-sm text-blue-800 dark:text-white">
               Points are awarded by your professor for participation and correct answers.
             </p>
-              </div>
+          </div>
           
-          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6">
-            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
-            <div className="flex justify-center items-center mb-4">
-              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-dark-primary transition-all transform">
-                {points}
-              </div>
-              
-              <div className="ml-4 flex flex-col">
-                <button
-                  onClick={handleAddPoint}
-                  className="p-1 text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-dark-primary transition-colors"
-                  title="Add 1 point"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                  </svg>
-                </button>
-                <button
-                  onClick={handleSubtractPoint}
-                  className="p-1 text-gray-600 hover:text-red-600 dark:text-gray-300 dark:hover:text-dark-red-400 transition-colors"
-                  title="Subtract 1 point"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            <div className="text-sm text-blue-800 dark:text-white text-center mb-4">
-              Total points earned in this class
-            </div>
-            
+          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6 relative">
             {isSavingPoints && (
-              <div className="mb-4 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
+              <div className="absolute top-2 right-2 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
                 <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 Saving...
-    </div>
+              </div>
             )}
             
-            <div className="w-full flex flex-col space-y-3">
+            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
+            <div className="flex justify-center items-center mb-4">
               <button
-                onClick={refreshStudentPoints}
-                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted"
+                onClick={handleSubtractPoint}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-dark-red-400 transition-colors mr-4"
+                title="Subtract 1 point"
               >
-                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
-                Refresh Points
               </button>
               
-              <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                <input 
-                  type="text" 
-                  value={pointsInput}
-                  onChange={handlePointsInputChange}
-                  className="flex-grow p-2 border-r border-gray-300 dark:border-gray-600 text-center dark:bg-dark-background-tertiary dark:text-dark-text-primary focus:outline-none"
-                  aria-label="Set points value"
-                />
-                <button
-                  onClick={handleSetPoints}
-                  className="px-3 bg-gray-100 hover:bg-gray-200 dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-dark-text-secondary transition-colors"
-                >
-                  Set
-                </button>
-          </div>
+              <div 
+                id="points-display" 
+                className="text-5xl font-bold text-blue-600 dark:text-dark-primary transition-all transform cursor-pointer"
+                onClick={handleOpenPointsModal}
+                title="Click to edit points"
+              >
+                {points}
+              </div>
+              
+              <button
+                onClick={handleAddPoint}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors ml-4"
+                title="Add 1 point"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
+                </svg>
+              </button>
             </div>
+            
+            <div className="text-sm text-blue-800 dark:text-white text-center mb-2">
+              Total points earned in this class
+            </div>
+            
+            <button
+              onClick={handleOpenPointsModal}
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-dark-primary transition-colors"
+            >
+              Edit Points
+            </button>
           </div>
         </div>
+        
+        {/* Points Modal */}
+        {showPointsModal && (
+          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
+              <div className="p-5">
+                <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Edit Points</h3>
+                
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={pointsInput}
+                    onChange={handlePointsInputChange}
+                    className="w-full text-center p-3 text-2xl font-bold border rounded-md dark:bg-dark-background-tertiary dark:border-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary"
+                    aria-label="Set points value"
+                    autoFocus
+                  />
+                </div>
+                
+                {/* Numpad */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setPointsInput(prev => num === 0 && prev === '0' ? '0' : prev === '0' ? num.toString() : prev + num.toString())}
+                      className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPointsInput('0')}
+                    className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
+                  >
+                    Clear
+                  </button>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleClosePointsModal}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-dark-background-tertiary dark:text-white dark:hover:bg-dark-background-quaternary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleManualPointsEntry}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
           <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
@@ -1309,15 +1378,16 @@ export default function StudentPage() {
             </div>
           </div>
           
-                  <button
-                    onClick={handleLogout}
-                    className="w-full px-4 py-2 mt-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors dark:text-dark-text-secondary dark:border-gray-700 dark:hover:bg-dark-background-tertiary flex items-center justify-center space-x-2"
-                  >
-                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    <span>Logout</span>
-                  </button>
+          {/* Leave Class Button */}
+          <button
+            onClick={handleLeaveClass}
+            className="w-full px-4 py-2 mt-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center"
+          >
+            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Leave Class
+          </button>
             </div>
               </div>
             </div>
