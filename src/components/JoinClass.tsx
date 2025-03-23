@@ -122,7 +122,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
             <input
               type="text"
               id="sessionCode"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-blue-400 text-lg font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase text-center"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 dark:bg-gray-800 dark:text-white dark:border-gray-700 dark:focus:ring-dark-primary dark:focus:border-dark-primary text-lg font-medium tracking-wider placeholder-gray-400 dark:placeholder-gray-500 uppercase text-center"
               placeholder="ENTER SESSION CODE"
               value={sessionCode}
               onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
@@ -138,7 +138,7 @@ export default function JoinClass({ onSuccess, studentId }: JoinClassProps) {
           className={`w-full px-4 py-3 rounded-lg font-medium text-md flex items-center justify-center transition-all duration-200 ${
             isJoining || !sessionCode.trim() 
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500' 
-              : 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700'
+              : 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover'
           }`}
         >
           {isJoining ? (

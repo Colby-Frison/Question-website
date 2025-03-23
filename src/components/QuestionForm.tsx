@@ -130,7 +130,7 @@ export default function QuestionForm({
           <textarea
             id="question"
             rows={3}
-            className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition"
+            className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition"
             placeholder="Type your question here..."
             value={question}
             onChange={handleQuestionChange}
@@ -148,7 +148,7 @@ export default function QuestionForm({
           <button
             type="submit"
             disabled={isSubmitting || charCount > MAX_CHARS}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Question'}
           </button>

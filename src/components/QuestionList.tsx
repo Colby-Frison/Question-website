@@ -166,7 +166,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         const updated = { ...prev };
         delete updated[questionId];
         return updated;
-      });
+        });
     } catch (error) {
       console.error('Error toggling question status:', error);
       
@@ -205,7 +205,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     if (questions.length === 0) {
       return (
         <div className="flex items-center justify-center py-6 sm:py-8">
-          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-blue-500 dark:border-blue-400"></div>
+          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-b-2 border-blue-500 dark:border-dark-primary"></div>
           <span className="ml-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300">Loading questions...</span>
         </div>
       );
@@ -217,9 +217,9 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    * Render empty state for when there are no questions
    */
   const renderEmptyState = useMemo(() => (
-    <div className="p-8 text-center bg-gray-50 dark:bg-dark-background-tertiary rounded-lg border border-gray-200 dark:border-gray-700">
+    <div className="py-8 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md">
       <svg 
-        className="w-12 h-12 mx-auto text-gray-400 dark:text-white mb-4" 
+        className="w-10 h-10 mx-auto text-gray-400 dark:text-gray-500 mb-4" 
         fill="none" 
         stroke="currentColor" 
         viewBox="0 0 24 24" 
@@ -232,7 +232,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
         />
       </svg>
-      <p className="text-gray-600 dark:text-white">{emptyMessage}</p>
+      <p className="text-gray-600 dark:text-gray-400">{emptyMessage}</p>
     </div>
   ), [emptyMessage]);
 
@@ -250,8 +250,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       
       // Determine status indicator color
       const statusClass = effectiveStatus === 'answered' 
-        ? 'bg-green-500 dark:bg-green-400' 
-        : 'bg-yellow-500 dark:bg-yellow-400';
+        ? 'bg-green-500 dark:bg-dark-primary' 
+        : 'bg-yellow-500 dark:bg-dark-primary-light';
       
       // Only show edit/delete for students who own the question or professors
       const canControl = showControls && (
@@ -262,18 +262,18 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       return (
         <li 
           key={question.id} 
-          className={`p-4 mb-3 bg-white dark:bg-dark-background-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow transition-colors ${
-            isEditing ? 'border-blue-300 dark:border-blue-500' : ''
+          className={`py-4 px-4 border-b border-gray-200 dark:border-gray-700 ${
+            isEditing ? 'bg-blue-50 dark:bg-blue-900/10' : ''
           }`}
         >
           {isEditing ? (
             // Edit mode
             <div>
-              <textarea
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none"
-                rows={3}
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
+                  rows={3}
                 placeholder="Edit your question..."
               />
               
@@ -282,16 +282,16 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
               )}
               
               <div className="flex justify-end mt-2 space-x-2">
-                <button
+                  <button
                   onClick={handleCancelEdit}
                   className="px-3 py-1 text-sm bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  Cancel
-                </button>
+                  >
+                    Cancel
+                  </button>
                 <button
                   onClick={() => handleSaveEdit(question.id)}
                   disabled={isUpdatingThis}
-                  className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-blue-600 rounded-md hover:bg-blue-600 dark:hover:bg-blue-500 transition-colors flex items-center"
+                  className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors flex items-center"
                 >
                   {isUpdatingThis ? (
                     <>
@@ -306,7 +306,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                   )}
                 </button>
               </div>
-            </div>
+          </div>
           ) : (
             // View mode
             <div>
@@ -334,43 +334,53 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       <button
                         onClick={() => handleToggleStatus(question.id, effectiveStatus)}
                         disabled={isUpdatingStatus}
-                        className="p-1 text-gray-500 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                        className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                          effectiveStatus === 'answered' 
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30' 
+                            : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30'
+                        }`}
                         title={effectiveStatus === 'answered' ? 'Mark as unanswered' : 'Mark as answered'}
                       >
                         {isUpdatingStatus ? (
-                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
                         ) : effectiveStatus === 'answered' ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Answered</span>
+                          </>
                         ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                          </svg>
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Mark Answered</span>
+                          </>
                         )}
                       </button>
                     )}
                     
                     {/* Student edit controls */}
                     {isStudent && studentId === question.studentId && (
-                      <button
+                    <button
                         onClick={() => handleEdit(question)}
-                        className="p-1 text-gray-500 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                        className="p-1 text-gray-500 dark:text-gray-300 hover:text-blue-500 dark:hover:text-dark-primary transition-colors"
                         title="Edit question"
-                      >
+                    >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
-                      </button>
+                    </button>
                     )}
                     
                     {/* Delete button for both roles */}
                     <button
                       onClick={() => handleDelete(question.id)}
-                      className="p-1 text-gray-500 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      className="p-1 text-gray-500 dark:text-gray-300 hover:text-red-500 dark:hover:text-dark-red-400 transition-colors"
                       title="Delete question"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -382,7 +392,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
               </div>
             </div>
           )}
-        </li>
+      </li>
       );
     });
   }, [questions, editingId, editText, isUpdating, updatingStatusId, optimisticStatusUpdates, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit]);
@@ -390,7 +400,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-gray-200 dark:divide-gray-700 rounded-md bg-white p-2 sm:p-4 dark:bg-gray-900 w-full overflow-hidden shadow-sm dark:shadow-[0_0_15px_rgba(0,0,0,0.2)]">
+    <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 w-full rounded-md overflow-hidden p-4">
       {renderQuestions}
     </ul>
   );

@@ -858,6 +858,12 @@ export default function StudentPage() {
     }
   };
 
+  // Add a handler to delete questions from both myQuestions and classQuestions
+  const handleQuestionDelete = useCallback((questionId: string) => {
+    setMyQuestions(prev => prev.filter(q => q.id !== questionId));
+    setClassQuestions(prev => prev.filter(q => q.id !== questionId));
+  }, []);
+
   /**
    * Render the questions tab content
    */
@@ -896,6 +902,7 @@ export default function StudentPage() {
               studentId={studentId}
               showControls={false}
               emptyMessage="No questions have been asked yet."
+              onDelete={handleQuestionDelete}
             />
               </div>
             </div>
@@ -911,14 +918,15 @@ export default function StudentPage() {
             </h2>
               <QuestionList 
                 questions={myQuestions} 
-              isProfessor={false}
-              isStudent={true}
-              studentId={studentId}
-              showControls={true}
-              emptyMessage="You haven't asked any questions yet."
-            />
+                isProfessor={false}
+                isStudent={true}
+                studentId={studentId}
+                showControls={true}
+                emptyMessage="You haven't asked any questions yet."
+                onDelete={handleQuestionDelete}
+              />
+          </div>
         </div>
-      </div>
       </div>
     );
   };
@@ -946,14 +954,35 @@ export default function StudentPage() {
           <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6">
             <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
             <div className="flex justify-center items-center mb-4">
-              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-blue-400 transition-all transform">
+              <div id="points-display" className="text-4xl font-bold text-blue-600 dark:text-dark-primary transition-all transform">
                 {points}
+              </div>
+              
+              <div className="ml-4 flex flex-col">
+                <button
+                  onClick={handleAddPoint}
+                  className="p-1 text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-dark-primary transition-colors"
+                  title="Add 1 point"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleSubtractPoint}
+                  className="p-1 text-gray-600 hover:text-red-600 dark:text-gray-300 dark:hover:text-dark-red-400 transition-colors"
+                  title="Subtract 1 point"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
             </div>
-        </div>
             
             <div className="text-sm text-blue-800 dark:text-white text-center mb-4">
               Total points earned in this class
-      </div>
+            </div>
             
             {isSavingPoints && (
               <div className="mb-4 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">

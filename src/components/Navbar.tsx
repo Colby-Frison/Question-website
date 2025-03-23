@@ -37,7 +37,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 dark:bg-dark-background dark:border-gray-800 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 dark:bg-dark-background dark:border-gray-700 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between">
           {/* Logo and main nav */}
@@ -64,7 +64,7 @@ const Navbar: React.FC<NavbarProps> = React.memo(({ userType, onLogout }) => {
           <div className="flex items-center sm:hidden">
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:text-white dark:hover:bg-gray-800 dark:hover:text-white"
+              className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:text-white dark:hover:bg-gray-800 dark:hover:text-white dark:focus:ring-dark-primary"
               aria-controls="mobile-menu"
               aria-expanded={isMenuOpen}
               onClick={toggleMenu}

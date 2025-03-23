@@ -761,7 +761,7 @@ export default function ProfessorPage() {
     <div>
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
         <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Student Questions
@@ -796,7 +796,7 @@ export default function ProfessorPage() {
             <div>
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
         <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-          <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Ask a Question
@@ -814,7 +814,7 @@ export default function ProfessorPage() {
               />
             <button
               type="submit"
-              className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white font-medium"
+              className="px-4 py-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition duration-200 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-white font-medium"
             >
               Ask Question
             </button>
@@ -825,7 +825,7 @@ export default function ProfessorPage() {
           <div>
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 Active Question
@@ -837,7 +837,7 @@ export default function ProfessorPage() {
       
             <div>
               <h3 className="text-lg font-semibold mb-3 flex items-center text-gray-900 dark:text-gray-100">
-                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Student Answers
@@ -955,7 +955,7 @@ export default function ProfessorPage() {
         <Navbar userType="professor" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto dark:border-blue-400"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto dark:border-dark-primary"></div>
             <p className="mt-4 text-lg dark:text-gray-200">Loading...</p>
         </div>
       </div>
@@ -980,7 +980,7 @@ export default function ProfessorPage() {
               )}
 
               <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
                 Class Management
@@ -990,7 +990,7 @@ export default function ProfessorPage() {
                 {/* Class Name Section */}
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
                   <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     Class Name
@@ -1006,7 +1006,7 @@ export default function ProfessorPage() {
                     />
                 <button
                       onClick={handleClassNameChange}
-                      className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+                      className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
                     >
                       Update
                     </button>
@@ -1016,7 +1016,7 @@ export default function ProfessorPage() {
                 {/* Session Management Section */}
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
                   <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Class Session
@@ -1026,7 +1026,7 @@ export default function ProfessorPage() {
                     <button
                       onClick={handleStartSession}
                       disabled={isLoading}
-                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-blue-500 text-white rounded-md flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (
                         <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1080,7 +1080,7 @@ export default function ProfessorPage() {
                 {/* Tab Navigation */}
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
                   <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                    <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
                     </svg>
                     Dashboard Views
@@ -1091,7 +1091,7 @@ export default function ProfessorPage() {
                       onClick={() => setActiveTab('questions')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                     activeTab === 'questions'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          ? 'bg-blue-500 text-white dark:bg-dark-primary'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
@@ -1101,7 +1101,7 @@ export default function ProfessorPage() {
                       onClick={() => setActiveTab('points')}
                       className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                     activeTab === 'points'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          ? 'bg-blue-500 text-white dark:bg-dark-primary'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
@@ -1138,7 +1138,7 @@ export default function ProfessorPage() {
                   </svg>
             </button>
                 <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
-                  <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Welcome, Professor!

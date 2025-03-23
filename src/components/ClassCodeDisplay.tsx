@@ -102,7 +102,7 @@ export default function ClassNameDisplay({
               <button
                 onClick={handleUpdateClass}
                 disabled={isCreating || !newClassName.trim()}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
               >
                 {isCreating ? 'Saving...' : !className ? 'Create Class' : 'Update Class'}
               </button>
