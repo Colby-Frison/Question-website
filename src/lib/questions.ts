@@ -544,7 +544,7 @@ export const updateQuestionStatus = async (
     }
     
     // Update status with retry mechanism
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5; // Increased from 3 to 5
     let success = false;
     let retryCount = 0;
     
@@ -558,52 +558,91 @@ export const updateQuestionStatus = async (
           lastModified: timestamp // Add this to force a document update
         };
         
-        console.log(`[updateQuestionStatus] Applying update with timestamp ${timestamp}`);
+        console.log(`[updateQuestionStatus] Attempt ${retryCount + 1}/${MAX_RETRIES}: Applying update with timestamp ${timestamp}`);
         
         // Update status to ensure atomicity
         await updateDoc(questionRef, updateData);
         
-        // Add a small delay before verification to ensure Firestore has time to propagate
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Add a significant delay before verification to ensure Firestore has time to propagate
+        // This is critical - we need to wait long enough for the update to be committed
+        const VERIFICATION_DELAY = 800; // ms
+        console.log(`[updateQuestionStatus] Waiting ${VERIFICATION_DELAY}ms before verification...`);
+        await new Promise(resolve => setTimeout(resolve, VERIFICATION_DELAY));
         
-        // Double-check that the update was actually applied
-        const updatedDoc = await getDoc(questionRef);
+        // Double-check that the update was actually applied with multiple attempts
+        let verificationSuccess = false;
+        let verificationAttempts = 0;
+        const MAX_VERIFICATION_ATTEMPTS = 3;
         
-        if (!updatedDoc.exists()) {
-          throw new Error("Question no longer exists");
+        while (!verificationSuccess && verificationAttempts < MAX_VERIFICATION_ATTEMPTS) {
+          try {
+            console.log(`[updateQuestionStatus] Verification attempt ${verificationAttempts + 1}/${MAX_VERIFICATION_ATTEMPTS}`);
+            const updatedDoc = await getDoc(questionRef);
+            
+            if (!updatedDoc.exists()) {
+              throw new Error("Question no longer exists");
+            }
+            
+            const updatedData = updatedDoc.data();
+            if (updatedData.status !== status) {
+              console.error(`[updateQuestionStatus] Verification failed: Expected ${status}, got ${updatedData.status}`);
+              
+              if (verificationAttempts < MAX_VERIFICATION_ATTEMPTS - 1) {
+                // Wait before trying verification again
+                await new Promise(resolve => setTimeout(resolve, 300 * (verificationAttempts + 1)));
+                verificationAttempts++;
+              } else {
+                throw new Error(`Status update verification failed: ${updatedData.status} instead of ${status}`);
+              }
+            } else {
+              verificationSuccess = true;
+              console.log(`[updateQuestionStatus] Verified status change to ${status} for question ${questionId}`);
+            }
+          } catch (verifyErr) {
+            if (verificationAttempts < MAX_VERIFICATION_ATTEMPTS - 1) {
+              verificationAttempts++;
+              await new Promise(resolve => setTimeout(resolve, 300 * verificationAttempts));
+            } else {
+              throw verifyErr;
+            }
+          }
         }
         
-        const updatedData = updatedDoc.data();
-        if (updatedData.status !== status) {
-          console.error(`[updateQuestionStatus] Verification failed: Expected ${status}, got ${updatedData.status}`);
-          throw new Error(`Status update verification failed: ${updatedData.status} instead of ${status}`);
+        if (!verificationSuccess) {
+          throw new Error("Failed to verify status update after multiple attempts");
         }
         
-        console.log(`[updateQuestionStatus] Verified status change to ${status} for question ${questionId}`);
-        
-        // Immediately force a refresh of questions for this session to propagate changes faster
+        // Immediately invalidate cache for this session to ensure listeners get fresh data
         if (sessionCode) {
-          // Invalidate cache for this session to ensure listeners get fresh data
           cache.questions.delete(sessionCode);
           console.log(`[updateQuestionStatus] Invalidated cache for session: ${sessionCode}`);
           
-          // Force an immediate refresh - the key improvement for faster updates
+          // Delay before any refresh to ensure the database has settled
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Before triggering any refresh, verify one more time that the status is correct in the database
+          const finalCheck = await getDoc(questionRef);
+          if (finalCheck.exists() && finalCheck.data().status === status) {
+            console.log(`[updateQuestionStatus] Final confirmation: status is correctly set to ${status}`);
+          } else {
+            console.warn(`[updateQuestionStatus] Final check shows incorrect status: ${finalCheck.exists() ? finalCheck.data().status : 'document not found'}`);
+          }
+          
+          // Force three refreshes with increasing delays
           setTimeout(() => {
             forceRefreshQuestions(sessionCode)
               .catch(err => console.error("[updateQuestionStatus] Error in immediate refresh:", err));
-          }, 100); // Very small delay to ensure Firestore has propagated the change
+          }, 500); 
           
-          // Add a second delayed refresh for better reliability
           setTimeout(() => {
             forceRefreshQuestions(sessionCode)
               .catch(err => console.error("[updateQuestionStatus] Error in second delayed refresh:", err));
-          }, 1000);
+          }, 2000);
           
-          // Add a third even more delayed refresh for maximum reliability
           setTimeout(() => {
             forceRefreshQuestions(sessionCode)
               .catch(err => console.error("[updateQuestionStatus] Error in third delayed refresh:", err));
-          }, 3000);
+          }, 5000);
         }
         
         success = true;
@@ -615,8 +654,10 @@ export const updateQuestionStatus = async (
           throw err; // Re-throw if we've exhausted retries
         }
         
-        // Wait briefly before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retryCount - 1)));
+        // Wait before retrying (exponential backoff with longer initial delay)
+        const backoffTime = 1000 * Math.pow(2, retryCount - 1);
+        console.log(`[updateQuestionStatus] Waiting ${backoffTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
       }
     }
     

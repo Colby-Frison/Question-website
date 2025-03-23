@@ -163,6 +163,9 @@ export default function StudentPage() {
   const [isLeavingClass, setIsLeavingClass] = useState(false);
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
 
+  // Track recent status updates to prevent them from being overwritten
+  const [recentStatusUpdates, setRecentStatusUpdates] = useState<Record<string, {status: 'answered' | 'unanswered', timestamp: number}>>({});
+
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
     // Prevent multiple clicks
@@ -869,6 +872,33 @@ export default function StudentPage() {
   
   // Add a more robust handler to synchronize status updates and edits across question lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
+    // Current time for tracking recent updates
+    const updateTime = Date.now();
+    
+    // Track which questions had status changes in this update
+    const newStatusUpdates: Record<string, {status: 'answered' | 'unanswered', timestamp: number}> = {};
+    
+    // Find questions with modified status by comparing with existing lists
+    const existingList = listType === 'my' ? myQuestions : classQuestions;
+    updatedQuestions.forEach(updatedQ => {
+      const existingQ = existingList.find(q => q.id === updatedQ.id);
+      if (existingQ && existingQ.status !== updatedQ.status && updatedQ.status) {
+        console.log(`[handleQuestionStatusUpdate] Status changed for ${updatedQ.id}: ${existingQ.status} -> ${updatedQ.status}`);
+        newStatusUpdates[updatedQ.id] = {
+          status: updatedQ.status as 'answered' | 'unanswered', 
+          timestamp: updateTime
+        };
+      }
+    });
+    
+    // Update the recent status updates tracker
+    if (Object.keys(newStatusUpdates).length > 0) {
+      setRecentStatusUpdates(prev => ({
+        ...prev,
+        ...newStatusUpdates
+      }));
+    }
+    
     // Update the specified list directly
     if (listType === 'my') {
       setMyQuestions(updatedQuestions);
@@ -906,25 +936,159 @@ export default function StudentPage() {
     
     otherSetter(updatedOtherList);
     
-    // Force refresh from server to ensure we have latest data
-    if (currentSessionCode) {
-      // Trigger a reset of any stale data after a short delay
+    // Only force refresh from server if it's not a status update that we just made
+    // This prevents our recent changes from being overwritten by stale server data
+    if (currentSessionCode && Object.keys(newStatusUpdates).length === 0) {
+      // Use longer delays to give database time to complete updates
+      // First refresh after a moderate delay
       setTimeout(() => {
         console.log(`[handleQuestionStatusUpdate] Forcing question refresh for session: ${currentSessionCode}`);
         import('@/lib/questions').then(({ forceRefreshQuestions }) => {
           forceRefreshQuestions(currentSessionCode).catch(console.error);
         });
-      }, 500);
+      }, 1500);
       
-      // Add a second delayed refresh for better reliability
+      // Second refresh after a longer delay
       setTimeout(() => {
         console.log(`[handleQuestionStatusUpdate] Second refresh for session: ${currentSessionCode}`);
         import('@/lib/questions').then(({ forceRefreshQuestions }) => {
           forceRefreshQuestions(currentSessionCode).catch(console.error);
         });
-      }, 2000);
+      }, 4000);
+    } else if (Object.keys(newStatusUpdates).length > 0) {
+      console.log(`[handleQuestionStatusUpdate] Skipping immediate refresh for session: ${currentSessionCode} to preserve recent status updates`);
+      
+      // Add a longer delayed refresh that will preserve our recent changes
+      setTimeout(() => {
+        console.log(`[handleQuestionStatusUpdate] Delayed refresh after status update for session: ${currentSessionCode}`);
+        
+        // This is a custom implementation to refresh data while preserving recent changes
+        const preserveRecentChanges = async () => {
+          try {
+            // Get fresh questions from server but preserve our recent changes
+            const { listenForQuestions, listenForUserQuestions } = await import('@/lib/questions');
+            
+            // We'll use a one-time callback pattern to get fresh data
+            const getRefreshedQuestions = (sessionCode: string, studentId: string): Promise<{
+              classQuestions: Question[],
+              myQuestions: Question[]
+            }> => {
+              return new Promise((resolve) => {
+                let classQuestionsReceived = false;
+                let myQuestionsReceived = false;
+                let refreshedClassQuestions: Question[] = [];
+                let refreshedMyQuestions: Question[] = [];
+                
+                // Get fresh class questions
+                const classUnsubscribe = listenForQuestions(
+                  sessionCode,
+                  (questions) => {
+                    refreshedClassQuestions = questions;
+                    classQuestionsReceived = true;
+                    checkComplete();
+                  },
+                  { useCache: false }
+                );
+                
+                // Get fresh my questions
+                const myUnsubscribe = listenForUserQuestions(
+                  studentId,
+                  sessionCode,
+                  (questions) => {
+                    refreshedMyQuestions = questions;
+                    myQuestionsReceived = true;
+                    checkComplete();
+                  }
+                );
+                
+                // Check if both sets of questions have been received
+                const checkComplete = () => {
+                  if (classQuestionsReceived && myQuestionsReceived) {
+                    classUnsubscribe();
+                    myUnsubscribe();
+                    resolve({
+                      classQuestions: refreshedClassQuestions,
+                      myQuestions: refreshedMyQuestions
+                    });
+                  }
+                };
+                
+                // Ensure we resolve even if callbacks never fire
+                setTimeout(() => {
+                  if (!classQuestionsReceived || !myQuestionsReceived) {
+                    console.error('[handleQuestionStatusUpdate] Timed out waiting for refreshed questions');
+                    classUnsubscribe();
+                    myUnsubscribe();
+                    resolve({
+                      classQuestions: refreshedClassQuestions.length ? refreshedClassQuestions : classQuestions,
+                      myQuestions: refreshedMyQuestions.length ? refreshedMyQuestions : myQuestions
+                    });
+                  }
+                }, 5000);
+              });
+            };
+            
+            if (studentId && currentSessionCode) {
+              // Get refreshed questions
+              const { classQuestions: refreshedClass, myQuestions: refreshedMy } = 
+                await getRefreshedQuestions(currentSessionCode, studentId);
+              
+              // Preserve recent status updates in the refreshed data
+              const now = Date.now();
+              const RECENT_WINDOW = 30000; // 30 seconds
+              
+              // Only preserve very recent updates (last 30 seconds)
+              const recentUpdates = Object.entries(recentStatusUpdates)
+                .filter(([_, {timestamp}]) => now - timestamp < RECENT_WINDOW)
+                .reduce((acc, [id, data]) => {
+                  acc[id] = data;
+                  return acc;
+                }, {} as Record<string, {status: 'answered' | 'unanswered', timestamp: number}>);
+              
+              // Apply recent updates to the fresh data
+              if (Object.keys(recentUpdates).length > 0) {
+                console.log(`[handleQuestionStatusUpdate] Preserving ${Object.keys(recentUpdates).length} recent status updates`);
+                
+                const mergedClass = refreshedClass.map(q => {
+                  const recentUpdate = recentUpdates[q.id];
+                  if (recentUpdate) {
+                    console.log(`[handleQuestionStatusUpdate] Preserving status ${recentUpdate.status} for question ${q.id}`);
+                    return { ...q, status: recentUpdate.status };
+                  }
+                  return q;
+                });
+                
+                const mergedMy = refreshedMy.map(q => {
+                  const recentUpdate = recentUpdates[q.id];
+                  if (recentUpdate) {
+                    return { ...q, status: recentUpdate.status };
+                  }
+                  return q;
+                });
+                
+                // Update state with the merged data
+                setClassQuestions(mergedClass);
+                setMyQuestions(mergedMy);
+              } else {
+                // No recent updates to preserve, just use the fresh data
+                setClassQuestions(refreshedClass);
+                setMyQuestions(refreshedMy);
+              }
+              
+              // Clean up old status updates
+              if (Object.keys(recentStatusUpdates).length !== Object.keys(recentUpdates).length) {
+                setRecentStatusUpdates(recentUpdates);
+              }
+            }
+          } catch (error) {
+            console.error('[handleQuestionStatusUpdate] Error refreshing questions:', error);
+          }
+        };
+        
+        preserveRecentChanges();
+      }, 6000);
     }
-  }, [myQuestions, classQuestions, joinedClass?.sessionCode]);
+  }, [myQuestions, classQuestions, joinedClass?.sessionCode, studentId, recentStatusUpdates]);
   
   /**
    * Handle opening the modal for manual point entry
