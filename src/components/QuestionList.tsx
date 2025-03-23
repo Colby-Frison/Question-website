@@ -162,117 +162,125 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const handleToggleStatus = useCallback(async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
     
-    // Set optimistic update
+    console.log(`⏳ Beginning status toggle for question ${questionId}: ${currentStatus} -> ${newStatus}`);
+    
+    // Mark this question as being updated
+    setUpdatingStatusId(questionId);
+    setError(null);
+    
+    // Set optimistic update immediately
     setOptimisticStatusUpdates(prev => ({
       ...prev,
       [questionId]: newStatus
     }));
     
-    // Set updating status
-    setUpdatingStatusId(questionId);
+    // Update the local state right away
+    if (questions && onStatusUpdated) {
+      const updatedQuestions = questions.map(q => 
+        q.id === questionId 
+          ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+          : q
+      );
+      
+      // Update UI immediately
+      onStatusUpdated(updatedQuestions);
+      console.log(`✅ Applied optimistic UI update for question ${questionId} to ${newStatus}`);
+    }
     
-    // Add delay to show loading state (prevents double clicks and UI flashing)
-    const MIN_LOADING_TIME = 2000; // ms - increased for better user feedback and to ensure updates complete
+    // Ensure the loading indicator shows for a minimum amount of time
+    // This both prevents rapid clicking and ensures the server has time to process
+    const MIN_LOADING_TIME = 2500; // ms
     const startTime = Date.now();
     
     try {
-      // Try to update status with multiple attempts if needed
       let success = false;
-      let attempts = 0;
-      const maxAttempts = 5; // Increased for reliability
+      const MAX_RETRIES = 3;
       
-      // Ensure we persist the optimistic update
-      if (questions) {
-        // Make a local update to the questions array
-        const updatedQuestions = questions.map(q => 
-          q.id === questionId 
-            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
-            : q
-        );
-        
-        // This can help force a re-render
-        if (onStatusUpdated) {
-          onStatusUpdated(updatedQuestions);
-        }
-      }
-
-      while (!success && attempts < maxAttempts) {
+      for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
         try {
-          console.log(`Attempt ${attempts + 1}: Updating question ${questionId} status to ${newStatus}`);
+          console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES}: Calling updateQuestionStatus for ${questionId}`);
+          
+          // Make the actual API call to update the status
           success = await updateQuestionStatus(questionId, newStatus);
-          if (!success) {
-            throw new Error("Update returned false");
+          
+          if (success) {
+            console.log(`✅ Successfully updated question ${questionId} status to ${newStatus} on attempt ${attempt + 1}`);
+            break;
           } else {
-            console.log(`Successfully updated question ${questionId} status to ${newStatus}`);
+            console.warn(`⚠️ updateQuestionStatus returned false on attempt ${attempt + 1}`);
+            if (attempt < MAX_RETRIES - 1) {
+              // Wait with exponential backoff before retrying
+              const backoffTime = 1000 * Math.pow(2, attempt);
+              console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, backoffTime));
+            }
           }
         } catch (err) {
-          attempts++;
-          console.warn(`Retry ${attempts}/${maxAttempts} after error:`, err);
-          
-          if (attempts < maxAttempts) {
-            // Exponential backoff with longer initial delay
-            const delay = 800 * Math.pow(1.5, attempts - 1);
-            console.log(`Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          } else {
-            throw err; // Re-throw the error if max attempts reached
+          console.error(`❌ Error on attempt ${attempt + 1}:`, err);
+          if (attempt < MAX_RETRIES - 1) {
+            // Wait with exponential backoff before retrying
+            const backoffTime = 1000 * Math.pow(2, attempt);
+            console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, backoffTime));
           }
         }
       }
       
-      // Call the onToggleStatus callback if provided
+      // Call the parent's status toggle callback if provided
       if (onToggleStatus) {
+        console.log(`📣 Calling onToggleStatus callback for question ${questionId} with ${newStatus}`);
         onToggleStatus(questionId, newStatus);
       }
       
-      // Force refresh UI again after successful update
-      if (questions && success) {
-        const updatedQuestions = questions.map(q => 
+      // If update was successful, make one more update to the question list
+      // This ensures any other components see the latest state
+      if (success && questions && onStatusUpdated) {
+        // Double-check that we're using the latest questions
+        const finalQuestions = questions.map(q => 
           q.id === questionId 
             ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
             : q
         );
         
-        // This helps force another re-render after the API update
-        if (onStatusUpdated) {
-          onStatusUpdated(updatedQuestions);
-        }
+        console.log(`📊 Final UI update for question ${questionId}`);
+        onStatusUpdated(finalQuestions);
       }
       
-      // Make sure we show loading state for at least MIN_LOADING_TIME
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < MIN_LOADING_TIME) {
-        await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
+      // If the update failed after all retries
+      if (!success) {
+        throw new Error("Failed to update question status after multiple attempts");
       }
       
-      // Only now clear optimistic update if successful, to avoid any flicker between states
-      if (success) {
-        // Keep the optimistic update a bit longer to ensure everything syncs
-        setTimeout(() => {
-          setOptimisticStatusUpdates(prev => {
-            const updated = { ...prev };
-            delete updated[questionId];
-            return updated;
-          });
-        }, 1000); // Wait 1 second after loading completes before removing optimistic update
-      }
     } catch (error) {
-      console.error('Error toggling question status:', error);
+      console.error('❌ Error toggling question status:', error);
       
-      // Only revert optimistic update on error after a delay
-      setTimeout(() => {
-        setOptimisticStatusUpdates(prev => {
-          const updated = { ...prev };
-          delete updated[questionId];
-          return updated;
-        });
-        
-        // Show error feedback
-        setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. Please try again.`);
-        setTimeout(() => setError(null), 5000);
-      }, 1000);
+      // Show error message to the user
+      setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. The UI will show the updated status, but it may not be saved.`);
+      
+      // Do NOT revert the optimistic update immediately
+      // This prevents UI flicker and confusing the user
+      // The background refresh will correct it if needed
+      
+      // Clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
     } finally {
+      // Ensure minimum loading time for UI feedback
+      const elapsed = Date.now() - startTime;
+      const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
+      
+      // Wait for minimum time to complete before removing loading state
+      if (remainingTime > 0) {
+        console.log(`⏱️ Waiting ${remainingTime}ms to ensure minimum loading display time`);
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+      
       setUpdatingStatusId(null);
+      
+      // Important: Don't clear optimistic updates here
+      // Keep them in place to avoid UI flickers
+      // Backend processes will correct any inconsistencies
+      
+      console.log(`🏁 Status toggle operation complete for question ${questionId}`);
     }
   }, [onToggleStatus, questions, onStatusUpdated]);
   
