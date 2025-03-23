@@ -14,6 +14,7 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [showControls] - Whether to show edit and delete buttons (defaults to true)
  * @property {function} [onDelete] - Optional callback for when a question is deleted
  * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
+ * @property {function} [onStatusUpdated] - Optional callback when questions are updated (for forcing refresh)
  * @property {string} [emptyMessage] - Message to display when there are no questions
  * @property {boolean} [isLoading] - Whether questions are currently loading
  */
@@ -26,6 +27,7 @@ interface QuestionListProps {
   showControls?: boolean;
   onDelete?: (questionId: string) => void;
   onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
+  onStatusUpdated?: (updatedQuestions: Question[]) => void;
 }
 
 /**
@@ -48,7 +50,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   emptyMessage = "No questions yet.",
   showControls = true,
   onDelete,
-  onToggleStatus
+  onToggleStatus,
+  onStatusUpdated
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
@@ -151,14 +154,44 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       [questionId]: newStatus
     }));
     
+    // Set updating status
     setUpdatingStatusId(questionId);
     
+    // Add delay to show loading state (prevents double clicks and UI flashing)
+    const MIN_LOADING_TIME = 400; // ms
+    const startTime = Date.now();
+    
     try {
-      await updateQuestionStatus(questionId, newStatus);
+      // Try to update status with multiple attempts if needed
+      let success = false;
+      let attempts = 0;
+      const maxAttempts = 2;
+      
+      while (!success && attempts < maxAttempts) {
+        try {
+          success = await updateQuestionStatus(questionId, newStatus);
+          if (!success) throw new Error("Update returned false");
+        } catch (err) {
+          attempts++;
+          if (attempts < maxAttempts) {
+            // Small delay before retry
+            await new Promise(resolve => setTimeout(resolve, 300));
+            console.log(`Retrying status update for ${questionId}, attempt ${attempts+1}`);
+          } else {
+            throw err; // Re-throw the error if max attempts reached
+          }
+        }
+      }
       
       // Call the onToggleStatus callback if provided
       if (onToggleStatus) {
         onToggleStatus(questionId, newStatus);
+      }
+      
+      // Make sure we show loading state for at least MIN_LOADING_TIME
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime < MIN_LOADING_TIME) {
+        await new Promise(resolve => setTimeout(resolve, MIN_LOADING_TIME - elapsedTime));
       }
       
       // Clear optimistic update after success
@@ -166,7 +199,21 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         const updated = { ...prev };
         delete updated[questionId];
         return updated;
-        });
+      });
+      
+      // Force refresh UI
+      if (questions) {
+        const updatedQuestions = questions.map(q => 
+          q.id === questionId 
+            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+            : q
+        );
+        
+        // This can help force a re-render if the DB update doesn't trigger callback
+        if (onStatusUpdated) {
+          onStatusUpdated(updatedQuestions);
+        }
+      }
     } catch (error) {
       console.error('Error toggling question status:', error);
       
@@ -176,10 +223,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         delete updated[questionId];
         return updated;
       });
+      
+      // Show error feedback
+      setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}`);
+      setTimeout(() => setError(null), 3000);
     } finally {
       setUpdatingStatusId(null);
     }
-  }, [onToggleStatus]);
+  }, [onToggleStatus, questions, onStatusUpdated]);
   
   /**
    * Check if user can edit the question

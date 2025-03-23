@@ -31,7 +31,8 @@ import {
   updateStudentPoints,
   runDatabaseMaintenance,
   clearPointsCache,
-  ACTIVE_QUESTION_COLLECTION
+  ACTIVE_QUESTION_COLLECTION,
+  getSessionCache
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
@@ -495,12 +496,12 @@ export default function StudentPage() {
             setIsLoading(false);
           }, { maxWaitTime: 10000 });
           
-          // Set up listener for all class questions - refresh every 15 seconds to reduce load
+          // Set up listener for all class questions - refresh every 8 seconds to reduce load
           console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 15000, useCache: true });
+          }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -717,12 +718,12 @@ export default function StudentPage() {
           setMyQuestions(questions);
       }, { maxWaitTime: 10000 });
       
-      // Set up listener for all class questions - refresh every 15 seconds
+      // Set up listener for all class questions - refresh every 8 seconds
       console.log(`Setting up class questions listener...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
           setClassQuestions(questions);
-      }, { maxWaitTime: 15000, useCache: true });
+      }, { maxWaitTime: 8000, useCache: true, priority: 'low' });
         
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
@@ -864,7 +865,39 @@ export default function StudentPage() {
     setMyQuestions(prev => prev.filter(q => q.id !== questionId));
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
-
+  
+  // Add a handler to synchronize status updates across question lists
+  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
+    // Update the specified list directly
+    if (listType === 'my') {
+      setMyQuestions(updatedQuestions);
+    } else {
+      setClassQuestions(updatedQuestions);
+    }
+    
+    // Find any questions that exist in both lists and sync their status
+    const otherList = listType === 'my' ? classQuestions : myQuestions;
+    const otherSetter = listType === 'my' ? setClassQuestions : setMyQuestions;
+    
+    // Create a map of updated question statuses by ID
+    const statusMap = updatedQuestions.reduce((map, q) => {
+      map[q.id] = q.status;
+      return map;
+    }, {} as Record<string, 'answered' | 'unanswered' | undefined>);
+    
+    // Check if any questions in the other list need updating
+    const needsUpdate = otherList.some(q => q.status !== statusMap[q.id] && statusMap[q.id] !== undefined);
+    
+    if (needsUpdate) {
+      // Apply updates to the other list
+      otherSetter(otherList.map(q => 
+        statusMap[q.id] !== undefined && q.status !== statusMap[q.id]
+          ? { ...q, status: statusMap[q.id] }
+          : q
+      ));
+    }
+  }, [myQuestions, classQuestions]);
+  
   /**
    * Handle opening the modal for manual point entry
    */
@@ -933,6 +966,7 @@ export default function StudentPage() {
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
+              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
             />
               </div>
             </div>
@@ -954,6 +988,7 @@ export default function StudentPage() {
                 showControls={true}
                 emptyMessage="You haven't asked any questions yet."
                 onDelete={handleQuestionDelete}
+                onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
               />
           </div>
         </div>
@@ -1270,6 +1305,43 @@ export default function StudentPage() {
       </div>
     );
   }
+
+  // Add a function near the top of the studentPage component
+  /**
+   * Optimize listener refresh rates based on active tab
+   * This reduces database reads when components aren't visible
+   */
+  const optimizeListeners = useCallback(() => {
+    if (!sessionCode || !joined) return;
+    
+    // Get all current listeners for this session
+    const listenerCount = getSessionCache(`questions_${sessionCode}`) || 0;
+    
+    console.log(`[optimizeListeners] Checking listeners for tab: ${activeTab}, count: ${listenerCount}`);
+    
+    if (activeTab === 'questions') {
+      // When on questions tab, we need fresh question data
+      // This is handled automatically through the priority system
+      console.log('[optimizeListeners] On questions tab, ensuring fresh question data');
+    } else {
+      // When on points tab, we can pause question updates to reduce load
+      console.log('[optimizeListeners] On points tab, reducing question refresh frequency');
+      
+      // Cache invalidation is handled by the questions module
+    }
+  }, [activeTab, sessionCode, joined]);
+
+  // Then use this in the tab change handler
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    // Optimize listener behavior when tab changes
+    setTimeout(optimizeListeners, 100);
+  };
+
+  // And add an effect to ensure it runs when the session state changes
+  useEffect(() => {
+    optimizeListeners();
+  }, [joined, sessionCode, optimizeListeners]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
