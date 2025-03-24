@@ -857,16 +857,14 @@ export default function StudentPage() {
     });
 
     // Update both lists using the status map
-    if (listType === 'my') {
-      setMyQuestions(prevQuestions => {
-        const updated = prevQuestions.map(q => ({
-          ...q,
-          status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-        }));
-        console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
-        return updated;
-      });
-    }
+    setMyQuestions(prevQuestions => {
+      const updated = prevQuestions.map(q => ({
+        ...q,
+        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
+      }));
+      console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
+      return updated;
+    });
 
     setClassQuestions(prevQuestions => {
       const updated = prevQuestions.map(q => ({
@@ -962,18 +960,18 @@ export default function StudentPage() {
               </svg>
               My Questions
             </h2>
-              <QuestionList 
-                questions={myQuestions} 
-                isProfessor={false}
+            <QuestionList
+              questions={myQuestions}
+              isProfessor={false}
               isStudent={true}
               studentId={studentId}
-                showControls={true}
-                emptyMessage="You haven't asked any questions yet."
-                onDelete={handleQuestionDelete}
-                onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
+              showControls={true}
+              emptyMessage="You haven't asked any questions yet."
+              onDelete={handleQuestionDelete}
+              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
             />
+          </div>
         </div>
-      </div>
       </div>
     );
   };
