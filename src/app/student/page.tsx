@@ -844,7 +844,7 @@ export default function StudentPage() {
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
-  // Add a simpler handler to synchronize status updates across question lists
+  // Handle status updates for both lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
     console.log(`[handleQuestionStatusUpdate] Updating ${listType} list with ${updatedQuestions.length} questions`);
     
@@ -857,14 +857,16 @@ export default function StudentPage() {
     });
 
     // Update both lists using the status map
-    setMyQuestions(prevQuestions => {
-      const updated = prevQuestions.map(q => ({
-        ...q,
-        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-      }));
-      console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
-      return updated;
-    });
+    if (listType === 'my') {
+      setMyQuestions(prevQuestions => {
+        const updated = prevQuestions.map(q => ({
+          ...q,
+          status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
+        }));
+        console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
+        return updated;
+      });
+    }
 
     setClassQuestions(prevQuestions => {
       const updated = prevQuestions.map(q => ({
@@ -876,7 +878,7 @@ export default function StudentPage() {
     });
 
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
-  }, []); // No dependencies needed since we're using functional updates
+  }, []);
   
   /**
    * Handle opening the modal for manual point entry

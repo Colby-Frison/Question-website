@@ -171,22 +171,26 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setError(null);
     
     try {
-      // Simple direct database update
-      await updateQuestionStatus(questionId, newStatus);
+      // Update database first
+      const success = await updateQuestionStatus(questionId, newStatus);
       
-      // Store the status locally
+      if (!success) {
+        throw new Error('Failed to update status in database');
+      }
+      
+      // Only update local state if database update was successful
       setManualStatuses(prev => ({
         ...prev,
         [questionId]: newStatus
       }));
       
-      // Update the UI immediately
+      // Update the parent component with the new status
       if (questions && onStatusUpdated) {
         const updatedQuestions = questions.map(q => 
           q.id === questionId 
             ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
             : q
-        );
+        ) as Question[];
         
         // Notify parent of the update
         onStatusUpdated(updatedQuestions);
@@ -206,11 +210,6 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         delete updated[questionId];
         return updated;
       });
-      
-      // Clear error after 5 seconds
-      setTimeout(() => {
-        setError(null);
-      }, 5000);
     } finally {
       // Clear the updating status after a short delay
       setTimeout(() => {
