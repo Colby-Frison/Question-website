@@ -170,27 +170,27 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setUpdatingStatusId(questionId);
     setError(null);
     
-    // Store the status locally first
-    setManualStatuses(prev => ({
-      ...prev,
-      [questionId]: newStatus
-    }));
-    
-    // Apply update to the UI immediately
-    if (questions && onStatusUpdated) {
-      const updatedQuestions = questions.map(q => 
-        q.id === questionId 
-          ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
-          : q
-      );
-      
-      // Update UI immediately
-      onStatusUpdated(updatedQuestions);
-    }
-    
     try {
       // Simple direct database update
       await updateQuestionStatus(questionId, newStatus);
+      
+      // Store the status locally
+      setManualStatuses(prev => ({
+        ...prev,
+        [questionId]: newStatus
+      }));
+      
+      // Update the UI immediately
+      if (questions && onStatusUpdated) {
+        const updatedQuestions = questions.map(q => 
+          q.id === questionId 
+            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
+            : q
+        );
+        
+        // Notify parent of the update
+        onStatusUpdated(updatedQuestions);
+      }
       
       // Call the parent's toggle callback if provided
       if (onToggleStatus) {
@@ -203,7 +203,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       // Revert the manual status on error
       setManualStatuses(prev => {
         const updated = { ...prev };
-        delete updated[questionId]; // Remove our manual override
+        delete updated[questionId];
         return updated;
       });
       
