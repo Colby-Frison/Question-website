@@ -12,6 +12,7 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [isStudent] - Whether the current user is a student
  * @property {string} [studentId] - ID of the current student, if applicable
  * @property {boolean} [showControls] - Whether to show edit and delete buttons (defaults to true)
+ * @property {boolean} [hideStatusIndicator] - Whether to hide status indicators
  * @property {function} [onDelete] - Optional callback for when a question is deleted
  * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
  * @property {function} [onStatusUpdated] - Optional callback when questions are updated (for forcing refresh)
@@ -25,6 +26,7 @@ interface QuestionListProps {
   studentId?: string;
   emptyMessage?: string;
   showControls?: boolean;
+  hideStatusIndicator?: boolean;
   onDelete?: (questionId: string) => void;
   onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
   onStatusUpdated?: (updatedQuestions: Question[]) => void;
@@ -49,6 +51,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   studentId = '',
   emptyMessage = "No questions yet.",
   showControls = true,
+  hideStatusIndicator = false,
   onDelete,
   onToggleStatus,
   onStatusUpdated
@@ -379,12 +382,14 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                     <span className="inline-block mr-2 text-gray-600 dark:text-gray-300">
                       {formatTimestamp(question.timestamp)}
                     </span>
-                    <span className="flex items-center">
-                      <span className={`inline-block w-2 h-2 rounded-full mr-1 ${statusClass}`}></span>
-                      <span className="text-gray-600 dark:text-gray-300">
-                        {effectiveStatus === 'answered' ? 'Answered' : 'Waiting for answer'}
+                    {!hideStatusIndicator && (
+                      <span className="flex items-center">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1 ${statusClass}`}></span>
+                        <span className="text-gray-600 dark:text-gray-300">
+                          {effectiveStatus === 'answered' ? 'Answered' : 'Waiting for answer'}
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </div>
           </div>
           
@@ -465,7 +470,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       </li>
       );
     });
-  }, [questions, editingId, editText, isUpdating, updatingStatusId, manualStatuses, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit, getEffectiveStatus]);
+  }, [questions, editingId, editText, isUpdating, updatingStatusId, manualStatuses, error, isProfessor, isStudent, studentId, showControls, hideStatusIndicator, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit, getEffectiveStatus]);
 
   if (questions.length === 0) return renderEmptyState;
 

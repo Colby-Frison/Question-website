@@ -1049,6 +1049,7 @@ export default function StudentPage() {
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
               onToggleStatus={handleToggleStatus}
+              hideStatusIndicator={true}
             />
           </div>
         </div>
