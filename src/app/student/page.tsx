@@ -928,14 +928,56 @@ export default function StudentPage() {
     }
   }, [studentId, sessionCode]);
   
-  // Special function for handling status toggles
-  const handleToggleStatus = useCallback((questionId: string, newStatus: 'answered' | 'unanswered') => {
-    console.log(`[handleToggleStatus] Question ${questionId} toggled to ${newStatus}`);
+  // Direct implementation of toggle status
+  const handleToggleStatus = useCallback(async (questionId: string, newStatus: 'answered' | 'unanswered') => {
+    console.log(`[Direct Toggle] Setting question ${questionId} to ${newStatus}`);
     
-    // Create a single question update to pass to handleQuestionStatusUpdate
-    const questionUpdate = { id: questionId, status: newStatus } as Question;
-    handleQuestionStatusUpdate([questionUpdate]);
-  }, [handleQuestionStatusUpdate]);
+    // Immediately update UI for a responsive feel
+    setMyQuestions(prev => prev.map(q => 
+      q.id === questionId ? { ...q, status: newStatus } : q
+    ));
+    
+    setClassQuestions(prev => prev.map(q => 
+      q.id === questionId ? { ...q, status: newStatus } : q
+    ));
+    
+    try {
+      // Import the function at the top of the file
+      const { updateQuestionStatus } = await import('@/lib/questions');
+      
+      // Update the database directly
+      const success = await updateQuestionStatus(questionId, newStatus);
+      
+      if (!success) {
+        console.error(`[Direct Toggle] Failed to update question status in database`);
+        // Revert UI changes if database update failed
+        setMyQuestions(prev => prev.map(q => 
+          q.id === questionId ? { ...q, status: newStatus === 'answered' ? 'unanswered' : 'answered' } : q
+        ));
+        
+        setClassQuestions(prev => prev.map(q => 
+          q.id === questionId ? { ...q, status: newStatus === 'answered' ? 'unanswered' : 'answered' } : q
+        ));
+      } else {
+        console.log(`[Direct Toggle] Successfully updated question status in database`);
+        
+        // Force refresh both lists to ensure they have the latest data
+        if (studentId && sessionCode) {
+          listenForUserQuestions(studentId, sessionCode, (questions) => {
+            console.log(`[Direct Toggle] Refreshed my questions after toggle`);
+            setMyQuestions(questions);
+          }, { maxWaitTime: 0 });
+          
+          listenForQuestions(sessionCode, (questions) => {
+            console.log(`[Direct Toggle] Refreshed class questions after toggle`);
+            setClassQuestions(questions);
+          }, { maxWaitTime: 0 });
+        }
+      }
+    } catch (error) {
+      console.error(`[Direct Toggle] Error updating question status:`, error);
+    }
+  }, [studentId, sessionCode]);
 
   /**
    * Handle opening the modal for manual point entry
@@ -1019,17 +1061,63 @@ export default function StudentPage() {
               </svg>
               My Questions
             </h2>
-            <QuestionList
-              questions={myQuestions}
-              isProfessor={false}
-              isStudent={true}
-              studentId={studentId}
-              showControls={true}
-              emptyMessage="You haven't asked any questions yet."
-              onDelete={handleQuestionDelete}
-              onToggleStatus={handleToggleStatus}
-              onStatusUpdated={handleQuestionStatusUpdate}
-            />
+            
+            {/* Direct implementation of question list for better control */}
+            {myQuestions.length === 0 ? (
+              <div className="rounded-md bg-background-secondary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
+                <p className="text-sm sm:text-base text-text-secondary dark:text-dark-text-secondary">
+                  You haven't asked any questions yet.
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary w-full overflow-hidden">
+                {myQuestions.map((question) => {
+                  const status = question.status || 'unanswered';
+                  const isAnswered = status === 'answered';
+                  
+                  return (
+                    <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
+                      <div className="flex items-center justify-between pb-2">
+                        <div className="flex items-center">
+                          <span className="text-xs text-text-tertiary dark:text-dark-text-tertiary">
+                            {new Date(question.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleQuestionDelete(question.id)}
+                            className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                            title="Delete question"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm sm:text-base text-text-primary dark:text-dark-text-primary break-words whitespace-normal overflow-wrap-anywhere pr-8">
+                        {question.text}
+                      </div>
+                      
+                      <div className="mt-2 flex items-center">
+                        <button
+                          onClick={() => handleToggleStatus(question.id, isAnswered ? 'unanswered' : 'answered')}
+                          className={`px-3 py-1 rounded-full text-xs font-medium flex items-center
+                            ${isAnswered 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full mr-1.5 ${isAnswered ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-500 dark:bg-gray-400'}`}></span>
+                          {isAnswered ? 'Answered' : 'Not Answered'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
       </div>
@@ -1312,7 +1400,7 @@ export default function StudentPage() {
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
             <div className="flex flex-col gap-2">
-        <button
+              <button
                 onClick={() => setError(null)}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
@@ -1323,12 +1411,12 @@ export default function StudentPage() {
                 className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-dark-text-inverted transition-colors"
               >
                 Refresh Page
-        </button>
+              </button>
             </div>
           </div>
+        </div>
       </div>
-    </div>
-  );
+    );
   }
 
   // Show loading state
@@ -1345,6 +1433,26 @@ export default function StudentPage() {
       </div>
     );
   }
+
+  // Force refresh my questions every 3 seconds
+  useEffect(() => {
+    if (!studentId || !sessionCode) return;
+    
+    console.log('[AutoRefresh] Setting up automatic refresh of my questions');
+    
+    const refreshInterval = setInterval(() => {
+      console.log('[AutoRefresh] Forcing my questions refresh...');
+      listenForUserQuestions(studentId, sessionCode, (questions) => {
+        console.log(`[AutoRefresh] Received ${questions.length} refreshed personal questions`);
+        setMyQuestions(questions);
+      }, { maxWaitTime: 0 });
+    }, 3000);
+    
+    return () => {
+      console.log('[AutoRefresh] Clearing automatic refresh interval');
+      clearInterval(refreshInterval);
+    };
+  }, [studentId, sessionCode]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
