@@ -968,7 +968,7 @@ export default function StudentPage() {
               showControls={true}
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
+              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
             />
           </div>
         </div>
