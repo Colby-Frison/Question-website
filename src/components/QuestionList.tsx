@@ -171,32 +171,37 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     
     try {
       // Set the manual status immediately for responsive UI
-      setManualStatuses(prev => ({
-        ...prev,
-        [questionId]: newStatus
-      }));
+      setManualStatuses(prev => {
+        console.log(`[QuestionList] Setting manual status override for ${questionId} to ${newStatus}`);
+        return {
+          ...prev,
+          [questionId]: newStatus
+        };
+      });
       
-      // If there's a callback for toggle status, call it immediately
+      // Call both callbacks immediately for instant UI updates
       if (onToggleStatus) {
-        console.log(`[QuestionList] Calling onToggleStatus callback for ${questionId} with status ${newStatus}`);
+        console.log(`[QuestionList] Calling onToggleStatus callback with ${questionId}, ${newStatus}`);
         onToggleStatus(questionId, newStatus);
       }
       
-      // Also update the parent component with the updated questions array if that callback exists
       if (onStatusUpdated && questions) {
-        console.log(`[QuestionList] Calling onStatusUpdated callback with updated questions`);
         const updatedQuestions = questions.map(q => 
           q.id === questionId ? { ...q, status: newStatus as 'answered' | 'unanswered' } : q
         );
+        console.log(`[QuestionList] Calling onStatusUpdated callback with updated questions`);
         onStatusUpdated(updatedQuestions);
       }
       
       // Update the database
+      console.log(`[QuestionList] Updating database with new status: ${newStatus}`);
       const success = await updateQuestionStatus(questionId, newStatus);
       
       if (!success) {
         throw new Error('Failed to update status in database');
       }
+      
+      console.log(`[QuestionList] Database update successful`);
     } catch (error) {
       console.error(`[QuestionList] Error toggling question status:`, error);
       setError(`Failed to update status. Please try again.`);
@@ -210,14 +215,16 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       
       // If callbacks were called, call them again with the original status
       if (onToggleStatus) {
+        console.log(`[QuestionList] Reverting onToggleStatus callback with original status: ${currentStatus}`);
         onToggleStatus(questionId, currentStatus);
       }
       
       if (onStatusUpdated && questions) {
+        console.log(`[QuestionList] Reverting onStatusUpdated callback with original questions`);
         onStatusUpdated(questions);
       }
     } finally {
-      // Clear updating status after a short delay
+      // Clear updating status shortly after
       setTimeout(() => {
         setUpdatingStatusId(null);
       }, 500);

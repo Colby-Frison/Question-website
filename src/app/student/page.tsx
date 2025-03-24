@@ -466,20 +466,19 @@ export default function StudentPage() {
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
-          // Set up listener for student's questions with shorter refresh time
-          console.log("Setting up personal questions listener with short refresh time...");
+          // Set up listener for student's questions with immediate refresh
+          console.log(`Setting up personal questions listener with immediate refresh...`);
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} personal questions`);
+            console.log(`Received ${questions.length} personal questions:`, questions);
             setMyQuestions(questions);
-            setIsLoading(false);
-          }, { maxWaitTime: 1000 }); // Shorter wait time for more responsive updates
+          }, { maxWaitTime: 0 }); // No wait time for immediate updates
           
-          // Set up listener for all class questions with short refresh time
-          console.log("Setting up class questions listener with short refresh time...");
+          // Set up listener for all class questions with immediate refresh
+          console.log(`Setting up class questions listener with immediate refresh...`);
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} class questions`);
+            console.log(`Received ${questions.length} class questions:`, questions);
             setClassQuestions(questions);
-          }, { maxWaitTime: 1000, useCache: false }); // No cache, get fresh data
+          }, { maxWaitTime: 0, useCache: false }); // No cache or wait time for immediate updates
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -689,19 +688,19 @@ export default function StudentPage() {
         
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions with shorter refresh time
-      console.log(`Setting up personal questions listener with short refresh time...`);
+      // Set up listener for student's questions with immediate refresh
+      console.log(`Setting up personal questions listener with immediate refresh...`);
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions:`, questions);
           setMyQuestions(questions);
-      }, { maxWaitTime: 1000 });
+      }, { maxWaitTime: 0 });
       
-      // Set up listener for all class questions with short refresh time
-      console.log(`Setting up class questions listener with short refresh time...`);
+      // Set up listener for all class questions with immediate refresh
+      console.log(`Setting up class questions listener with immediate refresh...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
           setClassQuestions(questions);
-      }, { maxWaitTime: 1000, useCache: false });
+      }, { maxWaitTime: 0, useCache: false });
         
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
@@ -898,7 +897,7 @@ export default function StudentPage() {
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
   }, []);
   
-  // New specialized function for handling status toggle
+  // Special function for handling status toggles
   const handleToggleStatus = useCallback((questionId: string, newStatus: 'answered' | 'unanswered') => {
     console.log(`[handleToggleStatus] Question ${questionId} toggled to ${newStatus}`);
     
@@ -907,7 +906,7 @@ export default function StudentPage() {
       const updated = prevQuestions.map(q => 
         q.id === questionId ? { ...q, status: newStatus } : q
       );
-      console.log(`[handleToggleStatus] Updated My Questions immediately`);
+      console.log(`[handleToggleStatus] Updated My Questions immediately:`, updated);
       return updated;
     });
     
@@ -915,25 +914,26 @@ export default function StudentPage() {
       const updated = prevQuestions.map(q => 
         q.id === questionId ? { ...q, status: newStatus } : q
       );
-      console.log(`[handleToggleStatus] Updated Class Questions immediately`);
+      console.log(`[handleToggleStatus] Updated Class Questions immediately:`, updated);
       return updated;
     });
     
-    // Force refresh both lists after a short delay to ensure DB changes are reflected
-    setTimeout(() => {
-      if (studentId && sessionCode) {
-        console.log(`[handleToggleStatus] Refreshing question lists after toggle`);
-        listenForUserQuestions(studentId, sessionCode, (questions) => {
-          console.log(`Refreshed my questions after toggle`);
-          setMyQuestions(questions);
-        }, { maxWaitTime: 0 });
-        
-        listenForQuestions(sessionCode, (questions) => {
-          console.log(`Refreshed class questions after toggle`);
-          setClassQuestions(questions);
-        }, { maxWaitTime: 0, useCache: false });
-      }
-    }, 500);
+    // Force refresh both lists immediately from the database
+    if (studentId && sessionCode) {
+      console.log(`[handleToggleStatus] Forcing immediate refresh of both lists`);
+      
+      // Force immediate refresh of My Questions
+      listenForUserQuestions(studentId, sessionCode, (questions) => {
+        console.log(`[handleToggleStatus] Refreshed My Questions from DB:`, questions);
+        setMyQuestions(questions);
+      }, { maxWaitTime: 0 });
+      
+      // Force immediate refresh of Class Questions
+      listenForQuestions(sessionCode, (questions) => {
+        console.log(`[handleToggleStatus] Refreshed Class Questions from DB:`, questions);
+        setClassQuestions(questions);
+      }, { maxWaitTime: 0, useCache: false });
+    }
   }, [studentId, sessionCode]);
 
   /**
