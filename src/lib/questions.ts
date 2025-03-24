@@ -541,38 +541,26 @@ export const updateQuestionStatus = async (
     // Create a timestamp for this update
     const timestamp = Date.now();
     
-    // Update with a transaction to ensure atomicity
-    await runTransaction(db, async (transaction) => {
-      // Get the latest question data in the transaction
-      const freshDocSnap = await transaction.get(questionRef);
-      if (!freshDocSnap.exists()) {
-        throw new Error("Question no longer exists");
-      }
-      
-      // Update the document with the new status
-      transaction.update(questionRef, {
-        status,
-        statusUpdatedAt: timestamp,
-        lastModified: timestamp
-      });
+    // Direct update - simpler and more reliable
+    await updateDoc(questionRef, {
+      status,
+      statusUpdatedAt: timestamp,
+      lastModified: timestamp,
+      statusUpdateSource: 'direct-update' // Add a marker to track how this update was made
     });
     
-    console.log(`[updateQuestionStatus] Successfully updated status to ${status} in transaction`);
+    console.log(`[updateQuestionStatus] Successfully updated status to ${status}`);
     
-    // Clear cache for this session to ensure listeners get the update
+    // Clear cache
     if (sessionCode) {
       cache.questions.delete(sessionCode);
       console.log(`[updateQuestionStatus] Cleared cache for session: ${sessionCode}`);
       
-      // Schedule multiple refreshes to ensure all clients get the updates
-      const refreshDelays = [300, 1000, 3000];
-      
-      for (const delay of refreshDelays) {
-        setTimeout(() => {
-          forceRefreshQuestions(sessionCode)
-            .catch(err => console.error(`[updateQuestionStatus] Error in ${delay}ms refresh:`, err));
-        }, delay);
-      }
+      // Force a refresh
+      setTimeout(() => {
+        forceRefreshQuestions(sessionCode)
+          .catch(err => console.error(`[updateQuestionStatus] Error in refresh:`, err));
+      }, 200);
     }
     
     return true;

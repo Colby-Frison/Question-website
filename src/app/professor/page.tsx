@@ -453,31 +453,17 @@ export default function ProfessorPage() {
       const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
       console.log(`Updating question ${id} status to ${newStatus}`);
       
-      // Set optimistic update in the UI for immediate feedback
-      setQuestions(currentQuestions => 
-        currentQuestions.map(q => 
-          q.id === id ? { ...q, status: newStatus } : q
-        )
-      );
-      
-      // Add a small delay before making the API call to avoid race conditions
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Don't need to do optimistic updates here - the QuestionList component handles that
       
       // Make the actual status update
       const success = await updateQuestionStatus(id, newStatus);
       
-      if (success) {
-        console.log(`Question ${id} status successfully updated to ${newStatus}`);
-      } else {
+      if (!success) {
         console.error(`Question ${id} status update failed`);
-        // Revert optimistic update if the API call failed
-        setQuestions(currentQuestions => 
-          currentQuestions.map(q => 
-            q.id === id ? { ...q, status: currentStatus } : q
-          )
-        );
         throw new Error("Status update failed");
       }
+      
+      console.log(`Question ${id} status successfully updated to ${newStatus}`);
     } catch (error) {
       console.error("Error updating question status:", error);
       setError("Failed to update question status. Please try again.");

@@ -844,59 +844,44 @@ export default function StudentPage() {
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
-  // Add a more robust handler to synchronize status updates and edits across question lists
+  // Add a simpler handler to synchronize status updates across question lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
-    console.log(`[handleQuestionStatusUpdate] Processing updates for ${listType} list with ${updatedQuestions.length} questions`);
+    console.log(`[handleQuestionStatusUpdate] Received updates for ${listType} list with ${updatedQuestions.length} questions`);
     
-    // Get the current state of both lists
-    const currentMyList = [...myQuestions];
-    const currentClassList = [...classQuestions];
-    
-    // First, apply updates to the directly modified list
+    // Simply update the specified list first
     if (listType === 'my') {
-      console.log('[handleQuestionStatusUpdate] Updating my questions list directly');
       setMyQuestions(updatedQuestions);
     } else {
-      console.log('[handleQuestionStatusUpdate] Updating class questions list directly');
       setClassQuestions(updatedQuestions);
     }
     
-    // Create a map of questions by ID for the updated list
-    const updatedQuestionsMap = updatedQuestions.reduce((map, q) => {
-      map[q.id] = q;
-      return map;
-    }, {} as Record<string, Question>);
-    
-    // Get the other list that needs to be synchronized
-    const otherList = listType === 'my' ? currentClassList : currentMyList;
+    // Now, take any status updates from this list and apply them to the other list
+    const otherList = listType === 'my' ? classQuestions : myQuestions;
     const setOtherList = listType === 'my' ? setClassQuestions : setMyQuestions;
     
-    // Check if any questions in the other list need to be updated
-    const needsSync = otherList.some(q => 
-      updatedQuestionsMap[q.id] && 
-      (q.status !== updatedQuestionsMap[q.id].status || q.text !== updatedQuestionsMap[q.id].text)
-    );
+    // Create a status map from the updated questions
+    const statusMap = updatedQuestions.reduce((map, q) => {
+      map[q.id] = q.status;
+      return map;
+    }, {} as Record<string, 'answered' | 'unanswered' | undefined>);
     
-    if (needsSync) {
-      console.log('[handleQuestionStatusUpdate] Synchronizing changes to the other list');
-      
-      // Update the other list with changes from the updated list
-      const syncedOtherList = otherList.map(q => {
-        if (updatedQuestionsMap[q.id]) {
-          // If the question exists in both lists, sync its properties
-          return {
-            ...q,
-            status: updatedQuestionsMap[q.id].status,
-            text: updatedQuestionsMap[q.id].text
-          };
-        }
-        return q;
-      });
-      
-      // Update the other list
-      setOtherList(syncedOtherList);
+    // Check if we need to update the other list
+    let hasChanges = false;
+    const updatedOtherList = otherList.map(q => {
+      // If this question exists in both lists and the status is different
+      if (statusMap[q.id] && q.status !== statusMap[q.id]) {
+        hasChanges = true;
+        return { ...q, status: statusMap[q.id] };
+      }
+      return q;
+    });
+    
+    // Only update if there were changes
+    if (hasChanges) {
+      console.log(`[handleQuestionStatusUpdate] Syncing status changes to the ${listType === 'my' ? 'class' : 'my'} list`);
+      setOtherList(updatedOtherList);
     }
-  }, [myQuestions, classQuestions]);
+  }, [myQuestions, classQuestions, setMyQuestions, setClassQuestions]);
   
   /**
    * Handle opening the modal for manual point entry

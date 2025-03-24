@@ -58,7 +58,9 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [optimisticStatusUpdates, setOptimisticStatusUpdates] = useState<Record<string, 'answered' | 'unanswered'>>({});
+  
+  // Simple way to track manual overrides locally
+  const [manualStatuses, setManualStatuses] = useState<Record<string, 'answered' | 'unanswered'>>({});
 
   /**
    * Format timestamp to a readable date/time
@@ -168,7 +170,13 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     setUpdatingStatusId(questionId);
     setError(null);
     
-    // Apply optimistic update to the UI immediately
+    // Store the status locally first
+    setManualStatuses(prev => ({
+      ...prev,
+      [questionId]: newStatus
+    }));
+    
+    // Apply update to the UI immediately
     if (questions && onStatusUpdated) {
       const updatedQuestions = questions.map(q => 
         q.id === questionId 
@@ -178,38 +186,19 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       
       // Update UI immediately
       onStatusUpdated(updatedQuestions);
-      console.log(`[QuestionList] Applied optimistic UI update for question ${questionId}`);
+      console.log(`[QuestionList] Applied UI update for question ${questionId}`);
     }
     
     try {
       // Make the actual API call to update the status
-      const success = await updateQuestionStatus(questionId, newStatus);
+      await updateQuestionStatus(questionId, newStatus);
       
-      if (success) {
-        console.log(`[QuestionList] Successfully updated question ${questionId} status to ${newStatus}`);
-        
-        // Call the parent's status toggle callback if provided
-        if (onToggleStatus) {
-          console.log(`[QuestionList] Calling parent's onToggleStatus callback`);
-          onToggleStatus(questionId, newStatus);
-        }
-      } else {
-        console.error(`[QuestionList] Failed to update question ${questionId} status`);
-        
-        // Revert the optimistic update
-        if (questions && onStatusUpdated) {
-          const revertedQuestions = questions.map(q => 
-            q.id === questionId 
-              ? { ...q, status: currentStatus } 
-              : q
-          );
-          
-          // Update UI with reverted status
-          onStatusUpdated(revertedQuestions);
-          console.log(`[QuestionList] Reverted optimistic UI update for question ${questionId}`);
-        }
-        
-        throw new Error("Status update failed");
+      console.log(`[QuestionList] Successfully updated question ${questionId} status to ${newStatus}`);
+      
+      // Call the parent's status toggle callback if provided
+      if (onToggleStatus) {
+        console.log(`[QuestionList] Calling parent's onToggleStatus callback`);
+        onToggleStatus(questionId, newStatus);
       }
     } catch (error) {
       console.error(`[QuestionList] Error toggling question status:`, error);
@@ -220,8 +209,10 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         setError(null);
       }, 5000);
     } finally {
-      // Clear the updating status
-      setUpdatingStatusId(null);
+      // Clear the updating status after a delay to ensure UI feedback
+      setTimeout(() => {
+        setUpdatingStatusId(null);
+      }, 500);
     }
   }, [questions, onStatusUpdated, onToggleStatus]);
   
@@ -240,6 +231,18 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     // Professors can delete any question, students can only delete their own
     return isProfessor || (isStudent && studentId === question.studentId);
   };
+
+  /**
+   * Get the effective status of a question, prioritizing manual overrides
+   */
+  const getEffectiveStatus = useCallback((question: Question): 'answered' | 'unanswered' => {
+    // If we have a manual override, use that
+    if (manualStatuses[question.id]) {
+      return manualStatuses[question.id];
+    }
+    // Otherwise fall back to the question's status
+    return question.status || 'unanswered';
+  }, [manualStatuses]);
 
   /**
    * Renders the loading state when questions are being fetched
@@ -289,8 +292,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       const isUpdatingThis = isUpdating && editingId === question.id;
       const isUpdatingStatus = updatingStatusId === question.id;
       
-      // Get effective status accounting for optimistic updates
-      const effectiveStatus = optimisticStatusUpdates[question.id] || question.status;
+      // Get effective status using our helper function
+      const effectiveStatus = getEffectiveStatus(question);
       
       // Determine status indicator color
       const statusClass = effectiveStatus === 'answered' 
@@ -446,7 +449,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       </li>
       );
     });
-  }, [questions, editingId, editText, isUpdating, updatingStatusId, optimisticStatusUpdates, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit]);
+  }, [questions, editingId, editText, isUpdating, updatingStatusId, manualStatuses, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit, getEffectiveStatus]);
 
   if (questions.length === 0) return renderEmptyState;
 
