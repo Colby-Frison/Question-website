@@ -521,48 +521,16 @@ export const updateQuestionStatus = async (
   }
 
   try {
-    console.log(`[updateQuestionStatus] Updating question ${questionId} status to ${status}`);
-    
     // Reference to the question document
     const questionRef = doc(db, QUESTIONS_COLLECTION, questionId);
     
-    // First, verify the question exists
-    const questionDoc = await getDoc(questionRef);
-    
-    if (!questionDoc.exists()) {
-      console.error(`[updateQuestionStatus] Question ${questionId} not found`);
-      return false;
-    }
-    
-    // Get the question data
-    const questionData = questionDoc.data();
-    const sessionCode = questionData.sessionCode;
-    
-    // Create a timestamp for this update
-    const timestamp = Date.now();
-    
-    // Direct update - simpler and more reliable
+    // Simplified direct update
     await updateDoc(questionRef, {
       status,
-      statusUpdatedAt: timestamp,
-      lastModified: timestamp,
-      statusUpdateSource: 'direct-update' // Add a marker to track how this update was made
+      lastModified: Date.now()
     });
     
-    console.log(`[updateQuestionStatus] Successfully updated status to ${status}`);
-    
-    // Clear cache
-    if (sessionCode) {
-      cache.questions.delete(sessionCode);
-      console.log(`[updateQuestionStatus] Cleared cache for session: ${sessionCode}`);
-      
-      // Force a refresh
-      setTimeout(() => {
-        forceRefreshQuestions(sessionCode)
-          .catch(err => console.error(`[updateQuestionStatus] Error in refresh:`, err));
-      }, 200);
-    }
-    
+    console.log(`[updateQuestionStatus] Successfully set status to ${status}`);
     return true;
   } catch (error) {
     console.error(`[updateQuestionStatus] Failed to update question ${questionId} status:`, error);

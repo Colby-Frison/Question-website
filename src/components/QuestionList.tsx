@@ -186,30 +186,33 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       
       // Update UI immediately
       onStatusUpdated(updatedQuestions);
-      console.log(`[QuestionList] Applied UI update for question ${questionId}`);
     }
     
     try {
-      // Make the actual API call to update the status
+      // Simple direct database update
       await updateQuestionStatus(questionId, newStatus);
       
-      console.log(`[QuestionList] Successfully updated question ${questionId} status to ${newStatus}`);
-      
-      // Call the parent's status toggle callback if provided
+      // Call the parent's toggle callback if provided
       if (onToggleStatus) {
-        console.log(`[QuestionList] Calling parent's onToggleStatus callback`);
         onToggleStatus(questionId, newStatus);
       }
     } catch (error) {
       console.error(`[QuestionList] Error toggling question status:`, error);
-      setError(`Failed to update question status. Please try again.`);
+      setError(`Failed to update status. Please try again.`);
       
-      // Schedule error cleanup
+      // Revert the manual status on error
+      setManualStatuses(prev => {
+        const updated = { ...prev };
+        delete updated[questionId]; // Remove our manual override
+        return updated;
+      });
+      
+      // Clear error after 5 seconds
       setTimeout(() => {
         setError(null);
       }, 5000);
     } finally {
-      // Clear the updating status after a delay to ensure UI feedback
+      // Clear the updating status after a short delay
       setTimeout(() => {
         setUpdatingStatusId(null);
       }, 500);
@@ -377,15 +380,11 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                 {canControl && (
                   <div className="flex space-x-1 ml-2">
                     {/* Professor controls */}
-                {isProfessor && (
+                    {isProfessor && (
                       isUpdatingStatus ? (
-                    <button
+                        <button
                           disabled={true}
-                          className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                            effectiveStatus === 'answered' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
-                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
-                          }`}
+                          className="flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
                         >
                           <svg className="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -393,30 +392,35 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                           </svg>
                           <span>Updating...</span>
                         </button>
-                      ) : effectiveStatus === 'answered' ? (
+                      ) : (
                         <button
                           onClick={() => handleToggleStatus(question.id, effectiveStatus)}
-                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30"
-                          title="Mark as unanswered"
+                          className={`flex items-center justify-center px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                            effectiveStatus === 'answered' 
+                              ? 'bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700' 
+                              : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                          }`}
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Answered</span>
-                    </button>
-                      ) : (
-                    <button
-                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
-                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
-                          title="Mark as answered"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Mark Answered</span>
-                    </button>
+                          <div className="relative flex items-center">
+                            {effectiveStatus === 'answered' ? (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Answered</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                                <span>Not Answered</span>
+                              </>
+                            )}
+                          </div>
+                        </button>
                       )
-                )}
+                    )}
                 
                     {/* Student edit controls */}
                     {isStudent && studentId === question.studentId && (

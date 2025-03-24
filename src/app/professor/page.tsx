@@ -445,17 +445,13 @@ export default function ProfessorPage() {
    * Handle updating a question's status
    * 
    * @param id - The ID of the question to update
-   * @param currentStatus - The current status of the question
+   * @param newStatus - The new status of the question
    */
-  const handleToggleQuestionStatus = async (id: string, currentStatus: 'answered' | 'unanswered' | undefined) => {
+  const handleToggleQuestionStatus = async (id: string, newStatus: 'answered' | 'unanswered') => {
     try {
-      // Determine the new status
-      const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
       console.log(`Updating question ${id} status to ${newStatus}`);
       
-      // Don't need to do optimistic updates here - the QuestionList component handles that
-      
-      // Make the actual status update
+      // The QuestionList component handles UI updates, so we just need to update the database
       const success = await updateQuestionStatus(id, newStatus);
       
       if (!success) {

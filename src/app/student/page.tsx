@@ -838,7 +838,7 @@ export default function StudentPage() {
     }
   };
 
-  // Add a handler to delete questions from both myQuestions and classQuestions
+  // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
     setMyQuestions(prev => prev.filter(q => q.id !== questionId));
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
@@ -846,42 +846,41 @@ export default function StudentPage() {
   
   // Add a simpler handler to synchronize status updates across question lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
-    console.log(`[handleQuestionStatusUpdate] Received updates for ${listType} list with ${updatedQuestions.length} questions`);
+    console.log(`[handleQuestionStatusUpdate] Updating ${listType} list with ${updatedQuestions.length} questions`);
     
-    // Simply update the specified list first
+    // Update the current list
     if (listType === 'my') {
       setMyQuestions(updatedQuestions);
     } else {
       setClassQuestions(updatedQuestions);
     }
     
-    // Now, take any status updates from this list and apply them to the other list
+    // Get the questions from the other list
     const otherList = listType === 'my' ? classQuestions : myQuestions;
     const setOtherList = listType === 'my' ? setClassQuestions : setMyQuestions;
     
-    // Create a status map from the updated questions
-    const statusMap = updatedQuestions.reduce((map, q) => {
-      map[q.id] = q.status;
-      return map;
-    }, {} as Record<string, 'answered' | 'unanswered' | undefined>);
-    
-    // Check if we need to update the other list
-    let hasChanges = false;
-    const updatedOtherList = otherList.map(q => {
-      // If this question exists in both lists and the status is different
-      if (statusMap[q.id] && q.status !== statusMap[q.id]) {
-        hasChanges = true;
-        return { ...q, status: statusMap[q.id] };
-      }
-      return q;
+    // Create a map of question IDs to their statuses from the updated list
+    const statusMap: Record<string, 'answered' | 'unanswered' | undefined> = {};
+    updatedQuestions.forEach(q => {
+      statusMap[q.id] = q.status;
     });
     
-    // Only update if there were changes
-    if (hasChanges) {
-      console.log(`[handleQuestionStatusUpdate] Syncing status changes to the ${listType === 'my' ? 'class' : 'my'} list`);
+    // Check if any questions in the other list need status updates
+    const needsUpdate = otherList.some(q => statusMap[q.id] && q.status !== statusMap[q.id]);
+    
+    // Only update the other list if necessary
+    if (needsUpdate) {
+      const updatedOtherList = otherList.map(q => {
+        if (statusMap[q.id]) {
+          // Only update the status field
+          return { ...q, status: statusMap[q.id] };
+        }
+        return q;
+      });
+      
       setOtherList(updatedOtherList);
     }
-  }, [myQuestions, classQuestions, setMyQuestions, setClassQuestions]);
+  }, [myQuestions, classQuestions]);
   
   /**
    * Handle opening the modal for manual point entry
