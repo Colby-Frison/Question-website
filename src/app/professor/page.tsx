@@ -14,7 +14,7 @@
  * manages the professor's class session.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import ClassNameDisplay from '@/components/ClassCodeDisplay';
@@ -45,7 +45,6 @@ import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
 import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 // Constants for Firebase collections
 const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
@@ -997,7 +996,7 @@ export default function ProfessorPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      {/* Navbar with theme toggle */}
+      {/* Navbar */}
       <Navbar userType="professor" onLogout={handleLogout} />
       
       <div className="container mx-auto px-4 py-6">

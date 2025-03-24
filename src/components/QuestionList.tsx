@@ -174,9 +174,15 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       [questionId]: newStatus
     }));
     
-    // Update the local state right away
+    // Store the original status in case we need to roll back
+    const originalStatus = currentStatus;
+    
+    // Track when the operation started for analytics/debugging
+    const operationStartTime = Date.now();
+    
+    // Update the local state right away with optimistic update
     if (questions && onStatusUpdated) {
-      const updatedQuestions = questions.map(q => 
+    const updatedQuestions = questions.map(q => 
         q.id === questionId 
           ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
           : q
@@ -195,6 +201,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     try {
       let success = false;
       const MAX_RETRIES = 3;
+      let lastError = null;
       
       for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
         try {
@@ -205,9 +212,18 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
           
           if (success) {
             console.log(`✅ Successfully updated question ${questionId} status to ${newStatus} on attempt ${attempt + 1}`);
+            
+            // Add a verification delay to ensure Firestore has processed the update
+            if (attempt === 0) {
+              console.log(`⏱️ Adding verification pause after successful update...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
             break;
           } else {
             console.warn(`⚠️ updateQuestionStatus returned false on attempt ${attempt + 1}`);
+            lastError = new Error(`Update returned false on attempt ${attempt + 1}`);
+            
             if (attempt < MAX_RETRIES - 1) {
               // Wait with exponential backoff before retrying
               const backoffTime = 1000 * Math.pow(2, attempt);
@@ -216,6 +232,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
             }
           }
         } catch (err) {
+          lastError = err;
           console.error(`❌ Error on attempt ${attempt + 1}:`, err);
           if (attempt < MAX_RETRIES - 1) {
             // Wait with exponential backoff before retrying
@@ -235,7 +252,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       // If update was successful, make one more update to the question list
       // This ensures any other components see the latest state
       if (success && questions && onStatusUpdated) {
-        // Double-check that we're using the latest questions
+        // Double-check that we're using the latest questions 
+        // and that optimistic update is still accurate
         const finalQuestions = questions.map(q => 
           q.id === questionId 
             ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
@@ -244,15 +262,24 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         
         console.log(`📊 Final UI update for question ${questionId}`);
         onStatusUpdated(finalQuestions);
+        
+        // Log operation success and timing for analytics
+        const operationTime = Date.now() - operationStartTime;
+        console.log(`🎯 Status toggle operation succeeded in ${operationTime}ms`);
       }
       
       // If the update failed after all retries
       if (!success) {
-        throw new Error("Failed to update question status after multiple attempts");
+        // The error is thrown and caught by the outer catch block
+        throw lastError || new Error("Failed to update question status after multiple attempts");
       }
       
     } catch (error) {
-      console.error('❌ Error toggling question status:', error);
+      const operationTime = Date.now() - operationStartTime;
+      console.error(`❌ Error toggling question status after ${operationTime}ms:`, error);
+      
+      // Record failure for analytics
+      console.log(`⚠️ Status toggle operation failed in ${operationTime}ms`);
       
       // Show error message to the user
       setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. The UI will show the updated status, but it may not be saved.`);
@@ -261,8 +288,13 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       // This prevents UI flicker and confusing the user
       // The background refresh will correct it if needed
       
-      // Clear error after 5 seconds
-      setTimeout(() => setError(null), 5000);
+      // Schedule delayed error cleanup
+      setTimeout(() => {
+        // Only clear error if it's still the same one
+        setError(currentError => 
+          currentError?.includes(`Failed to update question status`) ? null : currentError
+        );
+      }, 5000);
     } finally {
       // Ensure minimum loading time for UI feedback
       const elapsed = Date.now() - startTime;
@@ -281,6 +313,19 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       // Backend processes will correct any inconsistencies
       
       console.log(`🏁 Status toggle operation complete for question ${questionId}`);
+      
+      // Schedule a forced UI refresh after some time if we have the callback
+      // This helps ensure synchronization even in partial failure cases
+      if (onStatusUpdated && questions) {
+        // Wait a bit before doing one final refresh
+        setTimeout(() => {
+          console.log(`🔄 Performing delayed final refresh for question ${questionId}`);
+          
+          // Use the current questions at this point, not the ones from when this function started
+          const currentQuestions = questions;
+          onStatusUpdated(currentQuestions);
+        }, 8000); // Wait 8 seconds for Firestore to fully propagate changes
+      }
     }
   }, [onToggleStatus, questions, onStatusUpdated]);
   
@@ -336,7 +381,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         />
       </svg>
       <p className="text-gray-600 dark:text-gray-400">{emptyMessage}</p>
-    </div>
+        </div>
   ), [emptyMessage]);
 
   /**
@@ -427,15 +472,15 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       </span>
                     </span>
                   </div>
-                </div>
-                
+          </div>
+          
                 {/* Action buttons */}
                 {canControl && (
                   <div className="flex space-x-1 ml-2">
                     {/* Professor controls */}
-                    {isProfessor && (
+                {isProfessor && (
                       isUpdatingStatus ? (
-                        <button
+                    <button
                           disabled={true}
                           className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                             effectiveStatus === 'answered' 
@@ -459,9 +504,9 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <span>Answered</span>
-                        </button>
+                    </button>
                       ) : (
-                        <button
+                    <button
                           onClick={() => handleToggleStatus(question.id, effectiveStatus)}
                           className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
                           title="Mark as answered"
@@ -470,10 +515,10 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <span>Mark Answered</span>
-                        </button>
+                    </button>
                       )
-                    )}
-                    
+                )}
+                
                     {/* Student edit controls */}
                     {isStudent && studentId === question.studentId && (
                     <button

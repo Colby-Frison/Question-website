@@ -25,10 +25,12 @@ export function Footer() {
         </div>
         
         <div className="flex w-full flex-col sm:flex-row items-center justify-center sm:space-x-4 space-y-2 sm:space-y-0 sm:w-auto sm:justify-end">
+          {/* Theme toggle temporarily disabled
           <div className="flex items-center space-x-2">
             <span className="text-xs sm:text-sm text-text-tertiary dark:text-dark-text-tertiary">Theme</span>
             <ThemeToggle />
           </div>
+          */}
           
           <a 
             href="https://github.com/Colby-Frison/Question-website/tree/main" 

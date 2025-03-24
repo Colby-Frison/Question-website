@@ -69,7 +69,9 @@ export default function RootLayout({
           <div className="flex flex-1 flex-col">
             {children}
           </div>
+          {/* Theme toggle temporarily disabled
           <FloatingThemeToggle />
+          */}
         </ThemeProvider>
       </body>
     </html>

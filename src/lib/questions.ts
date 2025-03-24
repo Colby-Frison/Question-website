@@ -350,7 +350,7 @@ export const listenForUserQuestions = (
             // Sort by timestamp, newest first
             questions.sort((a, b) => b.timestamp - a.timestamp);
             console.log("[listenForUserQuestions] Sending sorted questions to callback:", questions.length);
-            callback(questions);
+        callback(questions);
             lastUpdate = Date.now();
             pendingOperation = null;
   } catch (error) {
@@ -381,7 +381,7 @@ export const listenForUserQuestions = (
             }
           }, waitTime);
         }
-      },
+      }, 
       (error) => {
         console.error("[listenForUserQuestions] Error in listener:", error);
         callback([]);
@@ -435,8 +435,8 @@ export const updateQuestion = async (
     const data = questionDoc.data();
     if (data.studentId !== studentId) {
       console.error(`[updateQuestion] Student ${studentId} does not own question ${questionId}`);
-      return false;
-    }
+    return false;
+  }
 
     // Get session code for cache invalidation
     const sessionCode = data.sessionCode;
@@ -449,7 +449,7 @@ export const updateQuestion = async (
     while (!success && retryCount < MAX_RETRIES) {
       try {
         // Update question with important timestamps
-        await updateDoc(questionRef, {
+    await updateDoc(questionRef, {
           text: newText.trim(),
           updatedAt: Date.now(),
           lastModified: Date.now() // Add this to force a document update
@@ -504,7 +504,7 @@ export const updateQuestion = async (
 };
 
 /**
- * Update a question's status (answered/unanswered)
+ * Update a question's status (answered/unanswered) with maximum reliability
  * 
  * @param questionId - ID of the question to update
  * @param status - New status for the question
@@ -537,58 +537,96 @@ export const updateQuestionStatus = async (
     const questionData = questionDoc.data();
     const sessionCode = questionData.sessionCode;
     const currentStatus = questionData.status;
+    const studentId = questionData.studentId;
     
     // If status is already correct, return success
     if (currentStatus === status) {
       console.log(`[updateQuestionStatus] Question status already set to ${status}, no update needed`);
-      return true;
+    return true;
     }
     
-    console.log(`[updateQuestionStatus] Changing status from ${currentStatus} to ${status}`);
+    console.log(`[updateQuestionStatus] Changing status from ${currentStatus} to ${status} for question in session ${sessionCode}`);
     
-    // Create a unique timestamp
-    const timestamp = Date.now();
-    
-    // 1. DIRECT UPDATE with simple retry mechanism
+    // Use multiple approaches with extensive retries to ensure updates persist
     let success = false;
     let attempts = 0;
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = 5;
+    
+    // Store timestamps of all attempts for logging
+    const attemptTimestamps: number[] = [];
     
     while (!success && attempts < MAX_ATTEMPTS) {
       attempts++;
+      const attemptStart = Date.now();
+      attemptTimestamps.push(attemptStart);
       
       try {
-        console.log(`[updateQuestionStatus] Attempt ${attempts}/${MAX_ATTEMPTS}`);
+        console.log(`[updateQuestionStatus] Attempt ${attempts}/${MAX_ATTEMPTS} started at ${new Date(attemptStart).toISOString()}`);
         
-        // Update with a unique timestamp to force the update
-        await updateDoc(questionRef, {
+        // Create a timestamp for this update
+        const timestamp = Date.now();
+        
+        // Update with timestamp fields to force a full update
+        // Add extra metadata to help debug and track status changes
+        const updateData = {
           status,
           statusUpdatedAt: timestamp,
-          lastModified: timestamp
-        });
+          lastModified: timestamp, // This forces Firestore to see it as a changed document
+          updatedByProfessor: true,
+          updateAttempt: attempts,
+          previousStatus: currentStatus,
+          updateRequestTimestamp: attemptStart
+        };
         
-        // Wait for Firestore to process the update
-        console.log(`[updateQuestionStatus] Waiting after update...`);
-        await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+        console.log(`[updateQuestionStatus] Sending update to database with data:`, updateData);
+        await updateDoc(questionRef, updateData);
         
-        // Verify the update succeeded
-        const verifyDoc = await getDoc(questionRef);
-        if (!verifyDoc.exists()) {
-          throw new Error("Question no longer exists during verification");
+        // Give Firestore time to process the update - increasing wait time with each attempt
+        const verificationDelay = Math.min(1000 * Math.pow(1.5, attempts - 1), 5000);
+        console.log(`[updateQuestionStatus] Waiting ${verificationDelay}ms for database update to propagate...`);
+        await new Promise(resolve => setTimeout(resolve, verificationDelay));
+        
+        // Verify the update with multiple checks
+        let verificationSuccess = false;
+        let verifyAttempts = 0;
+        const MAX_VERIFY_ATTEMPTS = 3;
+        
+        while (!verificationSuccess && verifyAttempts < MAX_VERIFY_ATTEMPTS) {
+          verifyAttempts++;
+          console.log(`[updateQuestionStatus] Verification attempt ${verifyAttempts}/${MAX_VERIFY_ATTEMPTS}`);
+          
+          // Get a fresh copy of the document
+          const verifyDoc = await getDoc(questionRef);
+          if (!verifyDoc.exists()) {
+            throw new Error("Question document no longer exists during verification");
+          }
+          
+          const updatedData = verifyDoc.data();
+          if (updatedData.status !== status) {
+            console.warn(`[updateQuestionStatus] Verification failed: database has status "${updatedData.status}", expected "${status}"`);
+            
+            // If we haven't exhausted verification attempts, wait and retry
+            if (verifyAttempts < MAX_VERIFY_ATTEMPTS) {
+              const retryDelay = 500 * verifyAttempts;
+              console.log(`[updateQuestionStatus] Retrying verification in ${retryDelay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            } else {
+              throw new Error(`Status verification failed after ${MAX_VERIFY_ATTEMPTS} attempts`);
+            }
+          } else {
+            console.log(`[updateQuestionStatus] Verification successful: status is now "${updatedData.status}"`);
+            verificationSuccess = true;
+          }
         }
         
-        const updatedData = verifyDoc.data();
-        if (updatedData.status !== status) {
-          throw new Error(`Status verification failed: got ${updatedData.status} instead of ${status}`);
+        if (verificationSuccess) {
+          success = true;
+          console.log(`[updateQuestionStatus] Update successful after ${attempts} attempts`);
         }
-        
-        console.log(`[updateQuestionStatus] Verified status changed to ${status}`);
-        success = true;
         
       } catch (error) {
         console.error(`[updateQuestionStatus] Attempt ${attempts} failed:`, error);
         
-        // Wait longer between retries
         if (attempts < MAX_ATTEMPTS) {
           const delay = 1000 * Math.pow(2, attempts - 1);
           console.log(`[updateQuestionStatus] Retrying in ${delay}ms...`);
@@ -597,41 +635,146 @@ export const updateQuestionStatus = async (
       }
     }
     
-    // If we couldn't update after all attempts, try a different approach
+    // If all update attempts failed, try alternative approaches
     if (!success) {
-      console.log(`[updateQuestionStatus] All direct update attempts failed, trying a full document rewrite`);
+      console.log(`[updateQuestionStatus] All ${MAX_ATTEMPTS} update attempts failed. Trying fallback approaches...`);
       
+      // Log all attempt timestamps for debugging
+      console.log(`[updateQuestionStatus] Attempt timestamps:`, attemptTimestamps.map(t => new Date(t).toISOString()));
+      
+      // Approach 1: Try full document write instead of update
       try {
-        // 2. FULL DOCUMENT REWRITE - Copy all data and set the new status
+        console.log(`[updateQuestionStatus] Fallback 1: Trying full document write...`);
+        
+        // Get the full document data and update it
         const fullData = questionDoc.data();
+        const timestamp = Date.now();
+        
+        // Write the entire document with the new status
         await setDoc(questionRef, {
           ...fullData,
-          status,
-          statusUpdatedAt: Date.now(),
-          lastModified: Date.now()
+      status,
+          statusUpdatedAt: timestamp,
+          lastModified: timestamp,
+          updatedByProfessor: true,
+          updateMethod: 'fullDocumentWrite',
+          previousStatus: currentStatus,
+          fallbackTimestamp: timestamp
         });
         
-        // Check if this worked
-        const finalCheck = await getDoc(questionRef);
-        if (finalCheck.exists() && finalCheck.data().status === status) {
-          console.log(`[updateQuestionStatus] Full document rewrite succeeded`);
+        // Verify after a delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const verifyDoc = await getDoc(questionRef);
+        
+        if (verifyDoc.exists() && verifyDoc.data().status === status) {
+          console.log(`[updateQuestionStatus] Fallback 1 succeeded: full document write worked!`);
           success = true;
         } else {
-          console.error(`[updateQuestionStatus] Even full document rewrite failed`);
+          console.warn(`[updateQuestionStatus] Fallback 1 failed: status is still ${verifyDoc.exists() ? verifyDoc.data().status : 'unknown'}`);
         }
       } catch (error) {
-        console.error(`[updateQuestionStatus] Full document rewrite failed:`, error);
+        console.error(`[updateQuestionStatus] Fallback 1 error:`, error);
+      }
+      
+      // Approach 2: Try using a batch operation
+      if (!success) {
+        try {
+          console.log(`[updateQuestionStatus] Fallback 2: Trying batch operation...`);
+          
+          const batch = writeBatch(db);
+          const timestamp = Date.now();
+          
+          batch.update(questionRef, {
+        status,
+            statusUpdatedAt: timestamp,
+            lastModified: timestamp,
+            updatedByProfessor: true,
+            updateMethod: 'batchOperation',
+            previousStatus: currentStatus,
+            fallbackTimestamp: timestamp
+          });
+          
+          await batch.commit();
+          
+          // Verify after a delay
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          const verifyDoc = await getDoc(questionRef);
+          
+          if (verifyDoc.exists() && verifyDoc.data().status === status) {
+            console.log(`[updateQuestionStatus] Fallback 2 succeeded: batch operation worked!`);
+            success = true;
+          } else {
+            console.warn(`[updateQuestionStatus] Fallback 2 failed: status is still ${verifyDoc.exists() ? verifyDoc.data().status : 'unknown'}`);
+          }
+  } catch (error) {
+          console.error(`[updateQuestionStatus] Fallback 2 error:`, error);
+        }
+      }
+      
+      // Approach 3: Create a duplicate document with the updated status and use that instead
+      if (!success && sessionCode && studentId) {
+        try {
+          console.log(`[updateQuestionStatus] Fallback 3: Creating new document with updated status...`);
+          
+          // Get all data from the original question
+          const originalData = questionDoc.data();
+    const timestamp = Date.now();
+    
+          // Create a new question with the same data but updated status
+          const newQuestionData = {
+            ...originalData,
+            text: originalData.text || "",
+            originalId: questionId,
+            status,
+            statusUpdatedAt: timestamp,
+            timestamp: originalData.timestamp || timestamp, // Keep original timestamp
+            lastModified: timestamp,
+            updatedByProfessor: true,
+            isReplacement: true,
+            previousStatus: currentStatus
+          };
+          
+          // Create the new document
+          const newDocRef = await addDoc(collection(db, QUESTIONS_COLLECTION), newQuestionData);
+          const newQuestionId = newDocRef.id;
+          console.log(`[updateQuestionStatus] Created replacement question with ID: ${newQuestionId}`);
+          
+          // Update user-question link or create a new one
+          await setDoc(doc(db, USER_QUESTIONS_COLLECTION, newQuestionId), {
+            questionId: newQuestionId,
+            studentId,
+            sessionCode,
+            timestamp: originalData.timestamp || timestamp,
+            replacesId: questionId
+          });
+          
+          // Mark the old question as replaced
+          await updateDoc(questionRef, {
+            replacedBy: newQuestionId,
+            active: false,
+            lastModified: timestamp
+          }).catch(err => console.warn("[updateQuestionStatus] Failed to mark old question as replaced:", err));
+          
+          console.log(`[updateQuestionStatus] Fallback 3 succeeded: created replacement question ${newQuestionId}`);
+          success = true;
+          
+          // Important: Update the questionId reference for cache invalidation
+          questionId = newQuestionId;
+  } catch (error) {
+          console.error(`[updateQuestionStatus] Fallback 3 error:`, error);
+        }
       }
     }
     
-    // If we updated successfully, invalidate cache and trigger refreshes
+    // If we succeeded with any method, invalidate caches and trigger refreshes
     if (success && sessionCode) {
-      // Clear cache
-      cache.questions.delete(sessionCode);
-      console.log(`[updateQuestionStatus] Invalidated cache for session: ${sessionCode}`);
+      console.log(`[updateQuestionStatus] Successfully updated status to ${status} - clearing caches and refreshing`);
       
-      // Schedule multiple refreshes with increasing delays
-      const refreshDelays = [300, 1500, 4000];
+      // Clear cache for this session
+      cache.questions.delete(sessionCode);
+      
+      // Trigger multiple refreshes with increasing delays to ensure propagation
+      const refreshDelays = [500, 1500, 3000, 6000, 10000, 15000];
       
       for (const delay of refreshDelays) {
         setTimeout(() => {
@@ -640,11 +783,16 @@ export const updateQuestionStatus = async (
             .catch(err => console.error(`[updateQuestionStatus] Error in ${delay}ms refresh:`, err));
         }, delay);
       }
+      
+      // Return success
+    return true;
     }
     
-    return success;
+    // If we got here, all approaches failed
+    console.error(`[updateQuestionStatus] All approaches failed to update status for question ${questionId}`);
+    return false;
   } catch (error) {
-    console.error("[updateQuestionStatus] Error updating question status:", error);
+    console.error("[updateQuestionStatus] Unexpected error:", error);
     return false;
   }
 };
