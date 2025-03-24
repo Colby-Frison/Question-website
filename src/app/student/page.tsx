@@ -919,14 +919,11 @@ export default function StudentPage() {
     
     // Force refresh of data if we have studentId and sessionCode
     if (studentId && sessionCode) {
-      // Refresh My Questions
-      console.log('[handleQuestionStatusUpdate] Triggering refresh of My Questions');
-      const unsubscribe = listenForUserQuestions(studentId, sessionCode, (questions) => {
-        console.log(`[handleQuestionStatusUpdate] Refreshed My Questions with ${questions.length} items`);
-        setMyQuestions(questions);
-        // Unsubscribe after receiving the data - this is a one-time refresh, not a persistent listener
-        unsubscribe();
-      }, { maxWaitTime: 0 });
+      // Update UI immediately from existing data without creating new listeners
+      const updatedQuestionIds = updatedQuestions.map(q => q.id);
+      
+      console.log('[handleQuestionStatusUpdate] Updating UI only without creating new listeners');
+      console.log(`[handleQuestionStatusUpdate] Affected question IDs: ${updatedQuestionIds.join(', ')}`);
     }
   }, [studentId, sessionCode]);
   
@@ -1091,9 +1088,13 @@ export default function StudentPage() {
                       <div className="mt-2 flex items-center">
                         <button
                           onClick={() => {
-                            // Call handleToggleStatus directly
-                            const newStatus = isAnswered ? 'unanswered' : 'answered';
-                            handleToggleStatus(question.id, newStatus);
+                            try {
+                              // Simple, direct approach with no async operations
+                              const newStatus = isAnswered ? 'unanswered' : 'answered';
+                              handleToggleStatus(question.id, newStatus);
+                            } catch (error) {
+                              console.error("Error toggling status:", error);
+                            }
                           }}
                           className={`px-3 py-1 rounded-full text-xs font-medium flex items-center
                             ${isAnswered 
@@ -1424,33 +1425,6 @@ export default function StudentPage() {
       </div>
     );
   }
-
-  // Force refresh my questions every 3 seconds
-  useEffect(() => {
-    if (!studentId || !sessionCode || !joined) return;
-    
-    console.log('[AutoRefresh] Setting up automatic refresh of my questions');
-    
-    let isMounted = true;
-    
-    const refreshInterval = setInterval(() => {
-      if (!isMounted) return;
-      
-      console.log('[AutoRefresh] Forcing my questions refresh...');
-      listenForUserQuestions(studentId, sessionCode, (questions) => {
-        if (!isMounted) return;
-        
-        console.log(`[AutoRefresh] Received ${questions.length} refreshed personal questions`);
-        setMyQuestions(questions);
-      }, { maxWaitTime: 0 });
-    }, 3000);
-    
-    return () => {
-      console.log('[AutoRefresh] Clearing automatic refresh interval');
-      isMounted = false;
-      clearInterval(refreshInterval);
-    };
-  }, [studentId, sessionCode, joined]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
