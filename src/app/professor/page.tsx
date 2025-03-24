@@ -28,7 +28,8 @@ import {
   updateStudentPoints,
   runDatabaseMaintenance,
   updateQuestionStatus,
-  clearPointsCache
+  clearPointsCache,
+  cache
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -104,6 +105,12 @@ export default function ProfessorPage() {
     }
     return true;
   });
+
+  // Add these state variables near the other state declarations
+  const [newQuestionsCount, setNewQuestionsCount] = useState(0);
+  const [newAnswersCount, setNewAnswersCount] = useState(0);
+  const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
+  const [lastSeenAnswerId, setLastSeenAnswerId] = useState<string | null>(null);
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -201,14 +208,25 @@ export default function ProfessorPage() {
   useEffect(() => {
     if (!activeQuestionId) return () => {};
     
+    let isComponentMounted = true;
     console.log("Setting up answers listener for question:", activeQuestionId);
+    
+    // Try to use cached data first
+    const cachedData = cache.answers.get(activeQuestionId);
+    if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
+      console.log(`Using cached answers for question: ${activeQuestionId}`);
+      setAnswers(cachedData.data);
+    }
+    
     const unsubscribe = listenForAnswers(activeQuestionId, (newAnswers) => {
+      if (!isComponentMounted) return;
       console.log("Received answers update:", newAnswers);
       setAnswers(newAnswers);
     });
     
     // Clean up listener when component unmounts or activeQuestionId changes
     return () => {
+      isComponentMounted = false;
       console.log("Cleaning up answers listener");
       unsubscribe();
     };
@@ -223,6 +241,16 @@ export default function ProfessorPage() {
       return;
     }
     
+    let isComponentMounted = true;
+    
+    // Try to use cached data first
+    const cachedQuestion = cache.activeQuestions.get(activeQuestionId);
+    if (cachedQuestion && Date.now() - cachedQuestion.timestamp < cache.CACHE_EXPIRATION) {
+      console.log(`Using cached question text for: ${activeQuestionId}`);
+      setActiveQuestionText(cachedQuestion.data.text || 'No text available');
+      return;
+    }
+    
     // Retrieve the active question from Firestore
     const getActiveQuestionText = async () => {
       try {
@@ -230,21 +258,36 @@ export default function ProfessorPage() {
         const docRef = doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId);
         const docSnap = await getDoc(docRef);
         
+        if (!isComponentMounted) return;
+        
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setActiveQuestionText(data.text || 'No text available');
-          console.log(`Retrieved active question text: ${data.text}`);
+          const text = data.text || 'No text available';
+          setActiveQuestionText(text);
+          console.log(`Retrieved active question text: ${text}`);
+          
+          // Cache the question text
+          cache.activeQuestions.set(activeQuestionId, {
+            data: { text },
+            timestamp: Date.now()
+          });
         } else {
           console.error(`Active question document ${activeQuestionId} not found`);
           setActiveQuestionText('Question not found');
         }
       } catch (error) {
         console.error(`Error retrieving active question ${activeQuestionId}:`, error);
-        setActiveQuestionText('Error loading question');
+        if (isComponentMounted) {
+          setActiveQuestionText('Error loading question');
+        }
       }
     };
     
     getActiveQuestionText();
+    
+    return () => {
+      isComponentMounted = false;
+    };
   }, [activeQuestionId]);
 
   /**
@@ -300,21 +343,25 @@ export default function ProfessorPage() {
       setSessionStartTime(Date.now());
       setLastActivity(Date.now());
       
-      // Start listening for questions with optimized listener (5 second delay max)
+      // Start listening for questions with optimized listener
       const unsubscribe = listenForQuestions(result.sessionCode, (newQuestions) => {
-          setQuestions(newQuestions);
-      }, { maxWaitTime: 1000, useCache: false });
+        setQuestions(newQuestions);
+      }, { 
+        maxWaitTime: 5000, // 5 second debounce
+        useCache: true // Enable caching
+      });
       
-          setIsLoading(false);
-        
-        return () => {
-          unsubscribe();
-        };
+      setIsLoading(false);
+      
+      // Return cleanup function
+      return () => {
+        unsubscribe();
+      };
     } catch (error) {
       console.error("Error starting class session:", error);
       setError("Failed to start class session. Please try again.");
-        setIsLoading(false);
-      }
+      setIsLoading(false);
+    }
   };
 
   /**
@@ -536,13 +583,18 @@ export default function ProfessorPage() {
    * 
    * @param tab - The tab to switch to
    */
-  const handleTabChange = (tab: 'questions' | 'points') => {
+  const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
-    
-    // Clear the active question when switching back to questions tab
     if (tab === 'questions') {
-      setActiveQuestionId(null);
-      setActiveQuestionText('');
+      setNewQuestionsCount(0);
+      if (questions.length > 0) {
+        setLastSeenQuestionId(questions[0].id);
+      }
+    } else if (tab === 'points') {
+      setNewAnswersCount(0);
+      if (answers.length > 0) {
+        setLastSeenAnswerId(answers[0].id);
+      }
     }
   };
   
@@ -944,6 +996,36 @@ export default function ProfessorPage() {
     }
   }, []);
 
+  // Add this effect to track new questions
+  useEffect(() => {
+    if (!questions.length) return;
+    
+    const latestQuestion = questions[0];
+    if (!lastSeenQuestionId) {
+      setLastSeenQuestionId(latestQuestion.id);
+      return;
+    }
+    
+    if (latestQuestion.id !== lastSeenQuestionId) {
+      setNewQuestionsCount(prev => prev + 1);
+    }
+  }, [questions, lastSeenQuestionId]);
+
+  // Add this effect to track new answers
+  useEffect(() => {
+    if (!answers.length) return;
+    
+    const latestAnswer = answers[0];
+    if (!lastSeenAnswerId) {
+      setLastSeenAnswerId(latestAnswer.id);
+      return;
+    }
+    
+    if (latestAnswer.id !== lastSeenAnswerId) {
+      setNewAnswersCount(prev => prev + 1);
+    }
+  }, [answers, lastSeenAnswerId]);
+
   // Show error state if there's a problem
   if (error) {
                           return (
@@ -1105,24 +1187,40 @@ export default function ProfessorPage() {
                   
                   <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
                     <button
-                      onClick={() => setActiveTab('questions')}
-                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                      onClick={() => handleTabChange('questions')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
                     activeTab === 'questions'
                           ? 'bg-blue-500 text-white dark:bg-dark-primary'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
                   Questions
+                  {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                    <>
+                      <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                      </div>
+                    </>
+                  )}
                 </button>
                 <button
-                      onClick={() => setActiveTab('points')}
-                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                      onClick={() => handleTabChange('points')}
+                      className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
                     activeTab === 'points'
                           ? 'bg-blue-500 text-white dark:bg-dark-primary'
                           : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
                   Points
+                  {newAnswersCount > 0 && activeTab !== 'points' && (
+                    <>
+                      <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {newAnswersCount} new answer{newAnswersCount !== 1 ? 's' : ''}
+                      </div>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

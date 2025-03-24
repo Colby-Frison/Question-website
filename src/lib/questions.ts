@@ -42,13 +42,17 @@ const STUDENT_POINTS_COLLECTION = 'studentPoints'; // Student point totals
 /**
  * Simple cache implementation to reduce redundant server calls
  */
-const cache = {
+export const cache = {
   questions: new Map<string, { data: Question[], timestamp: number }>(),
+  activeQuestions: new Map<string, { data: any, timestamp: number }>(),
+  answers: new Map<string, { data: any[], timestamp: number }>(),
   clearCache: () => {
     cache.questions.clear();
+    cache.activeQuestions.clear();
+    cache.answers.clear();
   },
-  // Cache expiration time - 30 seconds
-  CACHE_EXPIRATION: 30 * 1000
+  // Cache expiration time - 5 minutes for better performance
+  CACHE_EXPIRATION: 5 * 60 * 1000
 };
 
 // Cache for student points to reduce redundant callbacks
@@ -113,6 +117,11 @@ export const addQuestion = async (
   }
 };
 
+interface ListenerOptions {
+  maxWaitTime?: number; // Maximum time to wait between updates (in ms)
+  useCache?: boolean;   // Whether to use cache for initial data
+}
+
 /**
  * Listen for all questions in a class session with optimized performance
  * 
@@ -124,10 +133,7 @@ export const addQuestion = async (
 export const listenForQuestions = (
   sessionCode: string, 
   callback: (questions: Question[]) => void,
-  options?: {
-    maxWaitTime?: number; // Maximum time to wait between updates (in ms)
-    useCache?: boolean;   // Whether to use cache for initial data
-  }
+  options?: ListenerOptions
 ): (() => void) => {
   if (!sessionCode) {
     console.error("[listenForQuestions] No session code provided");
@@ -268,9 +274,7 @@ export const listenForUserQuestions = (
   studentId: string,
   sessionCode: string,
   callback: (questions: Question[]) => void,
-  options?: {
-    maxWaitTime?: number; // Maximum time to wait between updates (in ms)
-  }
+  options?: ListenerOptions
 ): (() => void) => {
   if (!studentId || !sessionCode) {
     console.error("[listenForUserQuestions] Missing required parameters:", { studentId, sessionCode });
@@ -621,10 +625,7 @@ export const addActiveQuestion = async (
 export const listenForActiveQuestion = (
   sessionCode: string,
   callback: (question: {id: string, text: string, timestamp: number} | null) => void,
-  options?: {
-    maxWaitTime?: number; // Maximum time to wait between updates (in ms)
-    useCache?: boolean;   // Whether to use cache for initial data
-  }
+  options?: ListenerOptions
 ): (() => void) => {
   if (!sessionCode) {
     console.error("[listenForActiveQuestion] No session code provided");
@@ -643,19 +644,10 @@ export const listenForActiveQuestion = (
     
     // Try to use cached data first for immediate response
     if (useCache) {
-      const cachedData = cache.questions.get(cacheKey);
+      const cachedData = cache.activeQuestions.get(cacheKey);
       if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
         console.log(`[listenForActiveQuestion] Using cached active question for session: ${sessionCode}`);
-        if (cachedData.data.length > 0) {
-          const question = cachedData.data[0] as any;
-          callback({
-            id: question.id,
-            text: question.text || "No text provided",
-            timestamp: question.timestamp || Date.now()
-          });
-        } else {
-          callback(null);
-        }
+        callback(cachedData.data);
       }
     }
     
@@ -675,28 +667,26 @@ export const listenForActiveQuestion = (
     
     // Function to send updates to the callback
     const sendUpdate = (data: {id: string, text: string, timestamp: number} | null) => {
-      // Update cache if we have data
-      if (data) {
-        cache.questions.set(cacheKey, {
-          data: [{
-            id: data.id,
-            text: data.text,
-            timestamp: data.timestamp
-          }],
-          timestamp: Date.now()
-        });
-      } else {
-        // Clear cache for this session if no active question
-        cache.questions.set(cacheKey, {
-          data: [],
-          timestamp: Date.now()
-        });
+      try {
+        // Update cache if we have data
+        if (data) {
+          cache.activeQuestions.set(cacheKey, {
+            data,
+            timestamp: Date.now()
+          });
+        } else {
+          // Clear cache for this session if no active question
+          cache.activeQuestions.delete(cacheKey);
+        }
+        
+        callback(data);
+        lastUpdate = Date.now();
+      } catch (error) {
+        console.error("[listenForActiveQuestion] Error in sendUpdate:", error);
+      } finally {
+        pendingData = null;
+        debounceTimer = null;
       }
-      
-      callback(data);
-      lastUpdate = Date.now();
-      pendingData = null;
-      debounceTimer = null;
     };
     
     // Set up real-time listener with debouncing
@@ -705,8 +695,7 @@ export const listenForActiveQuestion = (
       (snapshot) => {
         if (snapshot.empty) {
           console.log(`[listenForActiveQuestion] No active question found for session ${sessionCode}`);
-          pendingData = null;
-          callback(null);
+          sendUpdate(null);
           return;
         }
         
@@ -913,6 +902,13 @@ export const listenForAnswers = (
   console.log(`[listenForAnswers] Setting up listener for question: ${activeQuestionId}`);
   
   try {
+    // Try to use cached data first
+    const cachedData = cache.answers.get(activeQuestionId);
+    if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
+      console.log(`[listenForAnswers] Using cached answers for question: ${activeQuestionId}`);
+      callback(cachedData.data);
+    }
+
     // Query for answers to this active question
     const q = query(
       collection(db, ANSWERS_COLLECTION), 
@@ -920,7 +916,11 @@ export const listenForAnswers = (
       orderBy('timestamp', 'asc')
     );
     
-    // Set up real-time listener
+    // Set up real-time listener with debouncing
+    let pendingData: any[] | null = null;
+    let debounceTimer: NodeJS.Timeout | null = null;
+    let lastUpdate = 0;
+    
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
@@ -931,15 +931,25 @@ export const listenForAnswers = (
           return;
         }
         
-        // Fetch the question text
+        // Get question text from cache if available
         let questionText = "";
-        try {
-          const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId));
-          if (questionDoc.exists()) {
-            questionText = questionDoc.data().text || "";
+        const cachedQuestion = cache.activeQuestions.get(activeQuestionId);
+        if (cachedQuestion && Date.now() - cachedQuestion.timestamp < cache.CACHE_EXPIRATION) {
+          questionText = cachedQuestion.data.text || "";
+        } else {
+          try {
+            const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, activeQuestionId));
+            if (questionDoc.exists()) {
+              questionText = questionDoc.data().text || "";
+              // Cache the question text
+              cache.activeQuestions.set(activeQuestionId, {
+                data: { text: questionText },
+                timestamp: Date.now()
+              });
             }
           } catch (error) {
-          console.error(`[listenForAnswers] Error fetching question text for ${activeQuestionId}:`, error);
+            console.error(`[listenForAnswers] Error fetching question text for ${activeQuestionId}:`, error);
+          }
         }
         
         // Map the answers
@@ -955,7 +965,39 @@ export const listenForAnswers = (
           };
         });
         
-        callback(answers);
+        // Update cache
+        cache.answers.set(activeQuestionId, {
+          data: answers,
+          timestamp: Date.now()
+        });
+        
+        // Store the pending update
+        pendingData = answers;
+        
+        // Clear any existing timer
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+        }
+        
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdate;
+        
+        // If we've waited long enough, send the update immediately
+        if (timeSinceLastUpdate >= 1000) { // 1 second debounce
+          callback(answers);
+          lastUpdate = now;
+          pendingData = null;
+        } else {
+          // Otherwise, set a timer to send the update after the remaining wait time
+          const waitTime = Math.max(0, 1000 - timeSinceLastUpdate);
+          debounceTimer = setTimeout(() => {
+            if (pendingData) {
+              callback(pendingData);
+              lastUpdate = Date.now();
+              pendingData = null;
+            }
+          }, waitTime);
+        }
       }, 
       (error) => {
         console.error("[listenForAnswers] Error in listener:", error);
@@ -963,7 +1005,12 @@ export const listenForAnswers = (
       }
     );
     
-    return unsubscribe;
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      unsubscribe();
+    };
   } catch (error) {
     console.error("[listenForAnswers] Error setting up listener:", error);
     callback([]);

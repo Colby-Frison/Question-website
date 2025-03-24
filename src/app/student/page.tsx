@@ -31,7 +31,8 @@ import {
   updateStudentPoints,
   runDatabaseMaintenance,
   clearPointsCache,
-  ACTIVE_QUESTION_COLLECTION
+  ACTIVE_QUESTION_COLLECTION,
+  listenForAnswers
 } from '@/lib/questions';
 import { getJoinedClass, leaveClass } from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
@@ -44,42 +45,23 @@ import { db } from '@/lib/firebase';
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
 
+// Define types for the component
+interface ActiveQuestion {
+  id: string;
+  text: string;
+  timestamp: number;
+}
+
+interface Answer {
+  id: string;
+  text: string;
+  timestamp: number;
+  studentId: string;
+  questionText?: string;
+}
+
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
-
-/**
- * Utility function to notify the user about a new active question
- * Provides both audio and visual notifications with fallbacks
- */
-const notifyNewQuestion = (questionText: string) => {
-  console.log("Notifying user of new question:", questionText);
-  
-  // Audio notification has been removed
-  
-  // Use visual alert
-  alert(`New question from professor: ${questionText}`);
-  
-  // Flash the title bar to get user attention
-  let originalTitle = document.title;
-  let notificationCount = 0;
-  const maxFlashes = 5;
-  
-  const flashTitle = () => {
-    if (notificationCount > maxFlashes * 2) {
-      document.title = originalTitle;
-      return;
-    }
-    
-    document.title = notificationCount % 2 === 0 
-      ? '🔔 NEW QUESTION!'
-      : originalTitle;
-    
-    notificationCount++;
-    setTimeout(flashTitle, 500);
-  };
-  
-  flashTitle();
-};
 
 export default function StudentPage() {
   const router = useRouter();
@@ -94,7 +76,7 @@ export default function StudentPage() {
   const [myQuestions, setMyQuestions] = useState<Question[]>([]);
   const [classQuestions, setClassQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentId, setStudentId] = useState('');
+  const [studentId, setStudentId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
@@ -125,20 +107,27 @@ export default function StudentPage() {
   const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Active question and answer state
-  const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
+  const [activeQuestion, setActiveQuestion] = useState<ActiveQuestion | null>(null);
   const [answerText, setAnswerText] = useState('');
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [cooldownTime, setCooldownTime] = useState(0);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
-  const lastQuestionCheckRef = useRef<number>(0);
+  const lastQuestionCheckRef = useRef(Date.now());
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string>('');
+  const [studentPoints, setStudentPoints] = useState<number>(0);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [userQuestions, setUserQuestions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [newQuestionsCount, setNewQuestionsCount] = useState(0);
+  const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -441,158 +430,133 @@ export default function StudentPage() {
    */
   useEffect(() => {
     console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
-    if (!studentId) {
-      console.log("No student ID yet, skipping joined class check");
-      return () => {};
-    }
     
-    setInitStage('checking-joined-class');
-    let cleanup: (() => void) | undefined;
+    if (!studentId || isLoading) {
+      return;
+    }
+
+    let unsubscribers: (() => void)[] = [];
+    let isComponentMounted = true;
 
     const checkJoinedClass = async () => {
       try {
-        console.log("Checking if student has joined a class...");
-        // Check if student has already joined a class
         const joinedClass = await getJoinedClass(studentId);
-        console.log("Joined class result:", joinedClass);
         
-        if (joinedClass && joinedClass.sessionCode) {
-          console.log(`Student has joined class: ${joinedClass.className} with session: ${joinedClass.sessionCode}`);
-          setClassName(joinedClass.className);
-          setSessionCode(joinedClass.sessionCode);
-          setJoined(true);
-          setJoinedClass(joinedClass);
-          setInitStage('setting-up-listeners');
+        if (!joinedClass || !isComponentMounted) {
+          console.log("No joined class found or component unmounted");
+          setIsLoading(false);
+          return;
+        }
+
+        console.log("Found joined class:", joinedClass);
+        setJoinedClass(joinedClass);
+        
+        // Set up session status listener
+        const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
+          if (!isComponentMounted) return;
+          console.log("Session status update:", status);
+          setSessionStatus(status || '');
+        });
+        unsubscribers.push(unsubscribeSession);
+
+        // Set up active question listener with optimized settings
+        setIsLoadingQuestion(true);
+        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+          if (!isComponentMounted) return;
+          console.log("Active question update received:", question ? "yes" : "no");
           
-          console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
-          
-          // Set up listener for student's questions with real-time updates
-          console.log("Setting up personal questions listener with real-time updates...");
-          const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} personal questions`);
-            // Use functional update to ensure we're working with latest state
-            setMyQuestions(currentQuestions => {
-              // Deep comparison to avoid unnecessary re-renders
-              if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
-                console.log("No changes in personal questions, skipping update");
-                return currentQuestions;
-              }
-              console.log("Updating personal questions with:", questions);
-              return questions;
-            });
-            setIsLoading(false);
-          }, { maxWaitTime: 0 }); // Immediate updates
-          
-          // Set up listener for all class questions
-          console.log("Setting up class questions listener...");
-          const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} class questions`);
-            setClassQuestions(questions);
-          });
-          
-          // Set up listener for active question with loading state and add caching to reduce server calls
-          console.log("Setting up active question listener with debouncing and caching...");
-          setIsLoadingQuestion(true);
-          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
-            console.log("Active question update received:", question ? "yes" : "no");
+          if (question) {
+            console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
             
-            if (question) {
-              console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+            // Check if this is a new question that we haven't seen before
+            const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
+            
+            if (isNewQuestion) {
+              console.log("New active question detected!");
               
-              // Check if this is a new question that we haven't seen before
-              const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
-              
-              if (isNewQuestion) {
-                console.log("New active question detected!");
-                
-                // Reset answer state for the new question
+              // Reset answer state for the new question
               setAnswerText('');
               setAnswerSubmitted(false);
-                
-                // Notify user of new question (but only if not first load)
-                if (!isFirstLoad.current) {
-                  notifyNewQuestion(question.text);
-                }
-              } else {
-                console.log("Received update for existing active question");
-              }
-            } else {
-              console.log("No active question available");
-              
-              // If we had an active question before but not anymore, it's been removed
-              if (activeQuestion) {
-                console.log("Active question was removed");
-              }
             }
-            
-            // Mark as no longer first load after first update
-            isFirstLoad.current = false;
-            
-            // Update the state
-            setActiveQuestion(question);
-            setIsLoadingQuestion(false);
-            lastQuestionCheckRef.current = Date.now();
-          }, { 
-            maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
-            useCache: true // Enable caching to reduce server calls
+          }
+          
+          // Mark as no longer first load after first update
+          isFirstLoad.current = false;
+          
+          // Update the state
+          setActiveQuestion(question);
+          setIsLoadingQuestion(false);
+          lastQuestionCheckRef.current = Date.now();
+        }, { 
+          maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
+          useCache: true // Enable caching to reduce server calls
+        });
+        unsubscribers.push(unsubscribeActiveQuestion);
+
+        // Set up points listener with optimized settings
+        const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
+          if (!isComponentMounted) return;
+          console.log("Points update received:", points);
+          setStudentPoints(points);
+        });
+        unsubscribers.push(unsubscribePoints);
+
+        // Set up questions listener with optimized settings
+        const unsubscribeQuestions = listenForQuestions(joinedClass.sessionCode, (questions) => {
+          if (!isComponentMounted) return;
+          console.log("Questions update received:", questions.length);
+          setQuestions(questions);
+        }, {
+          maxWaitTime: 5000, // 5 second debounce for questions
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeQuestions);
+
+        // Set up user questions listener with optimized settings
+        const unsubscribeUserQuestions = listenForUserQuestions(studentId, joinedClass.sessionCode, (userQuestions) => {
+          if (!isComponentMounted) return;
+          console.log("User questions update received:", userQuestions.length);
+          setUserQuestions(userQuestions);
+        }, {
+          maxWaitTime: 5000, // 5 second debounce for user questions
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeUserQuestions);
+
+        // Set up answers listener only when there's an active question
+        if (activeQuestion) {
+          const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+            if (!isComponentMounted) return;
+            console.log("Answers update received:", answers.length);
+            setAnswers(answers);
           });
-          
-          // Set up listener for session status changes - no delay as this is critical
-          console.log("Setting up session status listener...");
-          const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
-            console.log(`Session status changed to: ${status}`);
-            
-            // If the session is closed or archived, leave the class
-            if (!status || status === 'closed' || status === 'archived') {
-              console.log('Session ended by professor, leaving class...');
-              // Call handleLeaveClass directly here
-              setJoined(false);
-              setClassName('');
-              setSessionCode('');
-              setMyQuestions([]);
-              setClassQuestions([]);
-              setActiveQuestion(null);
-              
-              if (studentId) {
-                leaveClass(studentId).catch(console.error);
-              }
-              
-              alert('Class ended: The professor has ended this class session.');
-            }
-          });
-          
-          setSessionListener(() => unsubscribeSessionStatus);
-          setInitStage('listeners-setup-complete');
-          
-          // Return cleanup function
-          cleanup = () => {
-            console.log('Cleaning up question listeners');
-            unsubscribePersonal();
-            unsubscribeClass();
-            unsubscribeActiveQuestion();
-            unsubscribeSessionStatus();
-          };
-        } else {
-          console.log("Student has not joined a class");
-          setIsLoading(false);
-          setInitStage('no-class-joined');
+          unsubscribers.push(unsubscribeAnswers);
         }
-      } catch (error) {
-        console.error('Error checking joined class:', error);
-        setError('Failed to check if you have joined a class. Please refresh the page.');
+
         setIsLoading(false);
-        setInitStage('joined-class-error');
+      } catch (error) {
+        console.error("Error in checkJoinedClass:", error);
+        if (isComponentMounted) {
+          setIsLoading(false);
+          setError("Failed to initialize class. Please try again.");
+        }
       }
     };
 
     checkJoinedClass();
-    console.log("== JOINED CLASS EFFECT COMPLETED ==");
-    
-    // Return the cleanup function
+
+    // Cleanup function
     return () => {
-      if (cleanup) cleanup();
+      isComponentMounted = false;
+      unsubscribers.forEach(unsubscribe => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.error("Error during cleanup:", error);
+        }
+      });
     };
-  }, [studentId, activeQuestion, isLeavingClass]);
+  }, [studentId, isLoading, activeQuestion?.id]);
 
   /**
    * Record user activity
@@ -1452,21 +1416,29 @@ export default function StudentPage() {
                     
                     <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
               <button
-                onClick={() => setActiveTab('questions')}
-                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                onClick={() => handleTabChange('questions')}
+                className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
                   activeTab === 'questions'
-                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                    ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                    : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
               >
                 Questions
+                {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                  <>
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                      {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                    </div>
+                  </>
+                )}
               </button>
               <button
-                onClick={() => setActiveTab('points')}
-                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                onClick={() => handleTabChange('points')}
+                className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                   activeTab === 'points'
-                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                    ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                    : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
               >
                         My Points
@@ -1525,3 +1497,29 @@ export default function StudentPage() {
     </div>
   );
 } 
+
+// Add this effect to track new questions
+useEffect(() => {
+  if (!classQuestions.length) return;
+  
+  const latestQuestion = classQuestions[0];
+  if (!lastSeenQuestionId) {
+    setLastSeenQuestionId(latestQuestion.id);
+    return;
+  }
+  
+  if (latestQuestion.id !== lastSeenQuestionId) {
+    setNewQuestionsCount(prev => prev + 1);
+  }
+}, [classQuestions, lastSeenQuestionId]);
+
+// Add this function to reset notifications when switching tabs
+const handleTabChange = (tab: TabType) => {
+  setActiveTab(tab);
+  if (tab === 'questions') {
+    setNewQuestionsCount(0);
+    if (classQuestions.length > 0) {
+      setLastSeenQuestionId(classQuestions[0].id);
+    }
+  }
+}; 
