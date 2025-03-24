@@ -54,33 +54,10 @@ const STUDENT_POINTS_COLLECTION = 'studentPoints';
 const notifyNewQuestion = (questionText: string) => {
   console.log("Notifying user of new question:", questionText);
   
-  // Try to play a notification sound
-  try {
-    // Try to create a sound programmatically as fallback
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (audioContext) {
-      // Create a simple beep sound
-      const oscillator = audioContext.createOscillator();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5 note
-      
-      const gainNode = audioContext.createGain();
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1);
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 1);
-      
-      console.log("Played synthesized notification sound");
-    }
-  } catch (e) {
-    console.log('Error creating audio notification:', e);
-    // Fallback to alert only if we couldn't play a sound
-    alert(`New question from professor: ${questionText}`);
-  }
+  // Audio notification has been removed
+  
+  // Use visual alert
+  alert(`New question from professor: ${questionText}`);
   
   // Flash the title bar to get user attention
   let originalTitle = document.title;
@@ -162,9 +139,6 @@ export default function StudentPage() {
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
-
-  // Track recent status updates to prevent them from being overwritten
-  const [recentStatusUpdates, setRecentStatusUpdates] = useState<Record<string, {status: 'answered' | 'unanswered', timestamp: number}>>({});
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -492,20 +466,29 @@ export default function StudentPage() {
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
-          // Set up listener for student's questions - refresh every 10 seconds to reduce load
-          console.log("Setting up personal questions listener...");
+          // Set up listener for student's questions with real-time updates
+          console.log("Setting up personal questions listener with real-time updates...");
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} personal questions`);
-            setMyQuestions(questions);
+            // Use functional update to ensure we're working with latest state
+            setMyQuestions(currentQuestions => {
+              // Deep comparison to avoid unnecessary re-renders
+              if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
+                console.log("No changes in personal questions, skipping update");
+                return currentQuestions;
+              }
+              console.log("Updating personal questions with:", questions);
+              return questions;
+            });
             setIsLoading(false);
-          }, { maxWaitTime: 10000 });
+          }, { maxWaitTime: 0 }); // Immediate updates
           
-          // Set up listener for all class questions - refresh every 3 seconds to reduce load
+          // Set up listener for all class questions
           console.log("Setting up class questions listener...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 1000, useCache: false });
+          });
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -715,19 +698,29 @@ export default function StudentPage() {
         
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions - refresh every 10 seconds
-      console.log(`Setting up personal questions listener...`);
+      // Set up listener for student's questions with real-time updates
+      console.log("Setting up personal questions listener with real-time updates...");
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
-        console.log(`Received ${questions.length} personal questions:`, questions);
-          setMyQuestions(questions);
-      }, { maxWaitTime: 10000 });
+        console.log(`Received ${questions.length} personal questions`);
+        // Use functional update to ensure we're working with latest state
+        setMyQuestions(currentQuestions => {
+          // Deep comparison to avoid unnecessary re-renders
+          if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
+            console.log("No changes in personal questions, skipping update");
+            return currentQuestions;
+          }
+          console.log("Updating personal questions with:", questions);
+          return questions;
+        });
+        setIsLoading(false);
+      }, { maxWaitTime: 0 }); // Immediate updates
       
-      // Set up listener for all class questions - refresh every 3 seconds to reduce load
-      console.log(`Setting up class questions listener...`);
+      // Set up listener for all class questions
+      console.log("Setting up class questions listener...");
       const unsubscribeClass = listenForQuestions(code, (questions) => {
-        console.log(`Received ${questions.length} class questions:`, questions);
+        console.log(`Received ${questions.length} class questions`);
           setClassQuestions(questions);
-      }, { maxWaitTime: 1000, useCache: false });
+      });
         
       // Set up listener for active question - refresh every 5 seconds
       console.log(`Setting up active question listener...`);
@@ -864,232 +857,106 @@ export default function StudentPage() {
     }
   };
 
-  // Add a handler to delete questions from both myQuestions and classQuestions
+  // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
     setMyQuestions(prev => prev.filter(q => q.id !== questionId));
     setClassQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
-  // Add a more robust handler to synchronize status updates and edits across question lists
-  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
-    // Current time for tracking recent updates
-    const updateTime = Date.now();
+  // Handle status updates for both lists
+  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[]) => {
+    // If we received an empty array or undefined, return early
+    if (!updatedQuestions || updatedQuestions.length === 0) {
+      console.log("[handleQuestionStatusUpdate] No questions to update");
+      return;
+    }
     
-    // Track which questions had status changes in this update
-    const newStatusUpdates: Record<string, {status: 'answered' | 'unanswered', timestamp: number}> = {};
+    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions:`, 
+      updatedQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
     
-    // Find questions with modified status by comparing with existing lists
-    const existingList = listType === 'my' ? myQuestions : classQuestions;
-    updatedQuestions.forEach(updatedQ => {
-      const existingQ = existingList.find(q => q.id === updatedQ.id);
-      if (existingQ && existingQ.status !== updatedQ.status && updatedQ.status) {
-        console.log(`[handleQuestionStatusUpdate] Status changed for ${updatedQ.id}: ${existingQ.status} -> ${updatedQ.status}`);
-        newStatusUpdates[updatedQ.id] = {
-          status: updatedQ.status as 'answered' | 'unanswered', 
-          timestamp: updateTime
-        };
+    // Create a map of question IDs to their updated status
+    const statusMap = new Map<string, 'answered' | 'unanswered'>();
+    updatedQuestions.forEach(q => {
+      if (q.id && q.status) {
+        statusMap.set(q.id, q.status);
+        console.log(`[handleQuestionStatusUpdate] Setting ${q.id} to ${q.status}`);
       }
     });
     
-    // Update the recent status updates tracker
-    if (Object.keys(newStatusUpdates).length > 0) {
-      setRecentStatusUpdates(prev => ({
-        ...prev,
-        ...newStatusUpdates
-      }));
+    if (statusMap.size === 0) {
+      console.log("[handleQuestionStatusUpdate] No valid status updates found");
+      return;
     }
-    
-    // Update the specified list directly
-    if (listType === 'my') {
-      setMyQuestions(updatedQuestions);
-    } else {
-      setClassQuestions(updatedQuestions);
-    }
-    
-    // Current session code - needed for force refresh
-    const currentSessionCode = joinedClass?.sessionCode || '';
-    
-    // Find any questions that exist in both lists and sync their status and text
-    const otherList = listType === 'my' ? classQuestions : myQuestions;
-    const otherSetter = listType === 'my' ? setClassQuestions : setMyQuestions;
-    
-    // Create a map of updated questions by ID
-    const updatedMap = updatedQuestions.reduce((map, q) => {
-      map[q.id] = q;
-      return map;
-    }, {} as Record<string, Question>);
-    
-    // Always update the other list (whether it needs updating or not)
-    // This ensures consistency even if Firebase events are delayed
-    const updatedOtherList = otherList.map(q => {
-      const updatedQuestion = updatedMap[q.id];
-      if (updatedQuestion) {
-        // If the question exists in both lists, sync all properties
-        return {
-          ...q,
-          status: updatedQuestion.status,
-          text: updatedQuestion.text  // Also sync the text for edits
-        };
-      }
-      return q;
+
+    // Update My Questions list with a functional update that logs before and after state
+    setMyQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] My Questions BEFORE:", 
+        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
+      
+      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
+      
+      const updated = prevQuestions.map(q => {
+        if (q.id && statusMap.has(q.id)) {
+          console.log(`[handleQuestionStatusUpdate] Updating My Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
+          return { ...q, status: statusMap.get(q.id)! };
+        }
+        return q;
+      });
+      
+      console.log("[handleQuestionStatusUpdate] My Questions AFTER:", 
+        updated.map(q => `${q.id}: ${q.status}`).join(', '));
+      
+      return updated;
     });
-    
-    otherSetter(updatedOtherList);
-    
-    // Only force refresh from server if it's not a status update that we just made
-    // This prevents our recent changes from being overwritten by stale server data
-    if (currentSessionCode && Object.keys(newStatusUpdates).length === 0) {
-      // Use longer delays to give database time to complete updates
-      // First refresh after a moderate delay
-      setTimeout(() => {
-        console.log(`[handleQuestionStatusUpdate] Forcing question refresh for session: ${currentSessionCode}`);
-        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
-          forceRefreshQuestions(currentSessionCode).catch(console.error);
-        });
-      }, 1500);
+
+    // Update Class Questions list with a functional update that logs before and after state
+    setClassQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] Class Questions BEFORE:", 
+        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
       
-      // Second refresh after a longer delay
-      setTimeout(() => {
-        console.log(`[handleQuestionStatusUpdate] Second refresh for session: ${currentSessionCode}`);
-        import('@/lib/questions').then(({ forceRefreshQuestions }) => {
-          forceRefreshQuestions(currentSessionCode).catch(console.error);
-        });
-      }, 4000);
-    } else if (Object.keys(newStatusUpdates).length > 0) {
-      console.log(`[handleQuestionStatusUpdate] Skipping immediate refresh for session: ${currentSessionCode} to preserve recent status updates`);
+      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
-      // Add a longer delayed refresh that will preserve our recent changes
-      setTimeout(() => {
-        console.log(`[handleQuestionStatusUpdate] Delayed refresh after status update for session: ${currentSessionCode}`);
-        
-        // This is a custom implementation to refresh data while preserving recent changes
-        const preserveRecentChanges = async () => {
-          try {
-            // Get fresh questions from server but preserve our recent changes
-            const { listenForQuestions, listenForUserQuestions } = await import('@/lib/questions');
-            
-            // We'll use a one-time callback pattern to get fresh data
-            const getRefreshedQuestions = (sessionCode: string, studentId: string): Promise<{
-              classQuestions: Question[],
-              myQuestions: Question[]
-            }> => {
-              return new Promise((resolve) => {
-                let classQuestionsReceived = false;
-                let myQuestionsReceived = false;
-                let refreshedClassQuestions: Question[] = [];
-                let refreshedMyQuestions: Question[] = [];
-                
-                // Get fresh class questions
-                const classUnsubscribe = listenForQuestions(
-                  sessionCode,
-                  (questions) => {
-                    refreshedClassQuestions = questions;
-                    classQuestionsReceived = true;
-                    checkComplete();
-                  },
-                  { useCache: false }
-                );
-                
-                // Get fresh my questions
-                const myUnsubscribe = listenForUserQuestions(
-                  studentId,
-                  sessionCode,
-                  (questions) => {
-                    refreshedMyQuestions = questions;
-                    myQuestionsReceived = true;
-                    checkComplete();
-                  }
-                );
-                
-                // Check if both sets of questions have been received
-                const checkComplete = () => {
-                  if (classQuestionsReceived && myQuestionsReceived) {
-                    classUnsubscribe();
-                    myUnsubscribe();
-                    resolve({
-                      classQuestions: refreshedClassQuestions,
-                      myQuestions: refreshedMyQuestions
-                    });
-                  }
-                };
-                
-                // Ensure we resolve even if callbacks never fire
-                setTimeout(() => {
-                  if (!classQuestionsReceived || !myQuestionsReceived) {
-                    console.error('[handleQuestionStatusUpdate] Timed out waiting for refreshed questions');
-                    classUnsubscribe();
-                    myUnsubscribe();
-                    resolve({
-                      classQuestions: refreshedClassQuestions.length ? refreshedClassQuestions : classQuestions,
-                      myQuestions: refreshedMyQuestions.length ? refreshedMyQuestions : myQuestions
-                    });
-                  }
-                }, 5000);
-              });
-            };
-            
-            if (studentId && currentSessionCode) {
-              // Get refreshed questions
-              const { classQuestions: refreshedClass, myQuestions: refreshedMy } = 
-                await getRefreshedQuestions(currentSessionCode, studentId);
-              
-              // Preserve recent status updates in the refreshed data
-              const now = Date.now();
-              const RECENT_WINDOW = 30000; // 30 seconds
-              
-              // Only preserve very recent updates (last 30 seconds)
-              const recentUpdates = Object.entries(recentStatusUpdates)
-                .filter(([_, {timestamp}]) => now - timestamp < RECENT_WINDOW)
-                .reduce((acc, [id, data]) => {
-                  acc[id] = data;
-                  return acc;
-                }, {} as Record<string, {status: 'answered' | 'unanswered', timestamp: number}>);
-              
-              // Apply recent updates to the fresh data
-              if (Object.keys(recentUpdates).length > 0) {
-                console.log(`[handleQuestionStatusUpdate] Preserving ${Object.keys(recentUpdates).length} recent status updates`);
-                
-                const mergedClass = refreshedClass.map(q => {
-                  const recentUpdate = recentUpdates[q.id];
-                  if (recentUpdate) {
-                    console.log(`[handleQuestionStatusUpdate] Preserving status ${recentUpdate.status} for question ${q.id}`);
-                    return { ...q, status: recentUpdate.status };
-                  }
-                  return q;
-                });
-                
-                const mergedMy = refreshedMy.map(q => {
-                  const recentUpdate = recentUpdates[q.id];
-                  if (recentUpdate) {
-                    return { ...q, status: recentUpdate.status };
-                  }
-                  return q;
-                });
-                
-                // Update state with the merged data
-                setClassQuestions(mergedClass);
-                setMyQuestions(mergedMy);
-              } else {
-                // No recent updates to preserve, just use the fresh data
-                setClassQuestions(refreshedClass);
-                setMyQuestions(refreshedMy);
-              }
-              
-              // Clean up old status updates
-              if (Object.keys(recentStatusUpdates).length !== Object.keys(recentUpdates).length) {
-                setRecentStatusUpdates(recentUpdates);
-              }
-            }
-          } catch (error) {
-            console.error('[handleQuestionStatusUpdate] Error refreshing questions:', error);
-          }
-        };
-        
-        preserveRecentChanges();
-      }, 6000);
-    }
-  }, [myQuestions, classQuestions, joinedClass?.sessionCode, studentId, recentStatusUpdates]);
+      const updated = prevQuestions.map(q => {
+        if (q.id && statusMap.has(q.id)) {
+          console.log(`[handleQuestionStatusUpdate] Updating Class Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
+          return { ...q, status: statusMap.get(q.id)! };
+        }
+        return q;
+      });
+      
+      console.log("[handleQuestionStatusUpdate] Class Questions AFTER:", 
+        updated.map(q => `${q.id}: ${q.status}`).join(', '));
+      
+      return updated;
+    });
+
+    console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
+  }, []);
   
+  // Direct implementation of toggle status
+  const handleToggleStatus = useCallback(async (questionId: string, newStatus: 'answered' | 'unanswered') => {
+    console.log(`[Direct Toggle] Setting question ${questionId} to ${newStatus}`);
+    
+    // Call the handleQuestionStatusUpdate function with the updated question
+    handleQuestionStatusUpdate([{ id: questionId, status: newStatus } as Question]);
+    
+    try {
+      // Import the function at the top of the file
+      const { updateQuestionStatus } = await import('@/lib/questions');
+      
+      // Update the database directly
+      const success = await updateQuestionStatus(questionId, newStatus);
+      
+      if (!success) {
+        console.error(`[Direct Toggle] Failed to update question status in database`);
+        // Revert UI changes by calling handleQuestionStatusUpdate with reversed status
+        handleQuestionStatusUpdate([{ id: questionId, status: newStatus === 'answered' ? 'unanswered' : 'answered' } as Question]);
+      }
+    } catch (error) {
+      console.error(`[Direct Toggle] Error updating question status:`, error);
+    }
+  }, [handleQuestionStatusUpdate]);
+
   /**
    * Handle opening the modal for manual point entry
    */
@@ -1158,7 +1025,8 @@ export default function StudentPage() {
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
+              onToggleStatus={handleToggleStatus}
+              onStatusUpdated={handleQuestionStatusUpdate}
             />
               </div>
             </div>
@@ -1172,18 +1040,19 @@ export default function StudentPage() {
               </svg>
               My Questions
             </h2>
-              <QuestionList 
-                questions={myQuestions} 
-                isProfessor={false}
+            <QuestionList
+              questions={myQuestions}
+              isProfessor={false}
               isStudent={true}
               studentId={studentId}
-                showControls={true}
-                emptyMessage="You haven't asked any questions yet."
-                onDelete={handleQuestionDelete}
-                onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'my')}
+              showControls={true}
+              emptyMessage="You haven't asked any questions yet."
+              onDelete={handleQuestionDelete}
+              onToggleStatus={handleToggleStatus}
+              hideStatusIndicator={true}
             />
+          </div>
         </div>
-      </div>
       </div>
     );
   };
@@ -1464,7 +1333,7 @@ export default function StudentPage() {
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
             <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
             <div className="flex flex-col gap-2">
-        <button
+              <button
                 onClick={() => setError(null)}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
@@ -1475,12 +1344,12 @@ export default function StudentPage() {
                 className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:text-dark-text-inverted transition-colors"
               >
                 Refresh Page
-        </button>
+              </button>
             </div>
           </div>
+        </div>
       </div>
-    </div>
-  );
+    );
   }
 
   // Show loading state

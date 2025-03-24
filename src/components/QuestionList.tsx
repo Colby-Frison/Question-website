@@ -12,6 +12,7 @@ import { deleteQuestion, updateQuestion, updateQuestionStatus } from '@/lib/ques
  * @property {boolean} [isStudent] - Whether the current user is a student
  * @property {string} [studentId] - ID of the current student, if applicable
  * @property {boolean} [showControls] - Whether to show edit and delete buttons (defaults to true)
+ * @property {boolean} [hideStatusIndicator] - Whether to hide status indicators
  * @property {function} [onDelete] - Optional callback for when a question is deleted
  * @property {function} [onToggleStatus] - Optional callback for toggling a question's status
  * @property {function} [onStatusUpdated] - Optional callback when questions are updated (for forcing refresh)
@@ -25,6 +26,7 @@ interface QuestionListProps {
   studentId?: string;
   emptyMessage?: string;
   showControls?: boolean;
+  hideStatusIndicator?: boolean;
   onDelete?: (questionId: string) => void;
   onToggleStatus?: (questionId: string, currentStatus: 'answered' | 'unanswered') => void;
   onStatusUpdated?: (updatedQuestions: Question[]) => void;
@@ -49,6 +51,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   studentId = '',
   emptyMessage = "No questions yet.",
   showControls = true,
+  hideStatusIndicator = false,
   onDelete,
   onToggleStatus,
   onStatusUpdated
@@ -58,7 +61,9 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [optimisticStatusUpdates, setOptimisticStatusUpdates] = useState<Record<string, 'answered' | 'unanswered'>>({});
+  
+  // Simple way to track manual overrides locally
+  const [manualStatuses, setManualStatuses] = useState<Record<string, 'answered' | 'unanswered'>>({});
 
   /**
    * Format timestamp to a readable date/time
@@ -161,128 +166,73 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    */
   const handleToggleStatus = useCallback(async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
-    
-    console.log(`⏳ Beginning status toggle for question ${questionId}: ${currentStatus} -> ${newStatus}`);
+    console.log(`[QuestionList] Toggling status for ${questionId}: ${currentStatus} -> ${newStatus}`);
     
     // Mark this question as being updated
     setUpdatingStatusId(questionId);
     setError(null);
     
-    // Set optimistic update immediately
-    setOptimisticStatusUpdates(prev => ({
-      ...prev,
-      [questionId]: newStatus
-    }));
-    
-    // Update the local state right away
-    if (questions && onStatusUpdated) {
-      const updatedQuestions = questions.map(q => 
-        q.id === questionId 
-          ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
-          : q
-      );
-      
-      // Update UI immediately
-      onStatusUpdated(updatedQuestions);
-      console.log(`✅ Applied optimistic UI update for question ${questionId} to ${newStatus}`);
-    }
-    
-    // Ensure the loading indicator shows for a minimum amount of time
-    // This both prevents rapid clicking and ensures the server has time to process
-    const MIN_LOADING_TIME = 2500; // ms
-    const startTime = Date.now();
-    
     try {
-      let success = false;
-      const MAX_RETRIES = 3;
+      // Set the manual status immediately for responsive UI
+      setManualStatuses(prev => {
+        console.log(`[QuestionList] Setting manual status override for ${questionId} to ${newStatus}`);
+        return {
+          ...prev,
+          [questionId]: newStatus
+        };
+      });
       
-      for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
-        try {
-          console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES}: Calling updateQuestionStatus for ${questionId}`);
-          
-          // Make the actual API call to update the status
-          success = await updateQuestionStatus(questionId, newStatus);
-          
-          if (success) {
-            console.log(`✅ Successfully updated question ${questionId} status to ${newStatus} on attempt ${attempt + 1}`);
-            break;
-          } else {
-            console.warn(`⚠️ updateQuestionStatus returned false on attempt ${attempt + 1}`);
-            if (attempt < MAX_RETRIES - 1) {
-              // Wait with exponential backoff before retrying
-              const backoffTime = 1000 * Math.pow(2, attempt);
-              console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
-              await new Promise(resolve => setTimeout(resolve, backoffTime));
-            }
-          }
-        } catch (err) {
-          console.error(`❌ Error on attempt ${attempt + 1}:`, err);
-          if (attempt < MAX_RETRIES - 1) {
-            // Wait with exponential backoff before retrying
-            const backoffTime = 1000 * Math.pow(2, attempt);
-            console.log(`⏱️ Waiting ${backoffTime}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, backoffTime));
-          }
-        }
-      }
-      
-      // Call the parent's status toggle callback if provided
+      // Call both callbacks immediately for instant UI updates
       if (onToggleStatus) {
-        console.log(`📣 Calling onToggleStatus callback for question ${questionId} with ${newStatus}`);
+        console.log(`[QuestionList] Calling onToggleStatus callback with ${questionId}, ${newStatus}`);
         onToggleStatus(questionId, newStatus);
       }
       
-      // If update was successful, make one more update to the question list
-      // This ensures any other components see the latest state
-      if (success && questions && onStatusUpdated) {
-        // Double-check that we're using the latest questions
-        const finalQuestions = questions.map(q => 
-          q.id === questionId 
-            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
-            : q
+      if (onStatusUpdated && questions) {
+        const updatedQuestions = questions.map(q => 
+          q.id === questionId ? { ...q, status: newStatus as 'answered' | 'unanswered' } : q
         );
-        
-        console.log(`📊 Final UI update for question ${questionId}`);
-        onStatusUpdated(finalQuestions);
+        console.log(`[QuestionList] Calling onStatusUpdated callback with updated questions`);
+        onStatusUpdated(updatedQuestions);
       }
       
-      // If the update failed after all retries
+      // Update the database
+      console.log(`[QuestionList] Updating database with new status: ${newStatus}`);
+      const success = await updateQuestionStatus(questionId, newStatus);
+      
       if (!success) {
-        throw new Error("Failed to update question status after multiple attempts");
+        throw new Error('Failed to update status in database');
       }
       
+      console.log(`[QuestionList] Database update successful`);
     } catch (error) {
-      console.error('❌ Error toggling question status:', error);
+      console.error(`[QuestionList] Error toggling question status:`, error);
+      setError(`Failed to update status. Please try again.`);
       
-      // Show error message to the user
-      setError(`Failed to update question status: ${(error as Error).message || 'Unknown error'}. The UI will show the updated status, but it may not be saved.`);
+      // Revert the manual status on error
+      setManualStatuses(prev => {
+        const updated = { ...prev };
+        delete updated[questionId];
+        return updated;
+      });
       
-      // Do NOT revert the optimistic update immediately
-      // This prevents UI flicker and confusing the user
-      // The background refresh will correct it if needed
-      
-      // Clear error after 5 seconds
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      // Ensure minimum loading time for UI feedback
-      const elapsed = Date.now() - startTime;
-      const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
-      
-      // Wait for minimum time to complete before removing loading state
-      if (remainingTime > 0) {
-        console.log(`⏱️ Waiting ${remainingTime}ms to ensure minimum loading display time`);
-        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      // If callbacks were called, call them again with the original status
+      if (onToggleStatus) {
+        console.log(`[QuestionList] Reverting onToggleStatus callback with original status: ${currentStatus}`);
+        onToggleStatus(questionId, currentStatus);
       }
       
-      setUpdatingStatusId(null);
-      
-      // Important: Don't clear optimistic updates here
-      // Keep them in place to avoid UI flickers
-      // Backend processes will correct any inconsistencies
-      
-      console.log(`🏁 Status toggle operation complete for question ${questionId}`);
+      if (onStatusUpdated && questions) {
+        console.log(`[QuestionList] Reverting onStatusUpdated callback with original questions`);
+        onStatusUpdated(questions);
+      }
+    } finally {
+      // Clear updating status shortly after
+      setTimeout(() => {
+        setUpdatingStatusId(null);
+      }, 500);
     }
-  }, [onToggleStatus, questions, onStatusUpdated]);
+  }, [onToggleStatus, onStatusUpdated, questions]);
   
   /**
    * Check if user can edit the question
@@ -299,6 +249,18 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
     // Professors can delete any question, students can only delete their own
     return isProfessor || (isStudent && studentId === question.studentId);
   };
+
+  /**
+   * Get the effective status of a question, prioritizing manual overrides
+   */
+  const getEffectiveStatus = useCallback((question: Question): 'answered' | 'unanswered' => {
+    // If we have a manual override, use that
+    if (manualStatuses[question.id]) {
+      return manualStatuses[question.id];
+    }
+    // Otherwise fall back to the question's status
+    return question.status || 'unanswered';
+  }, [manualStatuses]);
 
   /**
    * Renders the loading state when questions are being fetched
@@ -336,7 +298,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         />
       </svg>
       <p className="text-gray-600 dark:text-gray-400">{emptyMessage}</p>
-    </div>
+        </div>
   ), [emptyMessage]);
 
   /**
@@ -348,8 +310,8 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       const isUpdatingThis = isUpdating && editingId === question.id;
       const isUpdatingStatus = updatingStatusId === question.id;
       
-      // Get effective status accounting for optimistic updates
-      const effectiveStatus = optimisticStatusUpdates[question.id] || question.status;
+      // Get effective status using our helper function
+      const effectiveStatus = getEffectiveStatus(question);
       
       // Determine status indicator color
       const statusClass = effectiveStatus === 'answered' 
@@ -420,15 +382,17 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                     <span className="inline-block mr-2 text-gray-600 dark:text-gray-300">
                       {formatTimestamp(question.timestamp)}
                     </span>
-                    <span className="flex items-center">
-                      <span className={`inline-block w-2 h-2 rounded-full mr-1 ${statusClass}`}></span>
-                      <span className="text-gray-600 dark:text-gray-300">
-                        {effectiveStatus === 'answered' ? 'Answered' : 'Waiting for answer'}
+                    {!hideStatusIndicator && (
+                      <span className="flex items-center">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1 ${statusClass}`}></span>
+                        <span className="text-gray-600 dark:text-gray-300">
+                          {effectiveStatus === 'answered' ? 'Answered' : 'Waiting for answer'}
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </div>
-                </div>
-                
+          </div>
+          
                 {/* Action buttons */}
                 {canControl && (
                   <div className="flex space-x-1 ml-2">
@@ -437,11 +401,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                       isUpdatingStatus ? (
                         <button
                           disabled={true}
-                          className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                            effectiveStatus === 'answered' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
-                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
-                          }`}
+                          className="flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
                         >
                           <svg className="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -449,31 +409,36 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
                           </svg>
                           <span>Updating...</span>
                         </button>
-                      ) : effectiveStatus === 'answered' ? (
-                        <button
-                          onClick={() => handleToggleStatus(question.id, effectiveStatus)}
-                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30"
-                          title="Mark as unanswered"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Answered</span>
-                        </button>
                       ) : (
                         <button
                           onClick={() => handleToggleStatus(question.id, effectiveStatus)}
-                          className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
-                          title="Mark as answered"
+                          className={`flex items-center justify-center px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                            effectiveStatus === 'answered' 
+                              ? 'bg-green-500 text-white hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700' 
+                              : 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                          }`}
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Mark Answered</span>
+                          <div className="relative flex items-center">
+                            {effectiveStatus === 'answered' ? (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Answered</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                                <span>Not Answered</span>
+                              </>
+                            )}
+                          </div>
                         </button>
                       )
                     )}
-                    
+                
                     {/* Student edit controls */}
                     {isStudent && studentId === question.studentId && (
                     <button
@@ -505,7 +470,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
       </li>
       );
     });
-  }, [questions, editingId, editText, isUpdating, updatingStatusId, optimisticStatusUpdates, error, isProfessor, isStudent, studentId, showControls, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit]);
+  }, [questions, editingId, editText, isUpdating, updatingStatusId, manualStatuses, error, isProfessor, isStudent, studentId, showControls, hideStatusIndicator, handleDelete, handleToggleStatus, handleEdit, formatTimestamp, handleSaveEdit, handleCancelEdit, getEffectiveStatus]);
 
   if (questions.length === 0) return renderEmptyState;
 
