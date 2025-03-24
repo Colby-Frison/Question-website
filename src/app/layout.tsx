@@ -31,10 +31,9 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  // Get stored theme or system preference
+                  // Get stored theme or default to light
                   const storedTheme = localStorage.getItem('theme');
-                  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                  const theme = storedTheme || systemTheme;
+                  const theme = storedTheme || 'light';
                   
                   // Apply theme immediately to prevent flash
                   if (theme === 'dark') {
@@ -46,8 +45,7 @@ export default function RootLayout({
                   // Handle page transitions
                   document.addEventListener('visibilitychange', () => {
                     if (document.visibilityState === 'visible') {
-                      const currentTheme = localStorage.getItem('theme') || 
-                        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                      const currentTheme = localStorage.getItem('theme') || 'light';
                       
                       if (currentTheme === 'dark') {
                         document.documentElement.classList.add('dark');
