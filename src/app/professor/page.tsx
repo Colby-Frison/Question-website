@@ -460,23 +460,14 @@ export default function ProfessorPage() {
         )
       );
       
+      // Add a small delay before making the API call to avoid race conditions
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // Make the actual status update
       const success = await updateQuestionStatus(id, newStatus);
       
       if (success) {
-        console.log(`Question ${id} status updated to ${newStatus}`);
-        
-        // Force a refresh of questions after a small delay
-        if (sessionCode) {
-          setTimeout(() => {
-            import('@/lib/questions').then(({ forceRefreshQuestions }) => {
-              console.log(`Forcing refresh for session: ${sessionCode}`);
-              forceRefreshQuestions(sessionCode).catch(err => {
-                console.error("Error in forced refresh:", err);
-              });
-            });
-          }, 200);
-        }
+        console.log(`Question ${id} status successfully updated to ${newStatus}`);
       } else {
         console.error(`Question ${id} status update failed`);
         // Revert optimistic update if the API call failed
@@ -485,13 +476,16 @@ export default function ProfessorPage() {
             q.id === id ? { ...q, status: currentStatus } : q
           )
         );
-        throw new Error("Status update returned false");
+        throw new Error("Status update failed");
       }
-      
-      // The questions list will also update automatically via the listener
     } catch (error) {
       console.error("Error updating question status:", error);
       setError("Failed to update question status. Please try again.");
+      
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
     }
   };
 
@@ -607,6 +601,11 @@ export default function ProfessorPage() {
     const currentPoints = pointsAwarded[answerId] || 0;
     const pointsOptions = [1, 2, 3, 4, 5];
     
+    // Format a number with comma separators for thousands
+    const formatNumber = (num: number) => {
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    };
+    
     return (
       <div className="flex w-full mt-2">
         <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 w-full">
@@ -621,10 +620,10 @@ export default function ProfessorPage() {
                     ? 'bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-100'
                     : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
               }`}
-              aria-label={`Award ${points} point${points !== 1 ? 's' : ''}`}
-              title={currentPoints === points ? `Click to remove ${points} point${points !== 1 ? 's' : ''}` : `Award ${points} point${points !== 1 ? 's' : ''}`}
+              aria-label={`Award ${formatNumber(points)} point${points !== 1 ? 's' : ''}`}
+              title={currentPoints === points ? `Click to reset to 0 points` : `Award ${formatNumber(points)} point${points !== 1 ? 's' : ''}`}
             >
-              {points}
+              {formatNumber(points)}
             </button>
           ))}
         </div>
@@ -644,19 +643,9 @@ export default function ProfessorPage() {
       // Check if we've already awarded points for this answer
       const previousPoints = pointsAwarded[answerId] || 0;
       
-      // Skip processing if points haven't changed
-      if (previousPoints === points && previousPoints !== 0) {
-        console.log(`Points for answer ${answerId} already set to ${points}`);
-        return;
-      }
-      
-      // Calculate the actual point difference to apply
-      let pointsDifference = 0;
-      
-      // If clicking the same number, unselect and remove all points
+      // If clicking the same number, reset to 0 points
       if (previousPoints === points) {
-        // This can only happen when both are non-zero (checked above)
-        pointsDifference = -previousPoints;
+        const pointsDifference = -previousPoints;
         
         // Update UI immediately for responsiveness
         setPointsAwarded(prev => {
@@ -665,19 +654,43 @@ export default function ProfessorPage() {
           return newPointsAwarded;
         });
         
-        console.log(`Removing ${previousPoints} points from student ${studentId} for answer ${answerId}`);
-      } else {
-        // Clicking a different number - calculate the difference
-        pointsDifference = points - previousPoints;
+        console.log(`Resetting points to 0 for student ${studentId} on answer ${answerId} (was ${previousPoints})`);
         
-        // Update UI immediately for responsiveness
+        // Only make the database call if there's an actual change
+        if (pointsDifference !== 0) {
+          // Apply the points change in the database
+          const success = await updateStudentPoints(studentId, pointsDifference);
+          
+          if (!success) {
+            // Revert UI if database update failed
+            setPointsAwarded(prev => ({
+              ...prev,
+              [answerId]: previousPoints
+            }));
+            throw new Error("Failed to update points in the database");
+          }
+          
+          // Update session activity only if the update succeeded
+          if (sessionId) {
+            await updateSessionActivity(sessionId);
+            setLastActivity(Date.now());
+          }
+        }
+        
+        return;
+      }
+      
+      // Handle assigning new points (different from current selection)
+      // Calculate the actual point difference to apply
+      const pointsDifference = points - previousPoints;
+      
+      // Update UI immediately for responsiveness
       setPointsAwarded(prev => ({
         ...prev,
-          [answerId]: points
+        [answerId]: points
       }));
       
-        console.log(`Changing points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
-      }
+      console.log(`Changing points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
       
       // Only make the database call if there's an actual change
       if (pointsDifference !== 0) {
@@ -686,24 +699,15 @@ export default function ProfessorPage() {
         
         if (!success) {
           // Revert UI if database update failed
-          if (previousPoints === points) {
-            // We were trying to remove points
-            setPointsAwarded(prev => ({
-              ...prev,
-              [answerId]: previousPoints
-            }));
-          } else {
-            // We were trying to update to a new value
-            setPointsAwarded(prev => {
-              const newPointsAwarded = { ...prev };
-              if (previousPoints === 0) {
-                delete newPointsAwarded[answerId];
-              } else {
-                newPointsAwarded[answerId] = previousPoints;
-              }
-              return newPointsAwarded;
-            });
-          }
+          setPointsAwarded(prev => {
+            const newPointsAwarded = { ...prev };
+            if (previousPoints === 0) {
+              delete newPointsAwarded[answerId];
+            } else {
+              newPointsAwarded[answerId] = previousPoints;
+            }
+            return newPointsAwarded;
+          });
           
           throw new Error("Failed to update points in the database");
         }

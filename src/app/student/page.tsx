@@ -54,33 +54,10 @@ const STUDENT_POINTS_COLLECTION = 'studentPoints';
 const notifyNewQuestion = (questionText: string) => {
   console.log("Notifying user of new question:", questionText);
   
-  // Try to play a notification sound
-  try {
-    // Try to create a sound programmatically as fallback
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (audioContext) {
-      // Create a simple beep sound
-      const oscillator = audioContext.createOscillator();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5 note
-      
-      const gainNode = audioContext.createGain();
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1);
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 1);
-      
-      console.log("Played synthesized notification sound");
-    }
-  } catch (e) {
-    console.log('Error creating audio notification:', e);
-    // Fallback to alert only if we couldn't play a sound
-    alert(`New question from professor: ${questionText}`);
-  }
+  // Audio notification has been removed
+  
+  // Use visual alert
+  alert(`New question from professor: ${questionText}`);
   
   // Flash the title bar to get user attention
   let originalTitle = document.title;
@@ -162,9 +139,6 @@ export default function StudentPage() {
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
-
-  // Track recent status updates to prevent them from being overwritten
-  const [recentStatusUpdates, setRecentStatusUpdates] = useState<Record<string, {status: 'answered' | 'unanswered', timestamp: number}>>({});
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -874,9 +848,6 @@ export default function StudentPage() {
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
     console.log(`[handleQuestionStatusUpdate] Processing updates for ${listType} list with ${updatedQuestions.length} questions`);
     
-    // Current time for tracking
-    const updateTime = Date.now();
-    
     // Get the current state of both lists
     const currentMyList = [...myQuestions];
     const currentClassList = [...classQuestions];
@@ -890,264 +861,42 @@ export default function StudentPage() {
       setClassQuestions(updatedQuestions);
     }
     
-    // Create a quick lookup by ID for the updated questions
+    // Create a map of questions by ID for the updated list
     const updatedQuestionsMap = updatedQuestions.reduce((map, q) => {
       map[q.id] = q;
       return map;
     }, {} as Record<string, Question>);
     
-    // Check for status changes by comparing with previous state
-    const statusChanges: Record<string, {
-      id: string,
-      newStatus: 'answered' | 'unanswered',
-      previousStatus: 'answered' | 'unanswered' | undefined
-    }> = {};
-    
-    const previousList = listType === 'my' ? currentMyList : currentClassList;
-    
-    previousList.forEach(prevQ => {
-      const updatedQ = updatedQuestionsMap[prevQ.id];
-      if (updatedQ && prevQ.status !== updatedQ.status) {
-        statusChanges[prevQ.id] = {
-          id: prevQ.id,
-          newStatus: updatedQ.status as 'answered' | 'unanswered',
-          previousStatus: prevQ.status as 'answered' | 'unanswered' | undefined
-        };
-        console.log(`[handleQuestionStatusUpdate] Detected status change for question ${prevQ.id}: ${prevQ.status} -> ${updatedQ.status}`);
-      }
-    });
-    
-    // Now synchronize the other list based on the changes
+    // Get the other list that needs to be synchronized
     const otherList = listType === 'my' ? currentClassList : currentMyList;
-    const otherSetter = listType === 'my' ? setClassQuestions : setMyQuestions;
+    const setOtherList = listType === 'my' ? setClassQuestions : setMyQuestions;
     
-    if (Object.keys(statusChanges).length > 0) {
-      // We have status changes, sync them to the other list
-      console.log(`[handleQuestionStatusUpdate] Syncing ${Object.keys(statusChanges).length} status changes to the other list`);
+    // Check if any questions in the other list need to be updated
+    const needsSync = otherList.some(q => 
+      updatedQuestionsMap[q.id] && 
+      (q.status !== updatedQuestionsMap[q.id].status || q.text !== updatedQuestionsMap[q.id].text)
+    );
+    
+    if (needsSync) {
+      console.log('[handleQuestionStatusUpdate] Synchronizing changes to the other list');
       
-      const updatedOtherList = otherList.map(q => {
-        const statusChange = statusChanges[q.id];
-        if (statusChange) {
-          // This question exists in both lists and had a status change
+      // Update the other list with changes from the updated list
+      const syncedOtherList = otherList.map(q => {
+        if (updatedQuestionsMap[q.id]) {
+          // If the question exists in both lists, sync its properties
           return {
             ...q,
-            status: statusChange.newStatus
+            status: updatedQuestionsMap[q.id].status,
+            text: updatedQuestionsMap[q.id].text
           };
         }
         return q;
       });
       
       // Update the other list
-      otherSetter(updatedOtherList);
-      
-      // Track these changes for resilience against server refreshes
-      const newStatusUpdates = Object.values(statusChanges).reduce((acc, change) => {
-        acc[change.id] = {
-          status: change.newStatus,
-          timestamp: updateTime
-        };
-        return acc;
-      }, {} as Record<string, {status: 'answered' | 'unanswered', timestamp: number}>);
-      
-      setRecentStatusUpdates(prev => ({
-        ...prev,
-        ...newStatusUpdates
-      }));
-      
-      // Get current session code for refresh operations
-      const currentSessionCode = joinedClass?.sessionCode;
-      
-      if (currentSessionCode) {
-        console.log(`[handleQuestionStatusUpdate] Scheduling delayed refreshes for session ${currentSessionCode}`);
-        
-        // Schedule multiple refreshes with increasing delays to ensure propagation
-        // This helps with Firebase eventual consistency
-        const refreshDelays = [800, 2000, 5000, 10000];
-        
-        for (const delay of refreshDelays) {
-          setTimeout(async () => {
-            try {
-              console.log(`[handleQuestionStatusUpdate] Executing ${delay}ms delayed refresh`);
-              const { forceRefreshQuestions } = await import('@/lib/questions');
-              await forceRefreshQuestions(currentSessionCode);
-            } catch (err) {
-              console.error(`[handleQuestionStatusUpdate] Error in ${delay}ms refresh:`, err);
-            }
-          }, delay);
-        }
-        
-        // Add one final refresh with status preservation
-        setTimeout(() => {
-          console.log(`[handleQuestionStatusUpdate] Final refresh with status preservation`);
-          preserveRecentChanges();
-        }, 15000);
-      }
-    } else {
-      // No status changes detected, just sync text edits if any
-      console.log('[handleQuestionStatusUpdate] No status changes detected, checking for text edits');
-      
-      const textChanges: Record<string, {
-        id: string,
-        newText: string
-      }> = {};
-      
-      previousList.forEach(prevQ => {
-        const updatedQ = updatedQuestionsMap[prevQ.id];
-        if (updatedQ && prevQ.text !== updatedQ.text) {
-          textChanges[prevQ.id] = {
-            id: prevQ.id,
-            newText: updatedQ.text
-          };
-          console.log(`[handleQuestionStatusUpdate] Detected text change for question ${prevQ.id}`);
-        }
-      });
-      
-      if (Object.keys(textChanges).length > 0) {
-        console.log(`[handleQuestionStatusUpdate] Syncing ${Object.keys(textChanges).length} text changes to the other list`);
-        
-        const updatedOtherList = otherList.map(q => {
-          const textChange = textChanges[q.id];
-          if (textChange) {
-            return {
-              ...q,
-              text: textChange.newText
-            };
-          }
-          return q;
-        });
-        
-        otherSetter(updatedOtherList);
-      }
+      setOtherList(syncedOtherList);
     }
-    
-    // Helper function to preserve recent changes during refreshes
-    const preserveRecentChanges = async () => {
-      try {
-        console.log('[handleQuestionStatusUpdate] Executing preserveRecentChanges');
-        
-        const currentSessionCode = joinedClass?.sessionCode;
-        if (!currentSessionCode || !studentId) {
-          console.log('[handleQuestionStatusUpdate] Missing session code or student ID, skipping preservation');
-          return;
-        }
-        
-        // Get fresh questions from server
-        const { listenForQuestions, listenForUserQuestions } = await import('@/lib/questions');
-        
-        // One-time fetch of fresh data
-        const freshData = await new Promise<{
-          classQuestions: Question[],
-          myQuestions: Question[]
-        }>((resolve) => {
-          let classQuestionsReceived = false;
-          let myQuestionsReceived = false;
-          let freshClassQuestions: Question[] = [];
-          let freshMyQuestions: Question[] = [];
-          
-          // Get fresh class questions
-          const classUnsubscribe = listenForQuestions(
-            currentSessionCode,
-            (questions) => {
-              freshClassQuestions = questions;
-              classQuestionsReceived = true;
-              checkComplete();
-            },
-            { useCache: false }
-          );
-          
-          // Get fresh my questions
-          const myUnsubscribe = listenForUserQuestions(
-            studentId,
-            currentSessionCode,
-            (questions) => {
-              freshMyQuestions = questions;
-              myQuestionsReceived = true;
-              checkComplete();
-            }
-          );
-          
-          // Check if both sets of questions have been received
-          const checkComplete = () => {
-            if (classQuestionsReceived && myQuestionsReceived) {
-              classUnsubscribe();
-              myUnsubscribe();
-              resolve({
-                classQuestions: freshClassQuestions,
-                myQuestions: freshMyQuestions
-              });
-            }
-          };
-          
-          // Timeout to prevent hanging
-          setTimeout(() => {
-            if (!classQuestionsReceived || !myQuestionsReceived) {
-              console.error('[handleQuestionStatusUpdate] Timed out waiting for refreshed questions');
-              classUnsubscribe();
-              myUnsubscribe();
-              resolve({
-                classQuestions: freshClassQuestions.length ? freshClassQuestions : classQuestions,
-                myQuestions: freshMyQuestions.length ? freshMyQuestions : myQuestions
-              });
-            }
-          }, 5000);
-        });
-        
-        console.log(`[handleQuestionStatusUpdate] Received fresh data: ${freshData.classQuestions.length} class questions, ${freshData.myQuestions.length} my questions`);
-        
-        // Get current status updates that are recent enough to preserve
-        const now = Date.now();
-        const RECENT_WINDOW = 60000; // 60 seconds, increased from 30
-        
-        // Filter to recent updates only
-        const recentUpdates = Object.entries(recentStatusUpdates)
-          .filter(([_, {timestamp}]) => now - timestamp < RECENT_WINDOW)
-          .reduce((acc, [id, data]) => {
-            acc[id] = data;
-            return acc;
-          }, {} as Record<string, {status: 'answered' | 'unanswered', timestamp: number}>);
-        
-        if (Object.keys(recentUpdates).length > 0) {
-          console.log(`[handleQuestionStatusUpdate] Preserving ${Object.keys(recentUpdates).length} recent status updates`);
-          
-          // Apply recent updates to the fresh data
-          const mergedClassQuestions = freshData.classQuestions.map(q => {
-            const recentUpdate = recentUpdates[q.id];
-            if (recentUpdate) {
-              console.log(`[handleQuestionStatusUpdate] Preserving status ${recentUpdate.status} for class question ${q.id}`);
-              return { ...q, status: recentUpdate.status };
-            }
-            return q;
-          });
-          
-          const mergedMyQuestions = freshData.myQuestions.map(q => {
-            const recentUpdate = recentUpdates[q.id];
-            if (recentUpdate) {
-              console.log(`[handleQuestionStatusUpdate] Preserving status ${recentUpdate.status} for my question ${q.id}`);
-              return { ...q, status: recentUpdate.status };
-            }
-            return q;
-          });
-          
-          // Update state with the merged data
-          setClassQuestions(mergedClassQuestions);
-          setMyQuestions(mergedMyQuestions);
-        } else {
-          console.log('[handleQuestionStatusUpdate] No recent updates to preserve, using fresh data as is');
-          // No recent updates to preserve, just use the fresh data
-          setClassQuestions(freshData.classQuestions);
-          setMyQuestions(freshData.myQuestions);
-        }
-        
-        // Clean up old status updates if needed
-        if (Object.keys(recentStatusUpdates).length !== Object.keys(recentUpdates).length) {
-          console.log('[handleQuestionStatusUpdate] Cleaning up old status updates');
-          setRecentStatusUpdates(recentUpdates);
-        }
-      } catch (error) {
-        console.error('[handleQuestionStatusUpdate] Error in preserveRecentChanges:', error);
-      }
-    };
-  }, [myQuestions, classQuestions, joinedClass?.sessionCode, studentId, recentStatusUpdates]);
+  }, [myQuestions, classQuestions]);
   
   /**
    * Handle opening the modal for manual point entry
