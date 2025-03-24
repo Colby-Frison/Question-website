@@ -921,9 +921,11 @@ export default function StudentPage() {
     if (studentId && sessionCode) {
       // Refresh My Questions
       console.log('[handleQuestionStatusUpdate] Triggering refresh of My Questions');
-      listenForUserQuestions(studentId, sessionCode, (questions) => {
+      const unsubscribe = listenForUserQuestions(studentId, sessionCode, (questions) => {
         console.log(`[handleQuestionStatusUpdate] Refreshed My Questions with ${questions.length} items`);
         setMyQuestions(questions);
+        // Unsubscribe after receiving the data - this is a one-time refresh, not a persistent listener
+        unsubscribe();
       }, { maxWaitTime: 0 });
     }
   }, [studentId, sessionCode]);
@@ -958,26 +960,11 @@ export default function StudentPage() {
         setClassQuestions(prev => prev.map(q => 
           q.id === questionId ? { ...q, status: newStatus === 'answered' ? 'unanswered' : 'answered' } : q
         ));
-      } else {
-        console.log(`[Direct Toggle] Successfully updated question status in database`);
-        
-        // Force refresh both lists to ensure they have the latest data
-        if (studentId && sessionCode) {
-          listenForUserQuestions(studentId, sessionCode, (questions) => {
-            console.log(`[Direct Toggle] Refreshed my questions after toggle`);
-            setMyQuestions(questions);
-          }, { maxWaitTime: 0 });
-          
-          listenForQuestions(sessionCode, (questions) => {
-            console.log(`[Direct Toggle] Refreshed class questions after toggle`);
-            setClassQuestions(questions);
-          }, { maxWaitTime: 0 });
-        }
       }
     } catch (error) {
       console.error(`[Direct Toggle] Error updating question status:`, error);
     }
-  }, [studentId, sessionCode]);
+  }, []);
 
   /**
    * Handle opening the modal for manual point entry
@@ -1103,20 +1090,9 @@ export default function StudentPage() {
                       
                       <div className="mt-2 flex items-center">
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             // Call handleToggleStatus directly
                             const newStatus = isAnswered ? 'unanswered' : 'answered';
-                            
-                            // Update UI immediately
-                            setMyQuestions(prev => prev.map(q => 
-                              q.id === question.id ? { ...q, status: newStatus } : q
-                            ));
-                            
-                            setClassQuestions(prev => prev.map(q => 
-                              q.id === question.id ? { ...q, status: newStatus } : q
-                            ));
-                            
-                            // Call the handler
                             handleToggleStatus(question.id, newStatus);
                           }}
                           className={`px-3 py-1 rounded-full text-xs font-medium flex items-center
@@ -1451,13 +1427,19 @@ export default function StudentPage() {
 
   // Force refresh my questions every 3 seconds
   useEffect(() => {
-    if (!studentId || !sessionCode) return;
+    if (!studentId || !sessionCode || !joined) return;
     
     console.log('[AutoRefresh] Setting up automatic refresh of my questions');
     
+    let isMounted = true;
+    
     const refreshInterval = setInterval(() => {
+      if (!isMounted) return;
+      
       console.log('[AutoRefresh] Forcing my questions refresh...');
       listenForUserQuestions(studentId, sessionCode, (questions) => {
+        if (!isMounted) return;
+        
         console.log(`[AutoRefresh] Received ${questions.length} refreshed personal questions`);
         setMyQuestions(questions);
       }, { maxWaitTime: 0 });
@@ -1465,9 +1447,10 @@ export default function StudentPage() {
     
     return () => {
       console.log('[AutoRefresh] Clearing automatic refresh interval');
+      isMounted = false;
       clearInterval(refreshInterval);
     };
-  }, [studentId, sessionCode]);
+  }, [studentId, sessionCode, joined]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
