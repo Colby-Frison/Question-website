@@ -1103,10 +1103,25 @@ export default function StudentPage() {
                       
                       <div className="mt-2 flex items-center">
                         <button
-                          onClick={() => handleToggleStatus(question.id, isAnswered ? 'unanswered' : 'answered')}
+                          onClick={async () => {
+                            // Call handleToggleStatus directly
+                            const newStatus = isAnswered ? 'unanswered' : 'answered';
+                            
+                            // Update UI immediately
+                            setMyQuestions(prev => prev.map(q => 
+                              q.id === question.id ? { ...q, status: newStatus } : q
+                            ));
+                            
+                            setClassQuestions(prev => prev.map(q => 
+                              q.id === question.id ? { ...q, status: newStatus } : q
+                            ));
+                            
+                            // Call the handler
+                            handleToggleStatus(question.id, newStatus);
+                          }}
                           className={`px-3 py-1 rounded-full text-xs font-medium flex items-center
                             ${isAnswered 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                               : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}
                         >
                           <span className={`w-2 h-2 rounded-full mr-1.5 ${isAnswered ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-500 dark:bg-gray-400'}`}></span>

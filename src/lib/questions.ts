@@ -430,8 +430,8 @@ export const updateQuestion = async (
     
     if (!questionDoc.exists()) {
       console.error(`[updateQuestion] Question ${questionId} not found`);
-      return false;
-    }
+    return false;
+  }
     
     const data = questionDoc.data();
     if (data.studentId !== studentId) {

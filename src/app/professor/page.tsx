@@ -645,8 +645,8 @@ export default function ProfessorPage() {
           
           if (!success) {
             // Revert UI if database update failed
-            setPointsAwarded(prev => ({
-              ...prev,
+      setPointsAwarded(prev => ({
+        ...prev,
               [answerId]: previousPoints
             }));
             throw new Error("Failed to update points in the database");
@@ -667,8 +667,8 @@ export default function ProfessorPage() {
       const pointsDifference = points - previousPoints;
       
       // Update UI immediately for responsiveness
-      setPointsAwarded(prev => ({
-        ...prev,
+            setPointsAwarded(prev => ({
+              ...prev,
         [answerId]: points
       }));
       
