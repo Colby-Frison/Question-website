@@ -845,8 +845,8 @@ export default function StudentPage() {
   }, []);
   
   // Handle status updates for both lists
-  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
-    console.log(`[handleQuestionStatusUpdate] Updating ${listType} list with ${updatedQuestions.length} questions`);
+  const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[]) => {
+    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions`);
     
     // Create a map of question IDs to their updated status
     const statusMap = new Map<string, 'answered' | 'unanswered'>();
@@ -946,7 +946,7 @@ export default function StudentPage() {
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
+              onStatusUpdated={handleQuestionStatusUpdate}
             />
               </div>
             </div>
@@ -968,7 +968,7 @@ export default function StudentPage() {
               showControls={true}
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={(updatedQuestions) => handleQuestionStatusUpdate(updatedQuestions, 'class')}
+              onStatusUpdated={handleQuestionStatusUpdate}
             />
           </div>
         </div>
