@@ -871,7 +871,8 @@ export default function StudentPage() {
       return;
     }
     
-    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions:`, updatedQuestions);
+    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions:`, 
+      updatedQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
     
     // Create a map of question IDs to their updated status
     const statusMap = new Map<string, 'answered' | 'unanswered'>();
@@ -887,58 +888,57 @@ export default function StudentPage() {
       return;
     }
 
-    // Update My Questions list
+    // Update My Questions list with a functional update that logs before and after state
     setMyQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] My Questions BEFORE:", 
+        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
+      
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
       const updated = prevQuestions.map(q => {
         if (q.id && statusMap.has(q.id)) {
+          console.log(`[handleQuestionStatusUpdate] Updating My Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
           return { ...q, status: statusMap.get(q.id)! };
         }
         return q;
       });
-      console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
+      
+      console.log("[handleQuestionStatusUpdate] My Questions AFTER:", 
+        updated.map(q => `${q.id}: ${q.status}`).join(', '));
+      
       return updated;
     });
 
-    // Update Class Questions list
+    // Update Class Questions list with a functional update that logs before and after state
     setClassQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] Class Questions BEFORE:", 
+        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
+      
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
       const updated = prevQuestions.map(q => {
         if (q.id && statusMap.has(q.id)) {
+          console.log(`[handleQuestionStatusUpdate] Updating Class Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
           return { ...q, status: statusMap.get(q.id)! };
         }
         return q;
       });
-      console.log(`[handleQuestionStatusUpdate] Updated Class Questions:`, updated);
+      
+      console.log("[handleQuestionStatusUpdate] Class Questions AFTER:", 
+        updated.map(q => `${q.id}: ${q.status}`).join(', '));
+      
       return updated;
     });
 
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
-    
-    // Force refresh of data if we have studentId and sessionCode
-    if (studentId && sessionCode) {
-      // Update UI immediately from existing data without creating new listeners
-      const updatedQuestionIds = updatedQuestions.map(q => q.id);
-      
-      console.log('[handleQuestionStatusUpdate] Updating UI only without creating new listeners');
-      console.log(`[handleQuestionStatusUpdate] Affected question IDs: ${updatedQuestionIds.join(', ')}`);
-    }
-  }, [studentId, sessionCode]);
+  }, []);
   
   // Direct implementation of toggle status
   const handleToggleStatus = useCallback(async (questionId: string, newStatus: 'answered' | 'unanswered') => {
     console.log(`[Direct Toggle] Setting question ${questionId} to ${newStatus}`);
     
-    // Immediately update UI for a responsive feel
-    setMyQuestions(prev => prev.map(q => 
-      q.id === questionId ? { ...q, status: newStatus } : q
-    ));
-    
-    setClassQuestions(prev => prev.map(q => 
-      q.id === questionId ? { ...q, status: newStatus } : q
-    ));
+    // Call the handleQuestionStatusUpdate function with the updated question
+    handleQuestionStatusUpdate([{ id: questionId, status: newStatus } as Question]);
     
     try {
       // Import the function at the top of the file
@@ -949,19 +949,13 @@ export default function StudentPage() {
       
       if (!success) {
         console.error(`[Direct Toggle] Failed to update question status in database`);
-        // Revert UI changes if database update failed
-        setMyQuestions(prev => prev.map(q => 
-          q.id === questionId ? { ...q, status: newStatus === 'answered' ? 'unanswered' : 'answered' } : q
-        ));
-        
-        setClassQuestions(prev => prev.map(q => 
-          q.id === questionId ? { ...q, status: newStatus === 'answered' ? 'unanswered' : 'answered' } : q
-        ));
+        // Revert UI changes by calling handleQuestionStatusUpdate with reversed status
+        handleQuestionStatusUpdate([{ id: questionId, status: newStatus === 'answered' ? 'unanswered' : 'answered' } as Question]);
       }
     } catch (error) {
       console.error(`[Direct Toggle] Error updating question status:`, error);
     }
-  }, []);
+  }, [handleQuestionStatusUpdate]);
 
   /**
    * Handle opening the modal for manual point entry
@@ -1032,6 +1026,7 @@ export default function StudentPage() {
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
               onToggleStatus={handleToggleStatus}
+              onStatusUpdated={handleQuestionStatusUpdate}
             />
               </div>
             </div>
@@ -1045,71 +1040,16 @@ export default function StudentPage() {
               </svg>
               My Questions
             </h2>
-            
-            {/* Direct implementation of question list for better control */}
-            {myQuestions.length === 0 ? (
-              <div className="rounded-md bg-background-secondary p-4 sm:p-8 text-center dark:bg-dark-background-tertiary">
-                <p className="text-sm sm:text-base text-text-secondary dark:text-dark-text-secondary">
-                  You haven't asked any questions yet.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-background-tertiary dark:divide-dark-background-tertiary rounded-md bg-white p-2 sm:p-4 dark:bg-dark-background-secondary w-full overflow-hidden">
-                {myQuestions.map((question) => {
-                  const status = question.status || 'unanswered';
-                  const isAnswered = status === 'answered';
-                  
-                  return (
-                    <li key={question.id} className="py-3 sm:py-4 border-b border-background-tertiary dark:border-dark-background-tertiary last:border-0 relative">
-                      <div className="flex items-center justify-between pb-2">
-                        <div className="flex items-center">
-                          <span className="text-xs text-text-tertiary dark:text-dark-text-tertiary">
-                            {new Date(question.timestamp).toLocaleString()}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleQuestionDelete(question.id)}
-                            className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete question"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className="text-sm sm:text-base text-text-primary dark:text-dark-text-primary break-words whitespace-normal overflow-wrap-anywhere pr-8">
-                        {question.text}
-                      </div>
-                      
-                      <div className="mt-2 flex items-center">
-                        <button
-                          onClick={() => {
-                            try {
-                              // Simple, direct approach with no async operations
-                              const newStatus = isAnswered ? 'unanswered' : 'answered';
-                              handleToggleStatus(question.id, newStatus);
-                            } catch (error) {
-                              console.error("Error toggling status:", error);
-                            }
-                          }}
-                          className={`px-3 py-1 rounded-full text-xs font-medium flex items-center
-                            ${isAnswered 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                              : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}
-                        >
-                          <span className={`w-2 h-2 rounded-full mr-1.5 ${isAnswered ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-500 dark:bg-gray-400'}`}></span>
-                          {isAnswered ? 'Answered' : 'Not Answered'}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <QuestionList
+              questions={myQuestions}
+              isProfessor={false}
+              isStudent={true}
+              studentId={studentId}
+              showControls={true}
+              emptyMessage="You haven't asked any questions yet."
+              onDelete={handleQuestionDelete}
+              onToggleStatus={handleToggleStatus}
+            />
           </div>
         </div>
       </div>
