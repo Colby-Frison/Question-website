@@ -848,39 +848,31 @@ export default function StudentPage() {
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[], listType: 'my' | 'class') => {
     console.log(`[handleQuestionStatusUpdate] Updating ${listType} list with ${updatedQuestions.length} questions`);
     
-    // Update the current list
-    if (listType === 'my') {
-      setMyQuestions(updatedQuestions);
-    } else {
-      setClassQuestions(updatedQuestions);
-    }
-    
-    // Get the questions from the other list
-    const otherList = listType === 'my' ? classQuestions : myQuestions;
-    const setOtherList = listType === 'my' ? setClassQuestions : setMyQuestions;
-    
-    // Create a map of question IDs to their statuses from the updated list
-    const statusMap: Record<string, 'answered' | 'unanswered' | undefined> = {};
+    // Create a map of question IDs to their updated status
+    const statusMap = new Map<string, 'answered' | 'unanswered'>();
     updatedQuestions.forEach(q => {
-      statusMap[q.id] = q.status;
+      if (q.status) {
+        statusMap.set(q.id, q.status);
+      }
     });
-    
-    // Check if any questions in the other list need status updates
-    const needsUpdate = otherList.some(q => statusMap[q.id] && q.status !== statusMap[q.id]);
-    
-    // Only update the other list if necessary
-    if (needsUpdate) {
-      const updatedOtherList = otherList.map(q => {
-        if (statusMap[q.id]) {
-          // Only update the status field
-          return { ...q, status: statusMap[q.id] };
-        }
-        return q;
-      });
-      
-      setOtherList(updatedOtherList);
-    }
-  }, [myQuestions, classQuestions]);
+
+    // Update both lists using the status map
+    setMyQuestions(prevQuestions => 
+      prevQuestions.map(q => ({
+        ...q,
+        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
+      }))
+    );
+
+    setClassQuestions(prevQuestions => 
+      prevQuestions.map(q => ({
+        ...q,
+        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
+      }))
+    );
+
+    console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
+  }, []); // No dependencies needed since we're using functional updates
   
   /**
    * Handle opening the modal for manual point entry
