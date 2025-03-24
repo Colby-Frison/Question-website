@@ -466,20 +466,20 @@ export default function StudentPage() {
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
-          // Set up listener for student's questions - refresh every 10 seconds to reduce load
-          console.log("Setting up personal questions listener...");
+          // Set up listener for student's questions with shorter refresh time
+          console.log("Setting up personal questions listener with short refresh time...");
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} personal questions`);
             setMyQuestions(questions);
             setIsLoading(false);
-          }, { maxWaitTime: 10000 });
+          }, { maxWaitTime: 1000 }); // Shorter wait time for more responsive updates
           
-          // Set up listener for all class questions - refresh every 3 seconds to reduce load
-          console.log("Setting up class questions listener...");
+          // Set up listener for all class questions with short refresh time
+          console.log("Setting up class questions listener with short refresh time...");
           const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} class questions`);
             setClassQuestions(questions);
-          }, { maxWaitTime: 1000, useCache: false });
+          }, { maxWaitTime: 1000, useCache: false }); // No cache, get fresh data
           
           // Set up listener for active question with loading state and add caching to reduce server calls
           console.log("Setting up active question listener with debouncing and caching...");
@@ -689,15 +689,15 @@ export default function StudentPage() {
         
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions - refresh every 10 seconds
-      console.log(`Setting up personal questions listener...`);
+      // Set up listener for student's questions with shorter refresh time
+      console.log(`Setting up personal questions listener with short refresh time...`);
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions:`, questions);
           setMyQuestions(questions);
-      }, { maxWaitTime: 10000 });
+      }, { maxWaitTime: 1000 });
       
-      // Set up listener for all class questions - refresh every 3 seconds to reduce load
-      console.log(`Setting up class questions listener...`);
+      // Set up listener for all class questions with short refresh time
+      console.log(`Setting up class questions listener with short refresh time...`);
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions:`, questions);
           setClassQuestions(questions);
@@ -898,14 +898,43 @@ export default function StudentPage() {
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
   }, []);
   
-  // New handler specifically for toggle status events
+  // New specialized function for handling status toggle
   const handleToggleStatus = useCallback((questionId: string, newStatus: 'answered' | 'unanswered') => {
     console.log(`[handleToggleStatus] Question ${questionId} toggled to ${newStatus}`);
     
-    // Create a single question update to pass to handleQuestionStatusUpdate
-    const questionUpdate = { id: questionId, status: newStatus } as Question;
-    handleQuestionStatusUpdate([questionUpdate]);
-  }, [handleQuestionStatusUpdate]);
+    // Update both lists immediately for responsive UI
+    setMyQuestions(prevQuestions => {
+      const updated = prevQuestions.map(q => 
+        q.id === questionId ? { ...q, status: newStatus } : q
+      );
+      console.log(`[handleToggleStatus] Updated My Questions immediately`);
+      return updated;
+    });
+    
+    setClassQuestions(prevQuestions => {
+      const updated = prevQuestions.map(q => 
+        q.id === questionId ? { ...q, status: newStatus } : q
+      );
+      console.log(`[handleToggleStatus] Updated Class Questions immediately`);
+      return updated;
+    });
+    
+    // Force refresh both lists after a short delay to ensure DB changes are reflected
+    setTimeout(() => {
+      if (studentId && sessionCode) {
+        console.log(`[handleToggleStatus] Refreshing question lists after toggle`);
+        listenForUserQuestions(studentId, sessionCode, (questions) => {
+          console.log(`Refreshed my questions after toggle`);
+          setMyQuestions(questions);
+        }, { maxWaitTime: 0 });
+        
+        listenForQuestions(sessionCode, (questions) => {
+          console.log(`Refreshed class questions after toggle`);
+          setClassQuestions(questions);
+        }, { maxWaitTime: 0, useCache: false });
+      }
+    }, 500);
+  }, [studentId, sessionCode]);
 
   /**
    * Handle opening the modal for manual point entry

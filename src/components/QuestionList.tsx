@@ -176,16 +176,26 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         [questionId]: newStatus
       }));
       
+      // If there's a callback for toggle status, call it immediately
+      if (onToggleStatus) {
+        console.log(`[QuestionList] Calling onToggleStatus callback for ${questionId} with status ${newStatus}`);
+        onToggleStatus(questionId, newStatus);
+      }
+      
+      // Also update the parent component with the updated questions array if that callback exists
+      if (onStatusUpdated && questions) {
+        console.log(`[QuestionList] Calling onStatusUpdated callback with updated questions`);
+        const updatedQuestions = questions.map(q => 
+          q.id === questionId ? { ...q, status: newStatus as 'answered' | 'unanswered' } : q
+        );
+        onStatusUpdated(updatedQuestions);
+      }
+      
       // Update the database
       const success = await updateQuestionStatus(questionId, newStatus);
       
       if (!success) {
         throw new Error('Failed to update status in database');
-      }
-      
-      // If there's a callback for toggle status, call it
-      if (onToggleStatus) {
-        onToggleStatus(questionId, newStatus);
       }
     } catch (error) {
       console.error(`[QuestionList] Error toggling question status:`, error);
@@ -197,13 +207,22 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         delete updated[questionId];
         return updated;
       });
+      
+      // If callbacks were called, call them again with the original status
+      if (onToggleStatus) {
+        onToggleStatus(questionId, currentStatus);
+      }
+      
+      if (onStatusUpdated && questions) {
+        onStatusUpdated(questions);
+      }
     } finally {
       // Clear updating status after a short delay
       setTimeout(() => {
         setUpdatingStatusId(null);
       }, 500);
     }
-  }, [onToggleStatus]);
+  }, [onToggleStatus, onStatusUpdated, questions]);
   
   /**
    * Check if user can edit the question
