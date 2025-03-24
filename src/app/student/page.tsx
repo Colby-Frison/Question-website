@@ -466,13 +466,22 @@ export default function StudentPage() {
           
           console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
           
-          // Set up listener for student's questions
-          console.log("Setting up personal questions listener...");
+          // Set up listener for student's questions with real-time updates
+          console.log("Setting up personal questions listener with real-time updates...");
           const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
             console.log(`Received ${questions.length} personal questions`);
-            setMyQuestions(questions);
+            // Use functional update to ensure we're working with latest state
+            setMyQuestions(currentQuestions => {
+              // Deep comparison to avoid unnecessary re-renders
+              if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
+                console.log("No changes in personal questions, skipping update");
+                return currentQuestions;
+              }
+              console.log("Updating personal questions with:", questions);
+              return questions;
+            });
             setIsLoading(false);
-          });
+          }, { maxWaitTime: 0 }); // Immediate updates
           
           // Set up listener for all class questions
           console.log("Setting up class questions listener...");
@@ -689,12 +698,22 @@ export default function StudentPage() {
         
       console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
       
-      // Set up listener for student's questions
-      console.log("Setting up personal questions listener...");
+      // Set up listener for student's questions with real-time updates
+      console.log("Setting up personal questions listener with real-time updates...");
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions`);
-          setMyQuestions(questions);
-      });
+        // Use functional update to ensure we're working with latest state
+        setMyQuestions(currentQuestions => {
+          // Deep comparison to avoid unnecessary re-renders
+          if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
+            console.log("No changes in personal questions, skipping update");
+            return currentQuestions;
+          }
+          console.log("Updating personal questions with:", questions);
+          return questions;
+        });
+        setIsLoading(false);
+      }, { maxWaitTime: 0 }); // Immediate updates
       
       // Set up listener for all class questions
       console.log("Setting up class questions listener...");
@@ -852,7 +871,7 @@ export default function StudentPage() {
       return;
     }
     
-    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions`);
+    console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions:`, updatedQuestions);
     
     // Create a map of question IDs to their updated status
     const statusMap = new Map<string, 'answered' | 'unanswered'>();
@@ -868,7 +887,7 @@ export default function StudentPage() {
       return;
     }
 
-    // Update both lists using the status map
+    // Update My Questions list
     setMyQuestions(prevQuestions => {
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
@@ -882,6 +901,7 @@ export default function StudentPage() {
       return updated;
     });
 
+    // Update Class Questions list
     setClassQuestions(prevQuestions => {
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
@@ -896,7 +916,17 @@ export default function StudentPage() {
     });
 
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
-  }, []);
+    
+    // Force refresh of data if we have studentId and sessionCode
+    if (studentId && sessionCode) {
+      // Refresh My Questions
+      console.log('[handleQuestionStatusUpdate] Triggering refresh of My Questions');
+      listenForUserQuestions(studentId, sessionCode, (questions) => {
+        console.log(`[handleQuestionStatusUpdate] Refreshed My Questions with ${questions.length} items`);
+        setMyQuestions(questions);
+      }, { maxWaitTime: 0 });
+    }
+  }, [studentId, sessionCode]);
   
   // Special function for handling status toggles
   const handleToggleStatus = useCallback((questionId: string, newStatus: 'answered' | 'unanswered') => {
@@ -998,6 +1028,7 @@ export default function StudentPage() {
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
               onToggleStatus={handleToggleStatus}
+              onStatusUpdated={handleQuestionStatusUpdate}
             />
           </div>
         </div>
