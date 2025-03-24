@@ -846,31 +846,51 @@ export default function StudentPage() {
   
   // Handle status updates for both lists
   const handleQuestionStatusUpdate = useCallback((updatedQuestions: Question[]) => {
+    // If we received an empty array or undefined, return early
+    if (!updatedQuestions || updatedQuestions.length === 0) {
+      console.log("[handleQuestionStatusUpdate] No questions to update");
+      return;
+    }
+    
     console.log(`[handleQuestionStatusUpdate] Updating both lists with ${updatedQuestions.length} questions`);
     
     // Create a map of question IDs to their updated status
     const statusMap = new Map<string, 'answered' | 'unanswered'>();
     updatedQuestions.forEach(q => {
-      if (q.status) {
+      if (q.id && q.status) {
         statusMap.set(q.id, q.status);
+        console.log(`[handleQuestionStatusUpdate] Setting ${q.id} to ${q.status}`);
       }
     });
+    
+    if (statusMap.size === 0) {
+      console.log("[handleQuestionStatusUpdate] No valid status updates found");
+      return;
+    }
 
     // Update both lists using the status map
     setMyQuestions(prevQuestions => {
-      const updated = prevQuestions.map(q => ({
-        ...q,
-        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-      }));
+      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
+      
+      const updated = prevQuestions.map(q => {
+        if (q.id && statusMap.has(q.id)) {
+          return { ...q, status: statusMap.get(q.id)! };
+        }
+        return q;
+      });
       console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
       return updated;
     });
 
     setClassQuestions(prevQuestions => {
-      const updated = prevQuestions.map(q => ({
-        ...q,
-        status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-      }));
+      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
+      
+      const updated = prevQuestions.map(q => {
+        if (q.id && statusMap.has(q.id)) {
+          return { ...q, status: statusMap.get(q.id)! };
+        }
+        return q;
+      });
       console.log(`[handleQuestionStatusUpdate] Updated Class Questions:`, updated);
       return updated;
     });
@@ -878,6 +898,15 @@ export default function StudentPage() {
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
   }, []);
   
+  // New handler specifically for toggle status events
+  const handleToggleStatus = useCallback((questionId: string, newStatus: 'answered' | 'unanswered') => {
+    console.log(`[handleToggleStatus] Question ${questionId} toggled to ${newStatus}`);
+    
+    // Create a single question update to pass to handleQuestionStatusUpdate
+    const questionUpdate = { id: questionId, status: newStatus } as Question;
+    handleQuestionStatusUpdate([questionUpdate]);
+  }, [handleQuestionStatusUpdate]);
+
   /**
    * Handle opening the modal for manual point entry
    */
@@ -946,14 +975,7 @@ export default function StudentPage() {
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={handleQuestionStatusUpdate}
-              onToggleStatus={(questionId, newStatus) => {
-                console.log(`[Student] Toggle status for ${questionId} to ${newStatus}`);
-                const updatedQuestions = classQuestions.map(q => 
-                  q.id === questionId ? {...q, status: newStatus} : q
-                );
-                handleQuestionStatusUpdate(updatedQuestions);
-              }}
+              onToggleStatus={handleToggleStatus}
             />
               </div>
             </div>
@@ -975,14 +997,7 @@ export default function StudentPage() {
               showControls={true}
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
-              onStatusUpdated={handleQuestionStatusUpdate}
-              onToggleStatus={(questionId, newStatus) => {
-                console.log(`[Student] Toggle status for ${questionId} to ${newStatus}`);
-                const updatedQuestions = myQuestions.map(q => 
-                  q.id === questionId ? {...q, status: newStatus} : q
-                );
-                handleQuestionStatusUpdate(updatedQuestions);
-              }}
+              onToggleStatus={handleToggleStatus}
             />
           </div>
         </div>

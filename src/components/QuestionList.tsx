@@ -163,40 +163,27 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
    */
   const handleToggleStatus = useCallback(async (questionId: string, currentStatus: 'answered' | 'unanswered') => {
     const newStatus = currentStatus === 'answered' ? 'unanswered' : 'answered';
-    
-    console.log(`[QuestionList] Toggling status for question ${questionId}: ${currentStatus} -> ${newStatus}`);
+    console.log(`[QuestionList] Toggling status for ${questionId}: ${currentStatus} -> ${newStatus}`);
     
     // Mark this question as being updated
     setUpdatingStatusId(questionId);
     setError(null);
     
     try {
-      // Update database first
+      // Set the manual status immediately for responsive UI
+      setManualStatuses(prev => ({
+        ...prev,
+        [questionId]: newStatus
+      }));
+      
+      // Update the database
       const success = await updateQuestionStatus(questionId, newStatus);
       
       if (!success) {
         throw new Error('Failed to update status in database');
       }
       
-      // Only update local state if database update was successful
-      setManualStatuses(prev => ({
-        ...prev,
-        [questionId]: newStatus
-      }));
-      
-      // Update the parent component with the new status
-      if (questions && onStatusUpdated) {
-        const updatedQuestions = questions.map(q => 
-          q.id === questionId 
-            ? { ...q, status: newStatus as 'answered' | 'unanswered' } 
-            : q
-        ) as Question[];
-        
-        // Notify parent of the update
-        onStatusUpdated(updatedQuestions);
-      }
-      
-      // Call the parent's toggle callback if provided
+      // If there's a callback for toggle status, call it
       if (onToggleStatus) {
         onToggleStatus(questionId, newStatus);
       }
@@ -211,12 +198,12 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
         return updated;
       });
     } finally {
-      // Clear the updating status after a short delay
+      // Clear updating status after a short delay
       setTimeout(() => {
         setUpdatingStatusId(null);
       }, 500);
     }
-  }, [questions, onStatusUpdated, onToggleStatus]);
+  }, [onToggleStatus]);
   
   /**
    * Check if user can edit the question
