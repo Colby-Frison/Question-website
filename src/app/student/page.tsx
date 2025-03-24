@@ -947,6 +947,13 @@ export default function StudentPage() {
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
               onStatusUpdated={handleQuestionStatusUpdate}
+              onToggleStatus={(questionId, newStatus) => {
+                console.log(`[Student] Toggle status for ${questionId} to ${newStatus}`);
+                const updatedQuestions = classQuestions.map(q => 
+                  q.id === questionId ? {...q, status: newStatus} : q
+                );
+                handleQuestionStatusUpdate(updatedQuestions);
+              }}
             />
               </div>
             </div>
@@ -969,6 +976,13 @@ export default function StudentPage() {
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
               onStatusUpdated={handleQuestionStatusUpdate}
+              onToggleStatus={(questionId, newStatus) => {
+                console.log(`[Student] Toggle status for ${questionId} to ${newStatus}`);
+                const updatedQuestions = myQuestions.map(q => 
+                  q.id === questionId ? {...q, status: newStatus} : q
+                );
+                handleQuestionStatusUpdate(updatedQuestions);
+              }}
             />
           </div>
         </div>
