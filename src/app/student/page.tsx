@@ -857,19 +857,23 @@ export default function StudentPage() {
     });
 
     // Update both lists using the status map
-    setMyQuestions(prevQuestions => 
-      prevQuestions.map(q => ({
+    setMyQuestions(prevQuestions => {
+      const updated = prevQuestions.map(q => ({
         ...q,
         status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-      }))
-    );
+      }));
+      console.log(`[handleQuestionStatusUpdate] Updated My Questions:`, updated);
+      return updated;
+    });
 
-    setClassQuestions(prevQuestions => 
-      prevQuestions.map(q => ({
+    setClassQuestions(prevQuestions => {
+      const updated = prevQuestions.map(q => ({
         ...q,
         status: statusMap.has(q.id) ? statusMap.get(q.id)! : q.status
-      }))
-    );
+      }));
+      console.log(`[handleQuestionStatusUpdate] Updated Class Questions:`, updated);
+      return updated;
+    });
 
     console.log(`[handleQuestionStatusUpdate] Status updates applied to both lists`);
   }, []); // No dependencies needed since we're using functional updates
