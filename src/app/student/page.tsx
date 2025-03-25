@@ -127,31 +127,26 @@ export default function StudentPage() {
   const [userQuestions, setUserQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
 
-  // Add this function to reset notifications when switching tabs
-  const handleTabChange = (tab: TabType) => {
+  // Track new questions and update notification count
+  useEffect(() => {
+    if (questions.length > 0) {
+      const latestQuestion = questions[questions.length - 1];
+      if (latestQuestion.id !== lastSeenQuestionId) {
+        setNewQuestionsCount(prev => prev + 1);
+      }
+    }
+  }, [questions, lastSeenQuestionId]);
+
+  // Reset notifications when switching to questions tab
+  const handleTabChange = (tab: 'questions' | 'points') => {
     setActiveTab(tab);
     if (tab === 'questions') {
       setNewQuestionsCount(0);
       if (questions.length > 0) {
-        setLastSeenQuestionId(questions[0].id);
+        setLastSeenQuestionId(questions[questions.length - 1].id);
       }
     }
   };
-
-  // Add this effect to track new questions
-  useEffect(() => {
-    if (!questions.length) return;
-    
-    const latestQuestion = questions[0];
-    if (!lastSeenQuestionId) {
-      setLastSeenQuestionId(latestQuestion.id);
-      return;
-    }
-    
-    if (latestQuestion.id !== lastSeenQuestionId) {
-      setNewQuestionsCount((prev: number) => prev + 1);
-    }
-  }, [questions, lastSeenQuestionId]);
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
