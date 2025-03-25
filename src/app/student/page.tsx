@@ -463,7 +463,7 @@ export default function StudentPage() {
       setIsLoading(false);
       return;
     }
-
+    
     let unsubscribers: (() => void)[] = [];
     let isComponentMounted = true;
 
@@ -481,8 +481,8 @@ export default function StudentPage() {
         console.log("Found joined class:", joinedClass);
         setJoinedClass(joinedClass);
         setJoined(true);
-        setClassName(joinedClass.className);
-        setSessionCode(joinedClass.sessionCode);
+          setClassName(joinedClass.className);
+          setSessionCode(joinedClass.sessionCode);
         
         // Set up session status listener
         const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
@@ -493,37 +493,37 @@ export default function StudentPage() {
         unsubscribers.push(unsubscribeSession);
 
         // Set up active question listener with optimized settings
-        setIsLoadingQuestion(true);
-        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+          setIsLoadingQuestion(true);
+          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
           if (!isComponentMounted) return;
-          console.log("Active question update received:", question ? "yes" : "no");
-          
-          if (question) {
-            console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+            console.log("Active question update received:", question ? "yes" : "no");
             
-            // Check if this is a new question that we haven't seen before
-            const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
-            
-            if (isNewQuestion) {
-              console.log("New active question detected!");
+            if (question) {
+              console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
               
-              // Reset answer state for the new question
+              // Check if this is a new question that we haven't seen before
+              const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
+              
+              if (isNewQuestion) {
+                console.log("New active question detected!");
+                
+                // Reset answer state for the new question
               setAnswerText('');
               setAnswerSubmitted(false);
             }
-          }
-          
-          // Mark as no longer first load after first update
-          isFirstLoad.current = false;
-          
-          // Update the state
-          setActiveQuestion(question);
-          setIsLoadingQuestion(false);
-          lastQuestionCheckRef.current = Date.now();
-        }, { 
-          maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
-          useCache: true // Enable caching to reduce server calls
-        });
+            }
+            
+            // Mark as no longer first load after first update
+            isFirstLoad.current = false;
+            
+            // Update the state
+            setActiveQuestion(question);
+            setIsLoadingQuestion(false);
+            lastQuestionCheckRef.current = Date.now();
+          }, { 
+            maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
+            useCache: true // Enable caching to reduce server calls
+          });
         unsubscribers.push(unsubscribeActiveQuestion);
 
         // Set up points listener
@@ -566,18 +566,18 @@ export default function StudentPage() {
           unsubscribers.push(unsubscribeAnswers);
         }
 
-        setIsLoading(false);
+          setIsLoading(false);
       } catch (error) {
         console.error("Error in checkJoinedClass:", error);
         if (isComponentMounted) {
-          setIsLoading(false);
+        setIsLoading(false);
           setError("Failed to initialize class. Please try again.");
         }
       }
     };
 
     checkJoinedClass();
-
+    
     // Cleanup function
     return () => {
       isComponentMounted = false;
@@ -1411,8 +1411,8 @@ export default function StudentPage() {
                 onClick={() => handleTabChange('questions')}
                 className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
                   activeTab === 'questions'
-                    ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                    : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
               >
                 Questions
@@ -1427,10 +1427,10 @@ export default function StudentPage() {
               </button>
               <button
                 onClick={() => handleTabChange('points')}
-                className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                   activeTab === 'points'
-                    ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                    : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
               >
                         My Points
