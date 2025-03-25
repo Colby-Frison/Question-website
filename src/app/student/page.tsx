@@ -142,6 +142,8 @@ export default function StudentPage() {
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
+  // Add this ref to track the previous answer
+  const previousAnswerRef = useRef<Answer | null>(null);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -931,14 +933,70 @@ export default function StudentPage() {
 
   // Update the active question listener to track the student's answer
   useEffect(() => {
+    let unsubscribeAnswers: (() => void) | undefined;
+
     if (activeQuestion && studentId) {
-      const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+      unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
         const studentAnswer = answers.find(a => a.studentId === studentId);
+        
+        // If we previously had an answer but now it's gone, it was deleted
+        if (!studentAnswer && previousAnswerRef.current) {
+          setShowAnswerDeletedModal(true);
+          setAnswerText('');
+          setAnswerSubmitted(false);
+        }
+        
+        // Update the previous answer ref
+        previousAnswerRef.current = studentAnswer || null;
+        
+        // Update the state
         setStudentAnswer(studentAnswer || null);
       });
-      return () => unsubscribeAnswers();
     }
+
+    // Clean up the listener when the component unmounts or when activeQuestion changes
+    return () => {
+      if (unsubscribeAnswers) {
+        unsubscribeAnswers();
+      }
+      // Reset answer state when question changes
+      setAnswerText('');
+      setAnswerSubmitted(false);
+      setStudentAnswer(null);
+      previousAnswerRef.current = null;
+    };
   }, [activeQuestion, studentId]);
+
+  // Add a separate effect to handle active question updates
+  useEffect(() => {
+    if (!sessionCode) return;
+
+    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
+      console.log("Active question update received:", question);
+      
+      if (question) {
+        // If this is a new question (different from current one)
+        if (!activeQuestion || activeQuestion.id !== question.id) {
+          console.log("New question detected, resetting answer state");
+          setAnswerText('');
+          setAnswerSubmitted(false);
+          setStudentAnswer(null);
+          previousAnswerRef.current = null;
+        }
+      } else {
+        // No active question
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        setStudentAnswer(null);
+        previousAnswerRef.current = null;
+      }
+      
+      setActiveQuestion(question);
+      setIsLoadingQuestion(false);
+    });
+
+    return () => unsubscribeActiveQuestion();
+  }, [sessionCode, activeQuestion]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
