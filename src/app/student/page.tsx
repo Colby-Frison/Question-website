@@ -31,11 +31,20 @@ import {
   updateStudentPoints,
   runDatabaseMaintenance,
   clearPointsCache,
-  ACTIVE_QUESTION_COLLECTION
+  ACTIVE_QUESTION_COLLECTION,
+  listenForAnswers,
+  deleteAnswer,
+  updateAnswer
 } from '@/lib/questions';
-import { getJoinedClass, leaveClass } from '@/lib/classCode';
+import { 
+  joinClass, 
+  getJoinedClass, 
+  leaveClass,
+  updateStudentCount,
+  listenForStudentCount
+} from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
-import { Question } from '@/types';
+import { Question, ClassSession } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -44,42 +53,23 @@ import { db } from '@/lib/firebase';
 // Define tab types for the dashboard
 type TabType = 'questions' | 'points';
 
+// Define types for the component
+interface ActiveQuestion {
+  id: string;
+  text: string;
+  timestamp: number;
+}
+
+interface Answer {
+  id: string;
+  text: string;
+  timestamp: number;
+  studentId: string;
+  questionText?: string;
+}
+
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
-
-/**
- * Utility function to notify the user about a new active question
- * Provides both audio and visual notifications with fallbacks
- */
-const notifyNewQuestion = (questionText: string) => {
-  console.log("Notifying user of new question:", questionText);
-  
-  // Audio notification has been removed
-  
-  // Use visual alert
-  alert(`New question from professor: ${questionText}`);
-  
-  // Flash the title bar to get user attention
-  let originalTitle = document.title;
-  let notificationCount = 0;
-  const maxFlashes = 5;
-  
-  const flashTitle = () => {
-    if (notificationCount > maxFlashes * 2) {
-      document.title = originalTitle;
-      return;
-    }
-    
-    document.title = notificationCount % 2 === 0 
-      ? '🔔 NEW QUESTION!'
-      : originalTitle;
-    
-    notificationCount++;
-    setTimeout(flashTitle, 500);
-  };
-  
-  flashTitle();
-};
 
 export default function StudentPage() {
   const router = useRouter();
@@ -91,14 +81,15 @@ export default function StudentPage() {
   const [className, setClassName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
   const [joined, setJoined] = useState(false);
-  const [myQuestions, setMyQuestions] = useState<Question[]>([]);
-  const [classQuestions, setClassQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentId, setStudentId] = useState('');
+  const [studentId, setStudentId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
+  const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
+  const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   
   // Add state to track welcome message visibility
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -125,20 +116,55 @@ export default function StudentPage() {
   const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Active question and answer state
-  const [activeQuestion, setActiveQuestion] = useState<{id: string, text: string, timestamp: number} | null>(null);
+  const [activeQuestion, setActiveQuestion] = useState<ActiveQuestion | null>(null);
   const [answerText, setAnswerText] = useState('');
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [cooldownTime, setCooldownTime] = useState(0);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
-  const lastQuestionCheckRef = useRef<number>(0);
+  const lastQuestionCheckRef = useRef(Date.now());
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
   const [sessionListener, setSessionListener] = useState<(() => void) | null>(null);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const isFirstLoad = useRef(true);
   const [isLeavingClass, setIsLeavingClass] = useState(false);
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string>('');
+  const [studentPoints, setStudentPoints] = useState<number>(0);
+  const [userQuestions, setUserQuestions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [studentCount, setStudentCount] = useState<number>(0);
+  const [studentCountListener, setStudentCountListener] = useState<(() => void) | null>(null);
+  const [showInactivityNotification, setShowInactivityNotification] = useState(false);
+  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
+  const [editAnswerText, setEditAnswerText] = useState('');
+  const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
+  const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
+  const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
+  // Add this ref to track the previous answer
+  const previousAnswerRef = useRef<Answer | null>(null);
+
+  // Track new questions and update notification count
+  useEffect(() => {
+    if (questions.length > 0) {
+      const latestQuestion = questions[questions.length - 1];
+      if (latestQuestion.id !== lastSeenQuestionId) {
+        setNewQuestionsCount(prev => prev + 1);
+      }
+    }
+  }, [questions, lastSeenQuestionId]);
+
+  // Reset notifications when switching to questions tab
+  const handleTabChange = (tab: 'questions' | 'points') => {
+    setActiveTab(tab);
+    if (tab === 'questions') {
+      setNewQuestionsCount(0);
+      if (questions.length > 0) {
+        setLastSeenQuestionId(questions[questions.length - 1].id);
+      }
+    }
+  };
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -149,11 +175,16 @@ export default function StudentPage() {
     setIsLeavingClass(true);
     
     // Clean up Firebase data first
-    if (studentId) {
+    if (studentId && sessionCode) {
+      // Update student count before leaving
+      updateStudentCount(sessionCode, false)
+        .catch((error: Error) => {
+          console.error("Error updating student count:", error);
+        });
+
       leaveClass(studentId)
         .catch(error => {
           console.error("Error leaving class:", error);
-          // Consider showing an error to the user here
         })
         .finally(() => {
           // Only update UI after Firebase cleanup completes
@@ -161,14 +192,18 @@ export default function StudentPage() {
           setJoined(false);
           setClassName('');
           setSessionCode('');
-          setMyQuestions([]);
-          setClassQuestions([]);
+          setQuestions([]);
           setActiveQuestion(null);
+          setStudentCount(0);
           
           // Clean up listeners
           if (sessionListener) {
             sessionListener();
             setSessionListener(null);
+          }
+          if (studentCountListener) {
+            studentCountListener();
+            setStudentCountListener(null);
           }
           
           setIsLeavingClass(false);
@@ -178,20 +213,23 @@ export default function StudentPage() {
       setJoined(false);
       setClassName('');
       setSessionCode('');
-      setMyQuestions([]);
-      setClassQuestions([]);
+      setQuestions([]);
       setActiveQuestion(null);
+      setStudentCount(0);
       
       // Clean up listeners
       if (sessionListener) {
         sessionListener();
         setSessionListener(null);
       }
+      if (studentCountListener) {
+        studentCountListener();
+        setStudentCountListener(null);
+      }
       
       setIsLeavingClass(false);
     }
-  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
-      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
+  }, [studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
 
   /**
    * Handle adding a point to student's total
@@ -357,13 +395,23 @@ export default function StudentPage() {
     if (!isStudent()) {
       console.log("Not a student, redirecting to home");
       router.push('/');
+      setIsLoading(false);
       return;
     }
 
     setInitStage('getting-user-id');
     const userId = getUserId();
     console.log("User ID retrieved:", userId ? "success" : "failed");
+    
+    if (!userId) {
+      console.log("No user ID found, redirecting to home");
+      router.push('/');
+      setIsLoading(false);
+      return;
+    }
+    
     setStudentId(userId);
+    setIsLoading(false);
 
     // Check network status
     const handleOnline = () => {
@@ -441,59 +489,45 @@ export default function StudentPage() {
    */
   useEffect(() => {
     console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
+    
     if (!studentId) {
-      console.log("No student ID yet, skipping joined class check");
-      return () => {};
+      console.log("No student ID available, skipping class check");
+      setIsLoading(false);
+      return;
     }
     
-    setInitStage('checking-joined-class');
-    let cleanup: (() => void) | undefined;
+    let unsubscribers: (() => void)[] = [];
+    let isComponentMounted = true;
 
     const checkJoinedClass = async () => {
       try {
-        console.log("Checking if student has joined a class...");
-        // Check if student has already joined a class
+        console.log("Checking for joined class...");
         const joinedClass = await getJoinedClass(studentId);
-        console.log("Joined class result:", joinedClass);
         
-        if (joinedClass && joinedClass.sessionCode) {
-          console.log(`Student has joined class: ${joinedClass.className} with session: ${joinedClass.sessionCode}`);
+        if (!joinedClass || !isComponentMounted) {
+          console.log("No joined class found or component unmounted");
+          setIsLoading(false);
+          return;
+        }
+
+        console.log("Found joined class:", joinedClass);
+        setJoinedClass(joinedClass);
+        setJoined(true);
           setClassName(joinedClass.className);
           setSessionCode(joinedClass.sessionCode);
-          setJoined(true);
-          setJoinedClass(joinedClass);
-          setInitStage('setting-up-listeners');
-          
-          console.log(`Setting up question listeners for student ${studentId} in session ${joinedClass.sessionCode}`);
-          
-          // Set up listener for student's questions with real-time updates
-          console.log("Setting up personal questions listener with real-time updates...");
-          const unsubscribePersonal = listenForUserQuestions(studentId, joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} personal questions`);
-            // Use functional update to ensure we're working with latest state
-            setMyQuestions(currentQuestions => {
-              // Deep comparison to avoid unnecessary re-renders
-              if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
-                console.log("No changes in personal questions, skipping update");
-                return currentQuestions;
-              }
-              console.log("Updating personal questions with:", questions);
-              return questions;
-            });
-            setIsLoading(false);
-          }, { maxWaitTime: 0 }); // Immediate updates
-          
-          // Set up listener for all class questions
-          console.log("Setting up class questions listener...");
-          const unsubscribeClass = listenForQuestions(joinedClass.sessionCode, (questions) => {
-            console.log(`Received ${questions.length} class questions`);
-            setClassQuestions(questions);
-          });
-          
-          // Set up listener for active question with loading state and add caching to reduce server calls
-          console.log("Setting up active question listener with debouncing and caching...");
+        
+        // Set up session status listener
+        const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
+          if (!isComponentMounted) return;
+          console.log("Session status update:", status);
+          setSessionStatus(status || '');
+        });
+        unsubscribers.push(unsubscribeSession);
+
+        // Set up active question listener with optimized settings
           setIsLoadingQuestion(true);
           const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+          if (!isComponentMounted) return;
             console.log("Active question update received:", question ? "yes" : "no");
             
             if (question) {
@@ -508,21 +542,7 @@ export default function StudentPage() {
                 // Reset answer state for the new question
               setAnswerText('');
               setAnswerSubmitted(false);
-                
-                // Notify user of new question (but only if not first load)
-                if (!isFirstLoad.current) {
-                  notifyNewQuestion(question.text);
-                }
-              } else {
-                console.log("Received update for existing active question");
-              }
-            } else {
-              console.log("No active question available");
-              
-              // If we had an active question before but not anymore, it's been removed
-              if (activeQuestion) {
-                console.log("Active question was removed");
-              }
+            }
             }
             
             // Mark as no longer first load after first update
@@ -536,63 +556,79 @@ export default function StudentPage() {
             maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
             useCache: true // Enable caching to reduce server calls
           });
-          
-          // Set up listener for session status changes - no delay as this is critical
-          console.log("Setting up session status listener...");
-          const unsubscribeSessionStatus = listenForSessionStatus(joinedClass.sessionCode, (status) => {
-            console.log(`Session status changed to: ${status}`);
-            
-            // If the session is closed or archived, leave the class
-            if (!status || status === 'closed' || status === 'archived') {
-              console.log('Session ended by professor, leaving class...');
-              // Call handleLeaveClass directly here
-              setJoined(false);
-              setClassName('');
-              setSessionCode('');
-              setMyQuestions([]);
-              setClassQuestions([]);
-              setActiveQuestion(null);
-              
-              if (studentId) {
-                leaveClass(studentId).catch(console.error);
-              }
-              
-              alert('Class ended: The professor has ended this class session.');
-            }
+        unsubscribers.push(unsubscribeActiveQuestion);
+
+        // Set up points listener
+        const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
+          if (!isComponentMounted) return;
+          console.log("Points update received:", points);
+          setStudentPoints(points);
+        });
+        unsubscribers.push(unsubscribePoints);
+
+        // Set up questions listener with optimized settings
+        const unsubscribeQuestions = listenForQuestions(joinedClass.sessionCode, (questions) => {
+          if (!isComponentMounted) return;
+          console.log("Questions update received:", questions.length);
+          setQuestions(questions);
+        }, {
+          maxWaitTime: 5000, // 5 second debounce for questions
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeQuestions);
+
+        // Set up user questions listener with optimized settings
+        const unsubscribeUserQuestions = listenForUserQuestions(studentId, joinedClass.sessionCode, (userQuestions) => {
+          if (!isComponentMounted) return;
+          console.log("User questions update received:", userQuestions.length);
+          setUserQuestions(userQuestions);
+        }, {
+          maxWaitTime: 5000, // 5 second debounce for user questions
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeUserQuestions);
+
+        // Set up answers listener only when there's an active question
+        if (activeQuestion) {
+          const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+            if (!isComponentMounted) return;
+            console.log("Answers update received:", answers.length);
+            setAnswers(answers);
           });
-          
-          setSessionListener(() => unsubscribeSessionStatus);
-          setInitStage('listeners-setup-complete');
-          
-          // Return cleanup function
-          cleanup = () => {
-            console.log('Cleaning up question listeners');
-            unsubscribePersonal();
-            unsubscribeClass();
-            unsubscribeActiveQuestion();
-            unsubscribeSessionStatus();
-          };
-        } else {
-          console.log("Student has not joined a class");
-          setIsLoading(false);
-          setInitStage('no-class-joined');
+          unsubscribers.push(unsubscribeAnswers);
         }
+
+        // Set up student count listener
+        const unsubscribeStudentCount = listenForStudentCount(joinedClass.sessionCode, (count: number) => {
+          setStudentCount(count);
+        });
+        unsubscribers.push(unsubscribeStudentCount);
+        setStudentCountListener(unsubscribeStudentCount);
+
+          setIsLoading(false);
       } catch (error) {
-        console.error('Error checking joined class:', error);
-        setError('Failed to check if you have joined a class. Please refresh the page.');
+        console.error("Error in checkJoinedClass:", error);
+        if (isComponentMounted) {
         setIsLoading(false);
-        setInitStage('joined-class-error');
+          setError("Failed to initialize class. Please try again.");
+        }
       }
     };
 
     checkJoinedClass();
-    console.log("== JOINED CLASS EFFECT COMPLETED ==");
     
-    // Return the cleanup function
+    // Cleanup function
     return () => {
-      if (cleanup) cleanup();
+      isComponentMounted = false;
+      unsubscribers.forEach(unsubscribe => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.error("Error during cleanup:", error);
+        }
+      });
     };
-  }, [studentId, activeQuestion, isLeavingClass]);
+  }, [studentId, activeQuestion?.id]); // Remove isLoading from dependencies
 
   /**
    * Record user activity
@@ -624,8 +660,7 @@ export default function StudentPage() {
             if (!session || session.status !== 'active') {
               console.log('Session is no longer active, leaving class...');
               handleLeaveClass();
-              // Use alert instead of toast since we don't have a toast component
-              alert('Session ended: You have been removed from the class due to inactivity.');
+              setShowInactivityNotification(true);
             } else {
               console.log('Session is still active');
             }
@@ -671,121 +706,112 @@ export default function StudentPage() {
    * 
    * @param code - The session code of the joined class
    */
-  const handleJoinSuccess = useCallback(async (code: string) => {
+  const handleJoinClass = async (code: string) => {
     try {
       setIsLoading(true);
-      console.log(`Attempting to join class with session code: ${code}`);
+      setError(null);
       
-      // Reset welcome message when joining a new class
-      resetWelcomeMessage();
-      
-      // Verify the session code is valid
+      // Check if session exists and is active
       const session = await getSessionByCode(code);
-      
       if (!session) {
-        console.error(`Invalid session code: ${code}. Session not found.`);
-        setError("Invalid session code. The class may have ended or doesn't exist.");
+        setError("Invalid session code. Please check and try again.");
         setIsLoading(false);
         return;
       }
       
-      console.log(`Found valid session:`, session);
-      
-      // Set class and session info
-      setClassName(session.code); // Original class name
-      setSessionCode(code);       // Session code
-        setJoined(true);
-        
-      console.log(`Setting up question listeners for student ${studentId} in session ${code}`);
-      
-      // Set up listener for student's questions with real-time updates
-      console.log("Setting up personal questions listener with real-time updates...");
-      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
-        console.log(`Received ${questions.length} personal questions`);
-        // Use functional update to ensure we're working with latest state
-        setMyQuestions(currentQuestions => {
-          // Deep comparison to avoid unnecessary re-renders
-          if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
-            console.log("No changes in personal questions, skipping update");
-            return currentQuestions;
-          }
-          console.log("Updating personal questions with:", questions);
-          return questions;
-        });
+      if (session.status !== 'active') {
+        setError("This session is no longer active.");
         setIsLoading(false);
-      }, { maxWaitTime: 0 }); // Immediate updates
+        return;
+      }
       
-      // Set up listener for all class questions
-      console.log("Setting up class questions listener...");
+      // Join the class
+      const success = await joinClass(code, studentId);
+      if (!success) {
+        setError("Failed to join class. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Update student count
+      await updateStudentCount(code, true);
+      
+      // Set up listeners with optimized settings
+      const unsubscribers: (() => void)[] = [];
+      
+      // Set up student count listener
+      const unsubscribeStudentCount = listenForStudentCount(code, (count: number) => {
+        setStudentCount(count);
+      });
+      unsubscribers.push(unsubscribeStudentCount);
+      setStudentCountListener(unsubscribeStudentCount);
+      
+      // Set up personal questions listener with optimized settings
+      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
+        setUserQuestions(questions);
+      }, {
+        maxWaitTime: 5000,
+        useCache: true
+      });
+      unsubscribers.push(unsubscribePersonal);
+      
+      // Set up class questions listener with optimized settings
       const unsubscribeClass = listenForQuestions(code, (questions) => {
-        console.log(`Received ${questions.length} class questions`);
-          setClassQuestions(questions);
+        setQuestions(questions);
+      }, {
+        maxWaitTime: 5000,
+        useCache: true
       });
-        
-      // Set up listener for active question - refresh every 5 seconds
-      console.log(`Setting up active question listener...`);
-        setIsLoadingQuestion(true);
+      unsubscribers.push(unsubscribeClass);
+      
+      // Set up active question listener with optimized settings
       const unsubscribeActiveQuestion = listenForActiveQuestion(code, (question) => {
-          console.log("Active question update:", question);
-        
-        // If the active question changes, reset the answer state
-        if (question?.id !== activeQuestion?.id) {
-          setAnswerText('');
-          setAnswerSubmitted(false);
-        }
-        
         setActiveQuestion(question);
+        if (question) {
           setIsLoadingQuestion(false);
-          lastQuestionCheckRef.current = Date.now();
-      }, { maxWaitTime: 5000 });
-      
-      // Set up listener for session status changes
-      console.log(`Setting up session status listener...`);
-      const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
-        console.log(`Session status changed to: ${status}`);
-        
-        // If the session is closed or archived, leave the class
-        if (!status || status === 'closed' || status === 'archived') {
-          console.log('Session ended by professor, leaving class...');
-          // Call handleLeaveClass directly
-      setJoined(false);
-          setClassName('');
-          setSessionCode('');
-      setMyQuestions([]);
-        setClassQuestions([]);
-        setActiveQuestion(null);
-          
-          if (studentId) {
-            leaveClass(studentId).catch(console.error);
-          }
-          
-          if (sessionListener) {
-            sessionListener();
-            setSessionListener(null);
-          }
-          
-          alert('Class ended: The professor has ended this class session.');
         }
+      }, {
+        maxWaitTime: 10000,
+        useCache: true
       });
+      unsubscribers.push(unsubscribeActiveQuestion);
       
-      setSessionListener(() => unsubscribeSessionStatus);
-      setIsLoading(false);
-      console.log(`Join successful. All listeners set up.`);
+      // Set up session status listener
+      const unsubscribeSessionStatus = listenForSessionStatus(code, (status) => {
+        setSessionStatus(status || '');
+      });
+      unsubscribers.push(unsubscribeSessionStatus);
       
-      // Return cleanup function
+      // Set up points listener
+      const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
+        setStudentPoints(points);
+      });
+      unsubscribers.push(unsubscribePoints);
+      
+      // Update state
+      setJoined(true);
+      setSessionCode(code);
+      setClassName(session.code);
+      setJoinedClass({ className: session.code, sessionCode: code });
+      
+      // Clean up any existing listeners when component unmounts
       return () => {
-        console.log('Cleaning up question listeners');
-        unsubscribePersonal();
-        unsubscribeClass();
-        unsubscribeActiveQuestion();
-        unsubscribeSessionStatus();
+        unsubscribers.forEach(unsubscribe => {
+          try {
+            unsubscribe();
+          } catch (error) {
+            console.error("Error during cleanup:", error);
+          }
+        });
       };
+      
     } catch (error) {
-      console.error('Error joining class:', error);
-      setError('Failed to join class. Please try again.');
+      console.error("Error joining class:", error);
+      setError("Failed to join class. Please try again.");
+    } finally {
       setIsLoading(false);
     }
-  }, [studentId, activeQuestion]); // Remove handleLeaveClass dependency
+  };
 
   /**
    * Handle user logout
@@ -811,8 +837,56 @@ export default function StudentPage() {
   };
 
   /**
-   * Handle submitting an answer to an active question
+   * Handle editing an answer
    */
+  const handleEditAnswer = (answer: Answer) => {
+    setEditingAnswerId(answer.id);
+    setEditAnswerText(answer.text);
+  };
+
+  /**
+   * Handle saving an edited answer
+   */
+  const handleSaveEditAnswer = async () => {
+    if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
+
+    try {
+      const success = await updateAnswer(editingAnswerId, editAnswerText, studentId);
+      if (success) {
+        setEditingAnswerId(null);
+        setEditAnswerText('');
+      } else {
+        setError("Failed to update answer. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error updating answer:", error);
+      setError("Failed to update answer. Please try again.");
+    }
+  };
+
+  /**
+   * Handle deleting an answer
+   */
+  const handleDeleteAnswer = async () => {
+    if (!deleteAnswerId || !studentId) return;
+
+    try {
+      const success = await deleteAnswer(deleteAnswerId, studentId);
+      if (success) {
+        setStudentAnswer(null);
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        setDeleteAnswerId(null);
+      } else {
+        setError("Failed to delete answer. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting answer:", error);
+      setError("Failed to delete answer. Please try again.");
+    }
+  };
+
+  // Update the answer submission handler to track the student's answer
   const handleAnswerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -857,10 +931,76 @@ export default function StudentPage() {
     }
   };
 
+  // Update the active question listener to track the student's answer
+  useEffect(() => {
+    let unsubscribeAnswers: (() => void) | undefined;
+
+    if (activeQuestion && studentId) {
+      unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+        const studentAnswer = answers.find(a => a.studentId === studentId);
+        
+        // If we previously had an answer but now it's gone, it was deleted
+        if (!studentAnswer && previousAnswerRef.current) {
+          setShowAnswerDeletedModal(true);
+          setAnswerText('');
+          setAnswerSubmitted(false);
+        }
+        
+        // Update the previous answer ref
+        previousAnswerRef.current = studentAnswer || null;
+        
+        // Update the state
+        setStudentAnswer(studentAnswer || null);
+      });
+    }
+
+    // Clean up the listener when the component unmounts or when activeQuestion changes
+    return () => {
+      if (unsubscribeAnswers) {
+        unsubscribeAnswers();
+      }
+      // Reset answer state when question changes
+      setAnswerText('');
+      setAnswerSubmitted(false);
+      setStudentAnswer(null);
+      previousAnswerRef.current = null;
+    };
+  }, [activeQuestion, studentId]);
+
+  // Add a separate effect to handle active question updates
+  useEffect(() => {
+    if (!sessionCode) return;
+
+    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
+      console.log("Active question update received:", question);
+      
+      if (question) {
+        // If this is a new question (different from current one)
+        if (!activeQuestion || activeQuestion.id !== question.id) {
+          console.log("New question detected, resetting answer state");
+          setAnswerText('');
+          setAnswerSubmitted(false);
+          setStudentAnswer(null);
+          previousAnswerRef.current = null;
+        }
+      } else {
+        // No active question
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        setStudentAnswer(null);
+        previousAnswerRef.current = null;
+      }
+      
+      setActiveQuestion(question);
+      setIsLoadingQuestion(false);
+    });
+
+    return () => unsubscribeActiveQuestion();
+  }, [sessionCode, activeQuestion]);
+
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
-    setMyQuestions(prev => prev.filter(q => q.id !== questionId));
-    setClassQuestions(prev => prev.filter(q => q.id !== questionId));
+    setQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
   // Handle status updates for both lists
@@ -888,43 +1028,22 @@ export default function StudentPage() {
       return;
     }
 
-    // Update My Questions list with a functional update that logs before and after state
-    setMyQuestions(prevQuestions => {
-      console.log("[handleQuestionStatusUpdate] My Questions BEFORE:", 
+    // Update Questions list with a functional update that logs before and after state
+    setQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] Questions BEFORE:", 
         prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
       
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
       const updated = prevQuestions.map(q => {
         if (q.id && statusMap.has(q.id)) {
-          console.log(`[handleQuestionStatusUpdate] Updating My Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
+          console.log(`[handleQuestionStatusUpdate] Updating Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
           return { ...q, status: statusMap.get(q.id)! };
         }
         return q;
       });
       
-      console.log("[handleQuestionStatusUpdate] My Questions AFTER:", 
-        updated.map(q => `${q.id}: ${q.status}`).join(', '));
-      
-      return updated;
-    });
-
-    // Update Class Questions list with a functional update that logs before and after state
-    setClassQuestions(prevQuestions => {
-      console.log("[handleQuestionStatusUpdate] Class Questions BEFORE:", 
-        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
-      
-      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
-      
-      const updated = prevQuestions.map(q => {
-        if (q.id && statusMap.has(q.id)) {
-          console.log(`[handleQuestionStatusUpdate] Updating Class Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
-          return { ...q, status: statusMap.get(q.id)! };
-        }
-        return q;
-      });
-      
-      console.log("[handleQuestionStatusUpdate] Class Questions AFTER:", 
+      console.log("[handleQuestionStatusUpdate] Questions AFTER:", 
         updated.map(q => `${q.id}: ${q.status}`).join(', '));
       
       return updated;
@@ -1012,13 +1131,13 @@ export default function StudentPage() {
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
           <div className="p-6">
             <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
-              <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
               Class Questions
             </h2>
             <QuestionList
-              questions={classQuestions}
+              questions={questions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
@@ -1041,7 +1160,7 @@ export default function StudentPage() {
               My Questions
             </h2>
             <QuestionList
-              questions={myQuestions}
+              questions={userQuestions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
@@ -1191,7 +1310,7 @@ export default function StudentPage() {
         
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
           <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Answer Professor's Question
@@ -1200,60 +1319,105 @@ export default function StudentPage() {
           {activeQuestion ? (
             <div>
               <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                <h3 className="font-semibold mb-2">Current Question:</h3>
-                <p className="font-medium">{activeQuestion.text}</p>
-            </div>
-            
-            {answerSubmitted ? (
-                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                  <p className="font-semibold">Your answer has been submitted!</p>
-                  <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
-              </div>
-            ) : (
-                <form onSubmit={handleAnswerSubmit} className="mt-4">
-                <div className="mb-4">
-                    <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold text-gray-900 dark:text-dark-text-primary">
-                      Your Answer:
-                  </label>
-                  <textarea
-                      id="pointsTabAnswerText"
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.target.value)}
-                      className="w-full p-3 border rounded-lg dark:bg-dark-background-tertiary dark:text-dark-text-primary dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition duration-200"
-                      rows={4}
-                      disabled={cooldownActive}
-                    required
-                      placeholder="Type your answer here..."
-                  />
+                <div>
+                  <h3 className="font-semibold mb-2">Current Question:</h3>
+                  <p className="font-medium">{activeQuestion.text}</p>
                 </div>
-                <button
-                  type="submit"
-                    className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
-                      cooldownActive || isSubmittingAnswer
-                        ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted'
+              </div>
+
+              {studentAnswer ? (
+                <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/10 dark:border-green-800 dark:text-white">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-grow">
+                      <h3 className="font-semibold mb-2">Your Answer:</h3>
+                      {editingAnswerId === studentAnswer.id ? (
+                        <div>
+                          <textarea
+                            value={editAnswerText}
+                            onChange={(e) => setEditAnswerText(e.target.value)}
+                            className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
+                            rows={3}
+                          />
+                          <div className="mt-2 flex space-x-2">
+                            <button
+                              onClick={handleSaveEditAnswer}
+                              className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingAnswerId(null);
+                                setEditAnswerText('');
+                              }}
+                              className="px-3 py-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-start">
+                          <p className="font-medium">{studentAnswer.text}</p>
+                          <div className="flex space-x-2 ml-4">
+                            <button
+                              onClick={() => handleEditAnswer(studentAnswer)}
+                              className="p-1 text-gray-500 hover:text-blue-500 transition-colors"
+                              title="Edit answer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setDeleteAnswerId(studentAnswer.id)}
+                              className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                              title="Delete answer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleAnswerSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Your Answer
+                    </label>
+                    <textarea
+                      id="answer"
+                      value={answerText}
+                      onChange={(e) => setAnswerText(e.target.value)}
+                      className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
+                      rows={3}
+                      placeholder="Type your answer here..."
+                      disabled={cooldownActive}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!answerText.trim() || isSubmittingAnswer || cooldownActive}
+                    className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
+                      !answerText.trim() || isSubmittingAnswer || cooldownActive
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 hover:bg-blue-600'
                     }`}
-                    disabled={cooldownActive || isSubmittingAnswer}
                   >
-                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
-                </button>
-              </form>
-            )}
-          </div>
-        ) : (
-            <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700 text-center">
-              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-dark-text-tertiary mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-gray-600 dark:text-dark-text-secondary mb-2">
-                No active question at the moment
-              </p>
-              <p className="text-sm text-gray-500 dark:text-dark-text-tertiary">
-                When your professor asks a question, it will appear here for you to answer.
-            </p>
-          </div>
-        )}
-      </div>
+                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s...` : 'Submit Answer'}
+                  </button>
+                </form>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400">No active question at the moment.</p>
+          )}
+        </div>
       </div>
     );
   };
@@ -1371,6 +1535,31 @@ export default function StudentPage() {
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
 
+      {/* Inactivity Notification */}
+      {showInactivityNotification && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-500 dark:text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Session Ended
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                You have been removed from the class due to inactivity.
+              </p>
+              <button
+                onClick={() => setShowInactivityNotification(false)}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
           <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
@@ -1395,7 +1584,7 @@ export default function StudentPage() {
                     </div>
                   </div>
                   
-                  <JoinClass studentId={studentId} onSuccess={handleJoinSuccess} />
+                  <JoinClass studentId={studentId} onSuccess={handleJoinClass} />
                 </div>
               </div>
             </div>
@@ -1441,6 +1630,23 @@ export default function StudentPage() {
                     </div>
                   </div>
                   
+                  {/* Add student count display */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Class Statistics
+                    </h3>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 dark:text-dark-text-secondary">Active Students:</span>
+                        <span className="font-medium text-blue-600 dark:text-dark-primary">{studentCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
                   {/* Tab Navigation */}
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
                     <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
@@ -1452,17 +1658,25 @@ export default function StudentPage() {
                     
                     <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
               <button
-                onClick={() => setActiveTab('questions')}
-                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                onClick={() => handleTabChange('questions')}
+                className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
                   activeTab === 'questions'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
                 }`}
               >
                 Questions
+                {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                  <>
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                      {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                    </div>
+                  </>
+                )}
               </button>
               <button
-                onClick={() => setActiveTab('points')}
+                onClick={() => handleTabChange('points')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
                   activeTab === 'points'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
@@ -1522,6 +1736,64 @@ export default function StudentPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Answer Confirmation Modal */}
+      {deleteAnswerId && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-500 dark:text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Delete Answer
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                Are you sure you want to delete your answer? This action cannot be undone.
+              </p>
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => setDeleteAnswerId(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors dark:bg-dark-background dark:text-dark-text-primary dark:hover:bg-dark-background-hover"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAnswer}
+                  className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add the answer deleted notification modal */}
+      {showAnswerDeletedModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-yellow-500 dark:text-yellow-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Answer Deleted
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                Your answer has been deleted by the professor. You can submit a new answer below.
+              </p>
+              <button
+                onClick={() => setShowAnswerDeletedModal(false)}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
