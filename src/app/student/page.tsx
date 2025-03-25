@@ -363,13 +363,23 @@ export default function StudentPage() {
     if (!isStudent()) {
       console.log("Not a student, redirecting to home");
       router.push('/');
+      setIsLoading(false);
       return;
     }
 
     setInitStage('getting-user-id');
     const userId = getUserId();
     console.log("User ID retrieved:", userId ? "success" : "failed");
+    
+    if (!userId) {
+      console.log("No user ID found, redirecting to home");
+      router.push('/');
+      setIsLoading(false);
+      return;
+    }
+    
     setStudentId(userId);
+    setIsLoading(false);
 
     // Check network status
     const handleOnline = () => {
@@ -448,7 +458,9 @@ export default function StudentPage() {
   useEffect(() => {
     console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
     
-    if (!studentId || isLoading) {
+    if (!studentId) {
+      console.log("No student ID available, skipping class check");
+      setIsLoading(false);
       return;
     }
 
@@ -457,6 +469,7 @@ export default function StudentPage() {
 
     const checkJoinedClass = async () => {
       try {
+        console.log("Checking for joined class...");
         const joinedClass = await getJoinedClass(studentId);
         
         if (!joinedClass || !isComponentMounted) {
@@ -467,6 +480,9 @@ export default function StudentPage() {
 
         console.log("Found joined class:", joinedClass);
         setJoinedClass(joinedClass);
+        setJoined(true);
+        setClassName(joinedClass.className);
+        setSessionCode(joinedClass.sessionCode);
         
         // Set up session status listener
         const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
@@ -573,7 +589,7 @@ export default function StudentPage() {
         }
       });
     };
-  }, [studentId, isLoading, activeQuestion?.id]);
+  }, [studentId, activeQuestion?.id]); // Remove isLoading from dependencies
 
   /**
    * Record user activity
