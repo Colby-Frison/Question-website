@@ -29,6 +29,7 @@ import {
   runDatabaseMaintenance,
   updateQuestionStatus,
   clearPointsCache,
+  deleteAnswer,
   cache
 } from '@/lib/questions';
 import { getClassForProfessor } from '@/lib/classCode';
@@ -928,16 +929,28 @@ export default function ProfessorPage() {
                           Student ID: {answer.studentId.substring(0, 6)}
                         </span>
                         
-                        {pointsAwarded[answer.id] ? (
-                          <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 font-medium">
-                            <span className="inline-flex items-center">
-                              <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              {pointsAwarded[answer.id]} points awarded
+                        <div className="flex items-center space-x-2">
+                          {pointsAwarded[answer.id] ? (
+                            <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 font-medium">
+                              <span className="inline-flex items-center">
+                                <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {pointsAwarded[answer.id]} points awarded
+                              </span>
                             </span>
-                          </span>
-                        ) : null}
+                          ) : null}
+                          
+                          <button
+                            onClick={() => handleDeleteAnswer(answer.id)}
+                            className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                            title="Delete answer"
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="mt-3">
@@ -1041,6 +1054,26 @@ export default function ProfessorPage() {
       return () => unsubscribe();
     }
   }, [sessionCode]);
+
+  /**
+   * Handle deleting a student answer
+   * 
+   * @param answerId - The ID of the answer to delete
+   */
+  const handleDeleteAnswer = async (answerId: string) => {
+    try {
+      console.log(`Deleting answer ${answerId}`);
+      await deleteAnswer(answerId, 'professor'); // Using 'professor' as studentId since professors can delete any answer
+      
+      // Update the local state immediately to remove the deleted answer
+      setAnswers(prevAnswers => prevAnswers.filter(a => a.id !== answerId));
+      
+      console.log(`Answer ${answerId} deleted successfully`);
+    } catch (error) {
+      console.error("Error deleting answer:", error);
+      setError("Failed to delete answer. Please try again.");
+    }
+  };
 
   // Show error state if there's a problem
   if (error) {
