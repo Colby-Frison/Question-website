@@ -39,7 +39,8 @@ import {
   updateSessionActivity,
   isSessionInactive,
   SESSION_INACTIVITY_TIMEOUT,
-  forceIndexCreation
+  forceIndexCreation,
+  listenForStudentCount
 } from '@/lib/classSession';
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
@@ -111,6 +112,10 @@ export default function ProfessorPage() {
   const [newAnswersCount, setNewAnswersCount] = useState(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   const [lastSeenAnswerId, setLastSeenAnswerId] = useState<string | null>(null);
+
+  // Add student count tracking
+  const [studentCount, setStudentCount] = useState<number>(0);
+  const [studentCountListener, setStudentCountListener] = useState<(() => void) | null>(null);
 
   /**
    * Initial setup effect - runs once when component mounts
@@ -1026,6 +1031,17 @@ export default function ProfessorPage() {
     }
   }, [answers, lastSeenAnswerId]);
 
+  // Add student count listener effect
+  useEffect(() => {
+    if (sessionCode) {
+      const unsubscribe = listenForStudentCount(sessionCode, (count) => {
+        setStudentCount(count);
+      });
+      setStudentCountListener(() => unsubscribe);
+      return () => unsubscribe();
+    }
+  }, [sessionCode]);
+
   // Show error state if there's a problem
   if (error) {
                           return (
@@ -1150,7 +1166,7 @@ export default function ProfessorPage() {
                       <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
                         <div className="flex items-center justify-between mb-1">
                           <span>Active students:</span>
-                          <span className="font-medium">{studentJoinCount}</span>
+                          <span className="font-medium">{studentCount}</span>
                         </div>
                         <div className="flex items-center justify-between mb-1">
                           <span>Session duration:</span>

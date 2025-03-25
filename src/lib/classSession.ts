@@ -775,4 +775,52 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
     console.error("Error cleaning up inactive class sessions:", error);
     return 0;
   }
-} 
+}
+
+/**
+ * Listen for changes to the number of active students in a class session
+ * 
+ * @param sessionCode - Code of the current class session
+ * @param callback - Function to call with updated student count
+ * @returns Unsubscribe function to stop listening
+ */
+export const listenForStudentCount = (
+  sessionCode: string,
+  callback: (count: number) => void
+): (() => void) => {
+  if (!sessionCode) {
+    console.error("[listenForStudentCount] No session code provided");
+    callback(0);
+    return () => {};
+  }
+
+  console.log(`[listenForStudentCount] Setting up listener for session: ${sessionCode}`);
+  
+  try {
+    // Query for active students in this session
+    const q = query(
+      collection(db, CLASS_SESSIONS_COLLECTION),
+      where('sessionCode', '==', sessionCode),
+      where('status', '==', 'active')
+    );
+    
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        console.log(`[listenForStudentCount] Found ${snapshot.size} active students`);
+        callback(snapshot.size);
+      },
+      (error) => {
+        console.error("[listenForStudentCount] Error in listener:", error);
+        callback(0);
+      }
+    );
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("[listenForStudentCount] Error setting up listener:", error);
+    callback(0);
+    return () => {};
+  }
+}; 
