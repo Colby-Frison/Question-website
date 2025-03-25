@@ -21,13 +21,15 @@ import {
   doc, 
   getDoc, 
   setDoc,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from 'firebase/firestore';
 import { getSessionByCode } from './classSession';
 
 // Collection reference - keeping the same collection names for backward compatibility
 const CLASS_CODES_COLLECTION = 'classCodes';
 const JOINED_CLASSES_COLLECTION = 'joinedClasses';
+const STUDENT_COUNTS_COLLECTION = 'studentCounts';
 
 // Validate class name format
 export const validateClassName = (name: string): boolean => {
@@ -436,5 +438,113 @@ export const createClass = async (className: string, professorId: string): Promi
   } catch (error) {
     console.error("Error creating class:", error);
     return false;
+  }
+};
+
+/**
+ * Update student count for a session
+ * 
+ * Updates the count of students in a class session.
+ * This is called when students join or leave a class.
+ * 
+ * @param sessionCode - The session code to update count for
+ * @param increment - Whether to increment (true) or decrement (false) the count
+ * @returns A promise that resolves to the new count
+ */
+export const updateStudentCount = async (sessionCode: string, increment: boolean): Promise<number> => {
+  if (!sessionCode) {
+    console.error("No session code provided to updateStudentCount");
+    return 0;
+  }
+
+  try {
+    const countRef = doc(db, STUDENT_COUNTS_COLLECTION, sessionCode);
+    const countDoc = await getDoc(countRef);
+
+    let newCount = 0;
+    if (countDoc.exists()) {
+      newCount = countDoc.data().count || 0;
+    }
+
+    // Update the count
+    newCount = increment ? newCount + 1 : Math.max(0, newCount - 1);
+
+    // Save the new count
+    await setDoc(countRef, {
+      count: newCount,
+      lastUpdated: Date.now()
+    });
+
+    return newCount;
+  } catch (error) {
+    console.error("Error updating student count:", error);
+    return 0;
+  }
+};
+
+/**
+ * Get student count for a session
+ * 
+ * Retrieves the current count of students in a class session.
+ * 
+ * @param sessionCode - The session code to get count for
+ * @returns A promise that resolves to the current student count
+ */
+export const getStudentCount = async (sessionCode: string): Promise<number> => {
+  if (!sessionCode) {
+    console.error("No session code provided to getStudentCount");
+    return 0;
+  }
+
+  try {
+    const countRef = doc(db, STUDENT_COUNTS_COLLECTION, sessionCode);
+    const countDoc = await getDoc(countRef);
+
+    if (countDoc.exists()) {
+      return countDoc.data().count || 0;
+    }
+
+    return 0;
+  } catch (error) {
+    console.error("Error getting student count:", error);
+    return 0;
+  }
+};
+
+/**
+ * Listen for student count changes
+ * 
+ * Sets up a real-time listener for changes to the student count in a session.
+ * 
+ * @param sessionCode - The session code to listen for
+ * @param callback - Function to call when count changes
+ * @returns A function to unsubscribe from the listener
+ */
+export const listenForStudentCount = (
+  sessionCode: string,
+  callback: (count: number) => void
+): () => void => {
+  if (!sessionCode) {
+    console.error("No session code provided to listenForStudentCount");
+    callback(0);
+    return () => {};
+  }
+
+  try {
+    const countRef = doc(db, STUDENT_COUNTS_COLLECTION, sessionCode);
+    return onSnapshot(countRef, (doc) => {
+      if (doc.exists()) {
+        callback(doc.data().count || 0);
+      } else {
+        callback(0);
+      }
+    }, (error) => {
+      console.error(`Error in student count listener for ${sessionCode}:`, error);
+      callback(0);
+    });
+  } catch (error) {
+    console.error(`Error setting up student count listener for ${sessionCode}:`, error);
+    callback(0);
+    return () => {};
   }
 }; 

@@ -34,7 +34,13 @@ import {
   ACTIVE_QUESTION_COLLECTION,
   listenForAnswers
 } from '@/lib/questions';
-import { joinClass, getJoinedClass, leaveClass } from '@/lib/classCode';
+import { 
+  joinClass, 
+  getJoinedClass, 
+  leaveClass,
+  updateStudentCount,
+  listenForStudentCount
+} from '@/lib/classCode';
 import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question, ClassSession } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
@@ -126,6 +132,8 @@ export default function StudentPage() {
   const [studentPoints, setStudentPoints] = useState<number>(0);
   const [userQuestions, setUserQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
+  const [studentCount, setStudentCount] = useState<number>(0);
+  const [studentCountListener, setStudentCountListener] = useState<(() => void) | null>(null);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -157,11 +165,16 @@ export default function StudentPage() {
     setIsLeavingClass(true);
     
     // Clean up Firebase data first
-    if (studentId) {
+    if (studentId && sessionCode) {
+      // Update student count before leaving
+      updateStudentCount(sessionCode, false)
+        .catch((error: Error) => {
+          console.error("Error updating student count:", error);
+        });
+
       leaveClass(studentId)
         .catch(error => {
           console.error("Error leaving class:", error);
-          // Consider showing an error to the user here
         })
         .finally(() => {
           // Only update UI after Firebase cleanup completes
@@ -171,11 +184,16 @@ export default function StudentPage() {
           setSessionCode('');
           setQuestions([]);
           setActiveQuestion(null);
+          setStudentCount(0);
           
           // Clean up listeners
           if (sessionListener) {
             sessionListener();
             setSessionListener(null);
+          }
+          if (studentCountListener) {
+            studentCountListener();
+            setStudentCountListener(null);
           }
           
           setIsLeavingClass(false);
@@ -187,17 +205,21 @@ export default function StudentPage() {
       setSessionCode('');
       setQuestions([]);
       setActiveQuestion(null);
+      setStudentCount(0);
       
       // Clean up listeners
       if (sessionListener) {
         sessionListener();
         setSessionListener(null);
       }
+      if (studentCountListener) {
+        studentCountListener();
+        setStudentCountListener(null);
+      }
       
       setIsLeavingClass(false);
     }
-  }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
-      setQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
+  }, [studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
 
   /**
    * Handle adding a point to student's total
@@ -566,6 +588,13 @@ export default function StudentPage() {
           unsubscribers.push(unsubscribeAnswers);
         }
 
+        // Set up student count listener
+        const unsubscribeStudentCount = listenForStudentCount(joinedClass.sessionCode, (count: number) => {
+          setStudentCount(count);
+        });
+        unsubscribers.push(unsubscribeStudentCount);
+        setStudentCountListener(unsubscribeStudentCount);
+
           setIsLoading(false);
       } catch (error) {
         console.error("Error in checkJoinedClass:", error);
@@ -694,9 +723,19 @@ export default function StudentPage() {
         setIsLoading(false);
         return;
       }
+
+      // Update student count
+      await updateStudentCount(code, true);
       
       // Set up listeners with optimized settings
       const unsubscribers: (() => void)[] = [];
+      
+      // Set up student count listener
+      const unsubscribeStudentCount = listenForStudentCount(code, (count: number) => {
+        setStudentCount(count);
+      });
+      unsubscribers.push(unsubscribeStudentCount);
+      setStudentCountListener(unsubscribeStudentCount);
       
       // Set up personal questions listener with optimized settings
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
@@ -1393,6 +1432,23 @@ export default function StudentPage() {
                       <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
                         <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
                         <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Add student count display */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Class Statistics
+                    </h3>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 dark:text-dark-text-secondary">Active Students:</span>
+                        <span className="font-medium text-blue-600 dark:text-dark-primary">{studentCount}</span>
                       </div>
                     </div>
                   </div>
