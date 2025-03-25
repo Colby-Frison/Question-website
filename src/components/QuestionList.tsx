@@ -61,6 +61,7 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteQuestionId, setDeleteQuestionId] = useState<string | null>(null);
   
   // Simple way to track manual overrides locally
   const [manualStatuses, setManualStatuses] = useState<Record<string, 'answered' | 'unanswered'>>({});
@@ -142,24 +143,16 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   /**
    * Delete a question with confirmation
    */
-  const handleDelete = useCallback(async (questionId: string) => {
-    // Confirm before deleting
-    if (!confirm('Are you sure you want to delete this question?')) {
-      return;
+  const handleDelete = (questionId: string) => {
+    setDeleteQuestionId(questionId);
+  };
+  
+  const confirmDelete = () => {
+    if (deleteQuestionId && onDelete) {
+      onDelete(deleteQuestionId);
+      setDeleteQuestionId(null);
     }
-    
-    try {
-      await deleteQuestion(questionId);
-      
-      // Call the onDelete callback if provided
-      if (onDelete) {
-        onDelete(questionId);
-      }
-    } catch (error) {
-      console.error('Error deleting question:', error);
-      setError('Failed to delete question. Please try again.');
-    }
-  }, [onDelete]);
+  };
   
   /**
    * Toggle a question's status between answered and unanswered
@@ -475,9 +468,44 @@ const QuestionList: React.FC<QuestionListProps> = React.memo(({
   if (questions.length === 0) return renderEmptyState;
 
   return (
-    <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 w-full rounded-md overflow-hidden p-4">
-      {renderQuestions}
-    </ul>
+    <div className="space-y-4">
+      {/* Delete Confirmation Modal */}
+      {deleteQuestionId && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-500 dark:text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Delete Question
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                Are you sure you want to delete this question? This action cannot be undone.
+              </p>
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => setDeleteQuestionId(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors dark:bg-dark-background dark:text-dark-text-primary dark:hover:bg-dark-background-hover"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 w-full rounded-md overflow-hidden p-4">
+        {renderQuestions}
+      </ul>
+    </div>
   );
 });
 

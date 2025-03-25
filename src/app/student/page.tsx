@@ -32,7 +32,10 @@ import {
   runDatabaseMaintenance,
   clearPointsCache,
   ACTIVE_QUESTION_COLLECTION,
-  listenForAnswers
+  listenForAnswers,
+  deleteActiveQuestion,
+  deleteAnswer,
+  updateAnswer
 } from '@/lib/questions';
 import { 
   joinClass, 
@@ -134,6 +137,11 @@ export default function StudentPage() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [studentCount, setStudentCount] = useState<number>(0);
   const [studentCountListener, setStudentCountListener] = useState<(() => void) | null>(null);
+  const [showInactivityNotification, setShowInactivityNotification] = useState(false);
+  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
+  const [editAnswerText, setEditAnswerText] = useState('');
+  const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
+  const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -650,8 +658,7 @@ export default function StudentPage() {
             if (!session || session.status !== 'active') {
               console.log('Session is no longer active, leaving class...');
               handleLeaveClass();
-              // Use alert instead of toast since we don't have a toast component
-              alert('Session ended: You have been removed from the class due to inactivity.');
+              setShowInactivityNotification(true);
             } else {
               console.log('Session is still active');
             }
@@ -828,8 +835,56 @@ export default function StudentPage() {
   };
 
   /**
-   * Handle submitting an answer to an active question
+   * Handle editing an answer
    */
+  const handleEditAnswer = (answer: Answer) => {
+    setEditingAnswerId(answer.id);
+    setEditAnswerText(answer.text);
+  };
+
+  /**
+   * Handle saving an edited answer
+   */
+  const handleSaveEditAnswer = async () => {
+    if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
+
+    try {
+      const success = await updateAnswer(editingAnswerId, editAnswerText, studentId);
+      if (success) {
+        setEditingAnswerId(null);
+        setEditAnswerText('');
+      } else {
+        setError("Failed to update answer. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error updating answer:", error);
+      setError("Failed to update answer. Please try again.");
+    }
+  };
+
+  /**
+   * Handle deleting an answer
+   */
+  const handleDeleteAnswer = async () => {
+    if (!deleteAnswerId || !studentId) return;
+
+    try {
+      const success = await deleteAnswer(deleteAnswerId, studentId);
+      if (success) {
+        setStudentAnswer(null);
+        setAnswerText('');
+        setAnswerSubmitted(false);
+        setDeleteAnswerId(null);
+      } else {
+        setError("Failed to delete answer. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting answer:", error);
+      setError("Failed to delete answer. Please try again.");
+    }
+  };
+
+  // Update the answer submission handler to track the student's answer
   const handleAnswerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -873,6 +928,17 @@ export default function StudentPage() {
       setIsSubmittingAnswer(false);
     }
   };
+
+  // Update the active question listener to track the student's answer
+  useEffect(() => {
+    if (activeQuestion && studentId) {
+      const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+        const studentAnswer = answers.find(a => a.studentId === studentId);
+        setStudentAnswer(studentAnswer || null);
+      });
+      return () => unsubscribeAnswers();
+    }
+  }, [activeQuestion, studentId]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
@@ -978,6 +1044,25 @@ export default function StudentPage() {
     } else {
       // Reset input to current points if invalid
       setPointsInput(points.toString());
+    }
+  };
+
+  /**
+   * Handle deleting the active question
+   */
+  const handleDeleteActiveQuestion = async () => {
+    if (!activeQuestion?.id) return;
+    
+    try {
+      const success = await deleteActiveQuestion(activeQuestion.id);
+      if (success) {
+        setActiveQuestion(null);
+      } else {
+        setError("Failed to delete question. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting active question:", error);
+      setError("Failed to delete question. Please try again.");
     }
   };
 
@@ -1195,60 +1280,116 @@ export default function StudentPage() {
           {activeQuestion ? (
             <div>
               <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                <h3 className="font-semibold mb-2">Current Question:</h3>
-                <p className="font-medium">{activeQuestion.text}</p>
-            </div>
-            
-            {answerSubmitted ? (
-                <div className="bg-blue-100 p-4 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                  <p className="font-semibold">Your answer has been submitted!</p>
-                  <p className="mt-2 text-sm">The professor will review your answer and may award points.</p>
-              </div>
-            ) : (
-                <form onSubmit={handleAnswerSubmit} className="mt-4">
-                <div className="mb-4">
-                    <label htmlFor="pointsTabAnswerText" className="block mb-2 font-semibold text-gray-900 dark:text-dark-text-primary">
-                      Your Answer:
-                  </label>
-                  <textarea
-                      id="pointsTabAnswerText"
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.target.value)}
-                      className="w-full p-3 border rounded-lg dark:bg-dark-background-tertiary dark:text-dark-text-primary dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition duration-200"
-                      rows={4}
-                      disabled={cooldownActive}
-                    required
-                      placeholder="Type your answer here..."
-                  />
-                </div>
-                <button
-                  type="submit"
-                    className={`w-full px-4 py-3 rounded-lg font-medium transition duration-200 ${
-                      cooldownActive || isSubmittingAnswer
-                        ? 'bg-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                        : 'bg-blue-500 hover:bg-blue-600 text-white dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted'
-                    }`}
-                    disabled={cooldownActive || isSubmittingAnswer}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold mb-2">Current Question:</h3>
+                    <p className="font-medium">{activeQuestion.text}</p>
+                  </div>
+                  <button
+                    onClick={handleDeleteActiveQuestion}
+                    className="p-2 text-red-500 hover:text-red-600 transition-colors"
+                    title="Delete question"
                   >
-                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s` : 'Submit Answer'}
-                </button>
-              </form>
-            )}
-          </div>
-        ) : (
-            <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700 text-center">
-              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-dark-text-tertiary mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-gray-600 dark:text-dark-text-secondary mb-2">
-                No active question at the moment
-              </p>
-              <p className="text-sm text-gray-500 dark:text-dark-text-tertiary">
-                When your professor asks a question, it will appear here for you to answer.
-            </p>
-          </div>
-        )}
-      </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {studentAnswer ? (
+                <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/10 dark:border-green-800 dark:text-white">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-grow">
+                      <h3 className="font-semibold mb-2">Your Answer:</h3>
+                      {editingAnswerId === studentAnswer.id ? (
+                        <div>
+                          <textarea
+                            value={editAnswerText}
+                            onChange={(e) => setEditAnswerText(e.target.value)}
+                            className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
+                            rows={3}
+                          />
+                          <div className="mt-2 flex space-x-2">
+                            <button
+                              onClick={handleSaveEditAnswer}
+                              className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingAnswerId(null);
+                                setEditAnswerText('');
+                              }}
+                              className="px-3 py-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-start">
+                          <p className="font-medium">{studentAnswer.text}</p>
+                          <div className="flex space-x-2 ml-4">
+                            <button
+                              onClick={() => handleEditAnswer(studentAnswer)}
+                              className="p-1 text-gray-500 hover:text-blue-500 transition-colors"
+                              title="Edit answer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setDeleteAnswerId(studentAnswer.id)}
+                              className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                              title="Delete answer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleAnswerSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Your Answer
+                    </label>
+                    <textarea
+                      id="answer"
+                      value={answerText}
+                      onChange={(e) => setAnswerText(e.target.value)}
+                      className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
+                      rows={3}
+                      placeholder="Type your answer here..."
+                      disabled={cooldownActive}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!answerText.trim() || isSubmittingAnswer || cooldownActive}
+                    className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
+                      !answerText.trim() || isSubmittingAnswer || cooldownActive
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    }`}
+                  >
+                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s...` : 'Submit Answer'}
+                  </button>
+                </form>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400">No active question at the moment.</p>
+          )}
+        </div>
       </div>
     );
   };
@@ -1365,6 +1506,31 @@ export default function StudentPage() {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
+
+      {/* Inactivity Notification */}
+      {showInactivityNotification && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-500 dark:text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Session Ended
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                You have been removed from the class due to inactivity.
+              </p>
+              <button
+                onClick={() => setShowInactivityNotification(false)}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="container mx-auto px-4 py-6">
         {!joined ? (
@@ -1542,6 +1708,39 @@ export default function StudentPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Answer Confirmation Modal */}
+      {deleteAnswerId && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-500 dark:text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Delete Answer
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                Are you sure you want to delete your answer? This action cannot be undone.
+              </p>
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => setDeleteAnswerId(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors dark:bg-dark-background dark:text-dark-text-primary dark:hover:bg-dark-background-hover"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAnswer}
+                  className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

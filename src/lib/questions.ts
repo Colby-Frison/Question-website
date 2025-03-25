@@ -812,6 +812,36 @@ export const clearActiveQuestions = async (
   }
 };
 
+/**
+ * Delete an active question by ID
+ * 
+ * @param questionId - ID of the active question to delete
+ * @returns True if deletion was successful, false otherwise
+ */
+export const deleteActiveQuestion = async (questionId: string): Promise<boolean> => {
+  if (!questionId) {
+    console.error("[deleteActiveQuestion] No question ID provided");
+    return false;
+  }
+
+  try {
+    console.log(`[deleteActiveQuestion] Deleting active question ${questionId}`);
+    
+    // Delete the active question
+    await deleteDoc(doc(db, ACTIVE_QUESTION_COLLECTION, questionId));
+    
+    // Clear any cached data for this question
+    cache.activeQuestions.delete(questionId);
+    cache.answers.delete(questionId);
+    
+    console.log(`[deleteActiveQuestion] Successfully deleted question ${questionId}`);
+    return true;
+  } catch (error) {
+    console.error("[deleteActiveQuestion] Error deleting active question:", error);
+    return false;
+  }
+};
+
 // =====================================================================
 // ANSWERS (Student responses to active questions)
 // =====================================================================
@@ -1055,6 +1085,102 @@ export const clearPreviousAnswers = async (sessionCode: string): Promise<boolean
     return true;
   } catch (error) {
     console.error("[clearPreviousAnswers] Error clearing answers:", error);
+    return false;
+  }
+};
+
+/**
+ * Update a student's answer to an active question
+ * 
+ * @param answerId - ID of the answer to update
+ * @param newText - New text for the answer
+ * @param studentId - ID of the student who owns the answer
+ * @returns True if update was successful, false otherwise
+ */
+export const updateAnswer = async (
+  answerId: string,
+  newText: string,
+  studentId: string
+): Promise<boolean> => {
+  if (!answerId || !newText.trim() || !studentId) {
+    console.error("[updateAnswer] Missing required parameters:", { answerId, newText, studentId });
+    return false;
+  }
+
+  try {
+    console.log(`[updateAnswer] Updating answer ${answerId}`);
+    
+    // First verify the student owns this answer
+    const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
+    const answerDoc = await getDoc(answerRef);
+    
+    if (!answerDoc.exists()) {
+      console.error(`[updateAnswer] Answer ${answerId} not found`);
+      return false;
+    }
+    
+    const data = answerDoc.data();
+    if (data.studentId !== studentId) {
+      console.error(`[updateAnswer] Student ${studentId} does not own answer ${answerId}`);
+      return false;
+    }
+
+    // Update answer
+    await updateDoc(answerRef, {
+      text: newText.trim(),
+      updatedAt: Date.now(),
+      updated: true
+    });
+    
+    console.log(`[updateAnswer] Answer ${answerId} updated successfully`);
+    return true;
+  } catch (error) {
+    console.error("[updateAnswer] Error updating answer:", error);
+    return false;
+  }
+};
+
+/**
+ * Delete a student's answer to an active question
+ * 
+ * @param answerId - ID of the answer to delete
+ * @param studentId - ID of the student who owns the answer
+ * @returns True if deletion was successful, false otherwise
+ */
+export const deleteAnswer = async (
+  answerId: string,
+  studentId: string
+): Promise<boolean> => {
+  if (!answerId || !studentId) {
+    console.error("[deleteAnswer] Missing required parameters:", { answerId, studentId });
+    return false;
+  }
+
+  try {
+    console.log(`[deleteAnswer] Deleting answer ${answerId}`);
+    
+    // First verify the student owns this answer
+    const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
+    const answerDoc = await getDoc(answerRef);
+    
+    if (!answerDoc.exists()) {
+      console.error(`[deleteAnswer] Answer ${answerId} not found`);
+      return false;
+    }
+    
+    const data = answerDoc.data();
+    if (data.studentId !== studentId) {
+      console.error(`[deleteAnswer] Student ${studentId} does not own answer ${answerId}`);
+      return false;
+    }
+
+    // Delete the answer
+    await deleteDoc(answerRef);
+    
+    console.log(`[deleteAnswer] Answer ${answerId} deleted successfully`);
+    return true;
+  } catch (error) {
+    console.error("[deleteAnswer] Error deleting answer:", error);
     return false;
   }
 };
