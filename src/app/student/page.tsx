@@ -73,14 +73,15 @@ export default function StudentPage() {
   const [className, setClassName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
   const [joined, setJoined] = useState(false);
-  const [myQuestions, setMyQuestions] = useState<Question[]>([]);
-  const [classQuestions, setClassQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [studentId, setStudentId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
+  const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
+  const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   
   // Add state to track welcome message visibility
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -123,11 +124,34 @@ export default function StudentPage() {
   const [joinedClass, setJoinedClass] = useState<{className: string, sessionCode: string} | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>('');
   const [studentPoints, setStudentPoints] = useState<number>(0);
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [userQuestions, setUserQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
-  const [newQuestionsCount, setNewQuestionsCount] = useState(0);
-  const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
+
+  // Add this function to reset notifications when switching tabs
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    if (tab === 'questions') {
+      setNewQuestionsCount(0);
+      if (questions.length > 0) {
+        setLastSeenQuestionId(questions[0].id);
+      }
+    }
+  };
+
+  // Add this effect to track new questions
+  useEffect(() => {
+    if (!questions.length) return;
+    
+    const latestQuestion = questions[0];
+    if (!lastSeenQuestionId) {
+      setLastSeenQuestionId(latestQuestion.id);
+      return;
+    }
+    
+    if (latestQuestion.id !== lastSeenQuestionId) {
+      setNewQuestionsCount((prev: number) => prev + 1);
+    }
+  }, [questions, lastSeenQuestionId]);
 
   // Define handleLeaveClass outside the component
   const handleLeaveClass = useCallback(() => {
@@ -150,8 +174,7 @@ export default function StudentPage() {
           setJoined(false);
           setClassName('');
           setSessionCode('');
-          setMyQuestions([]);
-          setClassQuestions([]);
+          setQuestions([]);
           setActiveQuestion(null);
           
           // Clean up listeners
@@ -167,8 +190,7 @@ export default function StudentPage() {
       setJoined(false);
       setClassName('');
       setSessionCode('');
-      setMyQuestions([]);
-      setClassQuestions([]);
+      setQuestions([]);
       setActiveQuestion(null);
       
       // Clean up listeners
@@ -180,7 +202,7 @@ export default function StudentPage() {
       setIsLeavingClass(false);
     }
   }, [studentId, sessionListener, isLeavingClass, setJoined, setClassName, setSessionCode, 
-      setMyQuestions, setClassQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
+      setQuestions, setActiveQuestion, setIsLeavingClass, setSessionListener]);
 
   /**
    * Handle adding a point to student's total
@@ -667,7 +689,7 @@ export default function StudentPage() {
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         console.log(`Received ${questions.length} personal questions`);
         // Use functional update to ensure we're working with latest state
-        setMyQuestions(currentQuestions => {
+        setQuestions(currentQuestions => {
           // Deep comparison to avoid unnecessary re-renders
           if (JSON.stringify(currentQuestions) === JSON.stringify(questions)) {
             console.log("No changes in personal questions, skipping update");
@@ -683,7 +705,7 @@ export default function StudentPage() {
       console.log("Setting up class questions listener...");
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         console.log(`Received ${questions.length} class questions`);
-          setClassQuestions(questions);
+          setQuestions(questions);
       });
         
       // Set up listener for active question - refresh every 5 seconds
@@ -715,8 +737,7 @@ export default function StudentPage() {
       setJoined(false);
           setClassName('');
           setSessionCode('');
-      setMyQuestions([]);
-        setClassQuestions([]);
+      setQuestions([]);
         setActiveQuestion(null);
           
           if (studentId) {
@@ -823,8 +844,7 @@ export default function StudentPage() {
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
-    setMyQuestions(prev => prev.filter(q => q.id !== questionId));
-    setClassQuestions(prev => prev.filter(q => q.id !== questionId));
+    setQuestions(prev => prev.filter(q => q.id !== questionId));
   }, []);
   
   // Handle status updates for both lists
@@ -852,43 +872,22 @@ export default function StudentPage() {
       return;
     }
 
-    // Update My Questions list with a functional update that logs before and after state
-    setMyQuestions(prevQuestions => {
-      console.log("[handleQuestionStatusUpdate] My Questions BEFORE:", 
+    // Update Questions list with a functional update that logs before and after state
+    setQuestions(prevQuestions => {
+      console.log("[handleQuestionStatusUpdate] Questions BEFORE:", 
         prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
       
       if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
       
       const updated = prevQuestions.map(q => {
         if (q.id && statusMap.has(q.id)) {
-          console.log(`[handleQuestionStatusUpdate] Updating My Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
+          console.log(`[handleQuestionStatusUpdate] Updating Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
           return { ...q, status: statusMap.get(q.id)! };
         }
         return q;
       });
       
-      console.log("[handleQuestionStatusUpdate] My Questions AFTER:", 
-        updated.map(q => `${q.id}: ${q.status}`).join(', '));
-      
-      return updated;
-    });
-
-    // Update Class Questions list with a functional update that logs before and after state
-    setClassQuestions(prevQuestions => {
-      console.log("[handleQuestionStatusUpdate] Class Questions BEFORE:", 
-        prevQuestions.map(q => `${q.id}: ${q.status}`).join(', '));
-      
-      if (!prevQuestions || prevQuestions.length === 0) return prevQuestions;
-      
-      const updated = prevQuestions.map(q => {
-        if (q.id && statusMap.has(q.id)) {
-          console.log(`[handleQuestionStatusUpdate] Updating Class Question ${q.id} from ${q.status} to ${statusMap.get(q.id)!}`);
-          return { ...q, status: statusMap.get(q.id)! };
-        }
-        return q;
-      });
-      
-      console.log("[handleQuestionStatusUpdate] Class Questions AFTER:", 
+      console.log("[handleQuestionStatusUpdate] Questions AFTER:", 
         updated.map(q => `${q.id}: ${q.status}`).join(', '));
       
       return updated;
@@ -976,13 +975,13 @@ export default function StudentPage() {
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg overflow-hidden dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
           <div className="p-6">
             <h2 className="text-lg font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
-              <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+              <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
               Class Questions
             </h2>
             <QuestionList
-              questions={classQuestions}
+              questions={questions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
@@ -1005,7 +1004,7 @@ export default function StudentPage() {
               My Questions
             </h2>
             <QuestionList
-              questions={myQuestions}
+              questions={userQuestions}
               isProfessor={false}
               isStudent={true}
               studentId={studentId}
@@ -1497,29 +1496,3 @@ export default function StudentPage() {
     </div>
   );
 } 
-
-// Add this effect to track new questions
-useEffect(() => {
-  if (!classQuestions.length) return;
-  
-  const latestQuestion = classQuestions[0];
-  if (!lastSeenQuestionId) {
-    setLastSeenQuestionId(latestQuestion.id);
-    return;
-  }
-  
-  if (latestQuestion.id !== lastSeenQuestionId) {
-    setNewQuestionsCount(prev => prev + 1);
-  }
-}, [classQuestions, lastSeenQuestionId]);
-
-// Add this function to reset notifications when switching tabs
-const handleTabChange = (tab: TabType) => {
-  setActiveTab(tab);
-  if (tab === 'questions') {
-    setNewQuestionsCount(0);
-    if (classQuestions.length > 0) {
-      setLastSeenQuestionId(classQuestions[0].id);
-    }
-  }
-}; 
