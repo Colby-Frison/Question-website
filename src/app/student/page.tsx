@@ -141,6 +141,7 @@ export default function StudentPage() {
   const [editAnswerText, setEditAnswerText] = useState('');
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
+  const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -1706,6 +1707,31 @@ export default function StudentPage() {
                   Delete
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add the answer deleted notification modal */}
+      {showAnswerDeletedModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-yellow-500 dark:text-yellow-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text-primary mb-2">
+                Answer Deleted
+              </h3>
+              <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                Your answer has been deleted by the professor. You can submit a new answer below.
+              </p>
+              <button
+                onClick={() => setShowAnswerDeletedModal(false)}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>
