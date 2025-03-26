@@ -905,7 +905,7 @@ export default function StudentPage() {
     
     try {
       const result = await addAnswer({
-        text: answerText,
+        text: answerText.trim(),
         activeQuestionId: activeQuestion.id,
         studentId,
         sessionCode,
@@ -913,44 +913,28 @@ export default function StudentPage() {
       });
       
       if (result) {
+        // Create a new answer object to update the state immediately
+        const newAnswer = {
+          id: result,
+          text: answerText.trim(),
+          timestamp: Date.now(),
+          studentId,
+          questionText: activeQuestion.text
+        };
+        
+        // Update all relevant state
+        setStudentAnswer(newAnswer);
+        previousAnswerRef.current = newAnswer;
         setAnswerSubmitted(true);
         setAnswerText('');
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
+      setError("Failed to submit answer. Please try again.");
     } finally {
       setIsSubmittingAnswer(false);
     }
   };
-
-  // Add a separate effect to handle active question updates with debouncing
-  useEffect(() => {
-    if (!sessionCode) return;
-
-    // Set up the listener with debouncing and caching
-    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
-      const currentTime = Date.now();
-      // Only process updates if enough time has passed since the last update
-      if (currentTime - lastQuestionUpdateRef.current >= DEBOUNCE_DELAY) {
-        console.log("Active question update received:", question);
-        
-        // Only update if the question has actually changed
-        if (!question || (activeQuestion && question.id !== activeQuestion.id)) {
-          console.log("New question detected, resetting answer state");
-          setAnswerText('');
-          setAnswerSubmitted(false);
-          setStudentAnswer(null);
-          previousAnswerRef.current = null;
-          setActiveQuestion(question);
-        }
-        
-        lastQuestionUpdateRef.current = currentTime;
-      }
-      setIsLoadingQuestion(false);
-    });
-
-    return () => unsubscribeActiveQuestion();
-  }, [sessionCode]);
 
   // Update the active question listener to track the student's answer with debouncing
   useEffect(() => {
@@ -973,11 +957,11 @@ export default function StudentPage() {
             setAnswerSubmitted(false);
             setStudentAnswer(null);
             previousAnswerRef.current = null;
-          } else if (studentAnswer?.id !== previousAnswerRef.current?.id) {
-            // Only update if the answer has actually changed
-            setStudentAnswer(studentAnswer || null);
-            previousAnswerRef.current = studentAnswer || null;
-            setAnswerSubmitted(!!studentAnswer);
+          } else if (studentAnswer) {
+            // Always update the state with the latest answer from the database
+            setStudentAnswer(studentAnswer);
+            previousAnswerRef.current = studentAnswer;
+            setAnswerSubmitted(true);
           }
           lastAnswerUpdateRef.current = currentTime;
         }
