@@ -617,12 +617,20 @@ export default function ProfessorPage() {
     }
     
     try {
+      // Set the active question text immediately for a smoother transition
+      const newQuestionText = questionText;
+      setActiveQuestionText(newQuestionText);
+      
       // Add active question and get its ID back
       const id = await addActiveQuestion(sessionCode, questionText);
       
       // Set as the active question and clear form
       setActiveQuestionId(id);
       setQuestionText('');
+      
+      // Clear previous answers when setting new question
+      setAnswers([]);
+      setPointsAwarded({});
       
       // Update session activity
       if (sessionId) {

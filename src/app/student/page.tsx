@@ -541,21 +541,26 @@ export default function StudentPage() {
               // Check if this is a new question that we haven't seen before
               const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
               
+              // Update the active question state immediately
+              setActiveQuestion(question);
+              setIsLoadingQuestion(false);
+              
               if (isNewQuestion) {
-                console.log("New active question detected!");
+                console.log("New active question detected - clearing previous answer state");
+                // Reset answer-related state for the new question
                 setAnswerText('');
                 setAnswerSubmitted(false);
                 setStudentAnswer(null);
                 previousAnswerRef.current = null;
+                setEditingAnswerId(null);
+                setDeleteAnswerId(null);
               }
+            } else {
+              // Only clear the question if we explicitly receive null (session ended)
+              setActiveQuestion(null);
+              setIsLoadingQuestion(false);
             }
             
-            // Mark as no longer first load after first update
-            isFirstLoad.current = false;
-            
-            // Update the state
-            setActiveQuestion(question);
-            setIsLoadingQuestion(false);
             lastQuestionCheckRef.current = Date.now();
           }, { 
             maxWaitTime: DEBOUNCE_DELAY,
