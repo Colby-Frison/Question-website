@@ -34,7 +34,8 @@ import {
   ACTIVE_QUESTION_COLLECTION,
   listenForAnswers,
   deleteAnswer,
-  updateAnswer
+  updateAnswer,
+  deleteQuestion
 } from '@/lib/questions';
 import { 
   joinClass, 
@@ -1020,8 +1021,20 @@ export default function StudentPage() {
   }, [activeQuestion, studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
-  const handleQuestionDelete = useCallback((questionId: string) => {
-    setQuestions(prev => prev.filter(q => q.id !== questionId));
+  const handleQuestionDelete = useCallback(async (questionId: string) => {
+    try {
+      const success = await deleteQuestion(questionId);
+      if (success) {
+        // Update both question lists
+        setQuestions(prev => prev.filter(q => q.id !== questionId));
+        setUserQuestions(prev => prev.filter(q => q.id !== questionId));
+      } else {
+        setError("Failed to delete question. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      setError("Failed to delete question. Please try again.");
+    }
   }, []);
   
   // Handle status updates for both lists
@@ -1346,24 +1359,61 @@ export default function StudentPage() {
             
             {studentAnswer ? (
               <div className="space-y-4">
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Your Answer:</p>
-                  <p className="text-gray-700 dark:text-gray-300">{studentAnswer.text}</p>
-                </div>
-                
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEditAnswer(studentAnswer)}
-                    className="flex-1 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
-                  >
-                    Edit Answer
-                  </button>
-                  <button
-                    onClick={handleDeleteAnswer}
-                    className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
-                  >
-                    Delete Answer
-                  </button>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/20 dark:border-green-800">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-grow">
+                      {editingAnswerId === studentAnswer.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editAnswerText}
+                            onChange={(e) => setEditAnswerText(e.target.value)}
+                            className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
+                            rows={3}
+                            placeholder="Edit your answer..."
+                          />
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingAnswerId(null);
+                                setEditAnswerText('');
+                              }}
+                              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSaveEditAnswer}
+                              className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-900 dark:text-gray-100">{studentAnswer.text}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                      <button
+                        onClick={() => handleEditAnswer(studentAnswer)}
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+                        title="Edit answer"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setDeleteAnswerId(studentAnswer.id)}
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+                        title="Delete answer"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1378,9 +1428,10 @@ export default function StudentPage() {
                 />
                 <button
                   type="submit"
-                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  disabled={isSubmittingAnswer}
+                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Submit Answer
+                  {isSubmittingAnswer ? 'Submitting...' : 'Submit Answer'}
                 </button>
               </form>
             )}
