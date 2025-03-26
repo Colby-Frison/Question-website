@@ -34,7 +34,8 @@ import {
   ACTIVE_QUESTION_COLLECTION,
   listenForAnswers,
   deleteAnswer,
-  updateAnswer
+  updateAnswer,
+  deleteQuestion
 } from '@/lib/questions';
 import { 
   joinClass, 
@@ -1020,8 +1021,20 @@ export default function StudentPage() {
   }, [activeQuestion, studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
-  const handleQuestionDelete = useCallback((questionId: string) => {
-    setQuestions(prev => prev.filter(q => q.id !== questionId));
+  const handleQuestionDelete = useCallback(async (questionId: string) => {
+    try {
+      const success = await deleteQuestion(questionId);
+      if (success) {
+        // Update both question lists
+        setQuestions(prev => prev.filter(q => q.id !== questionId));
+        setUserQuestions(prev => prev.filter(q => q.id !== questionId));
+      } else {
+        setError("Failed to delete question. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      setError("Failed to delete question. Please try again.");
+    }
   }, []);
   
   // Handle status updates for both lists
@@ -1349,12 +1362,41 @@ export default function StudentPage() {
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/20 dark:border-green-800">
                   <div className="flex justify-between items-start">
                     <div className="flex-grow">
-                      <p className="text-gray-900 dark:text-gray-100">{studentAnswer.text}</p>
+                      {editingAnswerId === studentAnswer.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editAnswerText}
+                            onChange={(e) => setEditAnswerText(e.target.value)}
+                            className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
+                            rows={3}
+                            placeholder="Edit your answer..."
+                          />
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingAnswerId(null);
+                                setEditAnswerText('');
+                              }}
+                              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSaveEditAnswer}
+                              className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-900 dark:text-gray-100">{studentAnswer.text}</p>
+                      )}
                     </div>
                     <div className="flex gap-2 ml-4">
                       <button
                         onClick={() => handleEditAnswer(studentAnswer)}
-                        className="p-2 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
                         title="Edit answer"
                       >
                         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1363,7 +1405,7 @@ export default function StudentPage() {
                       </button>
                       <button
                         onClick={() => setDeleteAnswerId(studentAnswer.id)}
-                        className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
                         title="Delete answer"
                       >
                         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
