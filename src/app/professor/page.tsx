@@ -46,7 +46,7 @@ import {
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import JoinClass from '@/components/JoinClass';
-import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Constants for Firebase collections
@@ -401,64 +401,87 @@ export default function ProfessorPage() {
         clearPointsCache();
       }
       
-      try {
-        // First try with the stored session ID
-        const success = await endClassSession(sessionId);
-        
-        if (success) {
-          console.log("Successfully ended session with stored ID");
-          setSessionActive(false);
-          setSessionId('');
-          setSessionCode('');
-          setQuestions([]);
-          setIsLoading(false);
-          return;
-        }
-      } catch (endError) {
-        // If the session doesn't exist with this ID, try to find it by session code
-        console.error("Error ending session with stored ID:", endError);
-        console.log("Trying alternative method to end session...");
+      // First try with the stored session ID
+      const success = await endClassSession(sessionId);
+      
+      if (success) {
+        console.log("Successfully ended session with stored ID");
+        setSessionActive(false);
+        setSessionId('');
+        setSessionCode('');
+        setQuestions([]);
+        setIsLoading(false);
+        return;
       }
       
-      // Try to find the session by session code as a fallback
+      // If the first attempt failed, try to find the session by session code
       if (sessionCode) {
-        try {
-          console.log(`Looking up session by code: ${sessionCode}`);
-          const q = query(
-            collection(db, 'classSessions'),
-            where('sessionCode', '==', sessionCode),
-            where('status', '==', 'active'),
-            limit(1)
-          );
+        console.log(`Looking up session by code: ${sessionCode}`);
+        const q = query(
+          collection(db, 'classSessions'),
+          where('sessionCode', '==', sessionCode),
+          where('status', '==', 'active'),
+          limit(1)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const actualSessionId = querySnapshot.docs[0].id;
+          console.log(`Found session with ID: ${actualSessionId}`);
           
-          const querySnapshot = await getDocs(q);
+          // Try to end with the correct session ID
+          const success = await endClassSession(actualSessionId);
           
-          if (!querySnapshot.empty) {
-            const actualSessionId = querySnapshot.docs[0].id;
-            console.log(`Found session with ID: ${actualSessionId}`);
-            
-            // Try to end with the correct session ID
-            const success = await endClassSession(actualSessionId);
-            
-            if (success) {
-              console.log("Successfully ended session with looked up ID");
-              setSessionActive(false);
-              setSessionId('');
-              setSessionCode('');
-              setQuestions([]);
-              setIsLoading(false);
-              return;
-            }
-          } else {
-            console.log("No active session found with this code");
+          if (success) {
+            console.log("Successfully ended session with looked up ID");
+            setSessionActive(false);
+            setSessionId('');
+            setSessionCode('');
+            setQuestions([]);
+            setIsLoading(false);
+            return;
           }
-        } catch (lookupError) {
-          console.error("Error looking up session by code:", lookupError);
+        } else {
+          console.log("No active session found with this code");
         }
       }
       
       // If we get here, we couldn't end the session through normal means
-      // Just reset the UI state anyway
+      // Try one last time with a direct status update
+      if (sessionCode) {
+        try {
+          const sessionQuery = query(
+            collection(db, 'classSessions'),
+            where('sessionCode', '==', sessionCode),
+            limit(1)
+          );
+          
+          const sessionSnapshot = await getDocs(sessionQuery);
+          
+          if (!sessionSnapshot.empty) {
+            const sessionDoc = sessionSnapshot.docs[0];
+            await updateDoc(sessionDoc.ref, {
+              status: 'closed',
+              closedAt: Date.now(),
+              lastActiveAt: Date.now(),
+              lastActive: Date.now()
+            });
+            
+            console.log("Successfully marked session as closed through direct update");
+            setSessionActive(false);
+            setSessionId('');
+            setSessionCode('');
+            setQuestions([]);
+            setIsLoading(false);
+            return;
+          }
+        } catch (updateError) {
+          console.error("Error in final attempt to close session:", updateError);
+        }
+      }
+      
+      // If we get here, we couldn't properly end the session
       console.log("Couldn't properly end session, but resetting UI state");
       setError("Warning: Session data may not have been properly cleaned up in the database.");
       setSessionActive(false);
@@ -617,12 +640,20 @@ export default function ProfessorPage() {
     }
     
     try {
+      // Set the active question text immediately for a smoother transition
+      const newQuestionText = questionText;
+      setActiveQuestionText(newQuestionText);
+      
       // Add active question and get its ID back
       const id = await addActiveQuestion(sessionCode, questionText);
       
       // Set as the active question and clear form
       setActiveQuestionId(id);
       setQuestionText('');
+      
+      // Clear previous answers when setting new question
+      setAnswers([]);
+      setPointsAwarded({});
       
       // Update session activity
       if (sessionId) {
@@ -1197,10 +1228,6 @@ export default function ProfessorPage() {
                       </div>
                       
                       <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <span>Active students:</span>
-                          <span className="font-medium">{studentCount}</span>
-                        </div>
                         <div className="flex items-center justify-between mb-1">
                           <span>Session duration:</span>
                           <span className="font-medium">{formatSessionDuration(sessionStartTime)}</span>

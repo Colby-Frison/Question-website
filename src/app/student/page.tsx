@@ -144,6 +144,11 @@ export default function StudentPage() {
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
   // Add this ref to track the previous answer
   const previousAnswerRef = useRef<Answer | null>(null);
+  // Add these near the top with other state declarations
+  const lastQuestionUpdateRef = useRef<number>(Date.now());
+  const lastAnswerUpdateRef = useRef<number>(Date.now());
+  const DEBOUNCE_DELAY = 10000; // Increase to 10 seconds
+  const CACHE_DURATION = 30000; // Increase to 30 seconds
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -513,13 +518,45 @@ export default function StudentPage() {
         console.log("Found joined class:", joinedClass);
         setJoinedClass(joinedClass);
         setJoined(true);
-          setClassName(joinedClass.className);
-          setSessionCode(joinedClass.sessionCode);
+        setClassName(joinedClass.className);
+        setSessionCode(joinedClass.sessionCode);
         
-        // Set up session status listener
+        // Set up session status listener with enhanced error handling
         const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
           if (!isComponentMounted) return;
           console.log("Session status update:", status);
+          
+          if (status === 'closed' || status === 'archived') {
+            console.log(`Session ${joinedClass.sessionCode} has been ${status}`);
+            // Clean up all listeners
+            unsubscribers.forEach(unsubscribe => {
+              try {
+                unsubscribe();
+              } catch (error) {
+                console.error("Error during cleanup:", error);
+              }
+            });
+            
+            // Reset all state
+            setJoined(false);
+            setClassName('');
+            setSessionCode('');
+            setQuestions([]);
+            setActiveQuestion(null);
+            setStudentCount(0);
+            setStudentAnswer(null);
+            setAnswerText('');
+            setAnswerSubmitted(false);
+            setEditingAnswerId(null);
+            setDeleteAnswerId(null);
+            setShowAnswerDeletedModal(false);
+            
+            // Show appropriate notification
+            if (status === 'closed') {
+              setShowInactivityNotification(true);
+            }
+          }
+          
           setSessionStatus(status || '');
         });
         unsubscribers.push(unsubscribeSession);
@@ -531,30 +568,35 @@ export default function StudentPage() {
             console.log("Active question update received:", question ? "yes" : "no");
             
             if (question) {
-              console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+              console.log(`Active question details - ID: ${question.id}`);
               
               // Check if this is a new question that we haven't seen before
               const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
               
+              // Update the active question state immediately
+              setActiveQuestion(question);
+              setIsLoadingQuestion(false);
+              
               if (isNewQuestion) {
-                console.log("New active question detected!");
-                
-                // Reset answer state for the new question
-              setAnswerText('');
-              setAnswerSubmitted(false);
-            }
+                console.log("New active question detected - clearing previous answer state");
+                // Reset answer-related state for the new question
+                setAnswerText('');
+                setAnswerSubmitted(false);
+                setStudentAnswer(null);
+                previousAnswerRef.current = null;
+                setEditingAnswerId(null);
+                setDeleteAnswerId(null);
+              }
+            } else {
+              // Only clear the question if we explicitly receive null (session ended)
+              setActiveQuestion(null);
+              setIsLoadingQuestion(false);
             }
             
-            // Mark as no longer first load after first update
-            isFirstLoad.current = false;
-            
-            // Update the state
-            setActiveQuestion(question);
-            setIsLoadingQuestion(false);
             lastQuestionCheckRef.current = Date.now();
           }, { 
-            maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
-            useCache: true // Enable caching to reduce server calls
+            maxWaitTime: DEBOUNCE_DELAY,
+            useCache: true
           });
         unsubscribers.push(unsubscribeActiveQuestion);
 
@@ -572,7 +614,7 @@ export default function StudentPage() {
           console.log("Questions update received:", questions.length);
           setQuestions(questions);
         }, {
-          maxWaitTime: 5000, // 5 second debounce for questions
+          maxWaitTime: DEBOUNCE_DELAY,
           useCache: true
         });
         unsubscribers.push(unsubscribeQuestions);
@@ -583,7 +625,7 @@ export default function StudentPage() {
           console.log("User questions update received:", userQuestions.length);
           setUserQuestions(userQuestions);
         }, {
-          maxWaitTime: 5000, // 5 second debounce for user questions
+          maxWaitTime: DEBOUNCE_DELAY,
           useCache: true
         });
         unsubscribers.push(unsubscribeUserQuestions);
@@ -750,7 +792,7 @@ export default function StudentPage() {
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         setUserQuestions(questions);
       }, {
-        maxWaitTime: 5000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribePersonal);
@@ -759,7 +801,7 @@ export default function StudentPage() {
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         setQuestions(questions);
       }, {
-        maxWaitTime: 5000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribeClass);
@@ -771,7 +813,7 @@ export default function StudentPage() {
           setIsLoadingQuestion(false);
         }
       }, {
-        maxWaitTime: 10000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribeActiveQuestion);
@@ -851,8 +893,16 @@ export default function StudentPage() {
     if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
 
     try {
-      const success = await updateAnswer(editingAnswerId, editAnswerText, studentId);
+      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), studentId);
       if (success) {
+        // Update local state immediately
+        const updatedAnswer = {
+          ...studentAnswer!,
+          text: editAnswerText.trim(),
+          timestamp: Date.now()
+        };
+        setStudentAnswer(updatedAnswer);
+        previousAnswerRef.current = updatedAnswer;
         setEditingAnswerId(null);
         setEditAnswerText('');
       } else {
@@ -873,10 +923,12 @@ export default function StudentPage() {
     try {
       const success = await deleteAnswer(deleteAnswerId, studentId);
       if (success) {
+        // Reset all answer-related state
         setStudentAnswer(null);
         setAnswerText('');
         setAnswerSubmitted(false);
-        setDeleteAnswerId(null);
+        previousAnswerRef.current = null;
+        setDeleteAnswerId(null); // Clear the deleteAnswerId immediately
       } else {
         setError("Failed to delete answer. Please try again.");
       }
@@ -898,7 +950,7 @@ export default function StudentPage() {
     
     try {
       const result = await addAnswer({
-        text: answerText,
+        text: answerText.trim(),
         activeQuestionId: activeQuestion.id,
         studentId,
         sessionCode,
@@ -906,97 +958,66 @@ export default function StudentPage() {
       });
       
       if (result) {
+        // Create a new answer object to update the state immediately
+        const newAnswer = {
+          id: result,
+          text: answerText.trim(),
+          timestamp: Date.now(),
+          studentId,
+          questionText: activeQuestion.text,
+          activeQuestionId: activeQuestion.id
+        };
+        
+        // Update all relevant state immediately
+        setStudentAnswer(newAnswer);
+        previousAnswerRef.current = newAnswer;
         setAnswerSubmitted(true);
         setAnswerText('');
-        
-        // Start cooldown timer
-        setCooldownActive(true);
-        setCooldownTime(10);
-        
-        const timer = setInterval(() => {
-          setCooldownTime(prev => {
-            if (prev <= 1) {
-              clearInterval(timer);
-              setCooldownActive(false);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
+      setError("Failed to submit answer. Please try again.");
     } finally {
       setIsSubmittingAnswer(false);
     }
   };
 
-  // Update the active question listener to track the student's answer
+  // Update the active question listener to track the student's answer with debouncing
   useEffect(() => {
     let unsubscribeAnswers: (() => void) | undefined;
 
     if (activeQuestion && studentId) {
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
         const studentAnswer = answers.find(a => a.studentId === studentId);
+        const hadPreviousAnswer = previousAnswerRef.current !== null;
         
-        // If we previously had an answer but now it's gone, it was deleted
-        if (!studentAnswer && previousAnswerRef.current) {
+        if (!studentAnswer && hadPreviousAnswer) {
+          console.log("Answer was deleted, resetting state");
           setShowAnswerDeletedModal(true);
-          setAnswerText('');
-          setAnswerSubmitted(false);
-        }
-        
-        // Update the previous answer ref
-        previousAnswerRef.current = studentAnswer || null;
-        
-        // Update the state
-        setStudentAnswer(studentAnswer || null);
-      });
-    }
-
-    // Clean up the listener when the component unmounts or when activeQuestion changes
-    return () => {
-      if (unsubscribeAnswers) {
-        unsubscribeAnswers();
-      }
-      // Reset answer state when question changes
-      setAnswerText('');
-      setAnswerSubmitted(false);
-      setStudentAnswer(null);
-      previousAnswerRef.current = null;
-    };
-  }, [activeQuestion, studentId]);
-
-  // Add a separate effect to handle active question updates
-  useEffect(() => {
-    if (!sessionCode) return;
-
-    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
-      console.log("Active question update received:", question);
-      
-      if (question) {
-        // If this is a new question (different from current one)
-        if (!activeQuestion || activeQuestion.id !== question.id) {
-          console.log("New question detected, resetting answer state");
           setAnswerText('');
           setAnswerSubmitted(false);
           setStudentAnswer(null);
           previousAnswerRef.current = null;
+          setEditingAnswerId(null);
+          setDeleteAnswerId(null);
+        } else if (studentAnswer) {
+          setStudentAnswer(studentAnswer);
+          previousAnswerRef.current = studentAnswer;
+          setAnswerSubmitted(true);
+          
+          if (editingAnswerId === studentAnswer.id && studentAnswer.text !== editAnswerText) {
+            setEditAnswerText(studentAnswer.text);
+          }
         }
-      } else {
-        // No active question
-        setAnswerText('');
-        setAnswerSubmitted(false);
-        setStudentAnswer(null);
-        previousAnswerRef.current = null;
-      }
-      
-      setActiveQuestion(question);
-      setIsLoadingQuestion(false);
-    });
+      });
+    }
 
-    return () => unsubscribeActiveQuestion();
-  }, [sessionCode, activeQuestion]);
+    return () => {
+      if (unsubscribeAnswers) {
+        unsubscribeAnswers();
+      }
+    };
+  }, [activeQuestion, studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
@@ -1179,248 +1200,203 @@ export default function StudentPage() {
   /**
    * Render the points tab content
    */
-  const renderPointsTab = () => {
-    return (
-      <div className="grid grid-cols-1 gap-6">
-        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Your Points
-          </h3>
-          
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-            <p className="text-sm text-blue-800 dark:text-white">
-              Points are awarded by your professor for participation and correct answers.
-            </p>
-              </div>
-          
-          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6 relative">
-            {isSavingPoints && (
-              <div className="absolute top-2 right-2 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
-                <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Saving...
-            </div>
-            )}
-            
-            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
-            <div className="flex justify-center items-center mb-4">
-              <button
-                onClick={handleSubtractPoint}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-dark-red-400 transition-colors mr-4"
-                title="Subtract 1 point"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              
-              <div 
-                id="points-display" 
-                className="text-5xl font-bold text-blue-600 dark:text-dark-primary transition-all transform cursor-pointer"
-                onClick={handleOpenPointsModal}
-                title="Click to edit points"
-              >
-                {points}
+  const renderPointsTab = () => (
+    <div>
+      {/* Points Counter Card */}
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">
+          Your Points
+        </h2>
+
+        <div className="bg-blue-50/50 rounded-lg p-4 dark:bg-blue-900/10">
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            Points are awarded by your professor for participation and correct answers.
+          </p>
         </div>
-              
-              <button
-                onClick={handleAddPoint}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors ml-4"
-                title="Add 1 point"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
-                </svg>
-              </button>
-      </div>
-            
-            <div className="text-sm text-blue-800 dark:text-white text-center mb-2">
-              Total points earned in this class
-    </div>
-            
+
+        <div className="mt-8 mb-8 relative">
+          {/* Loading indicator */}
+          {isSavingPoints && (
+            <div className="absolute top-0 right-0 text-sm text-gray-500 dark:text-gray-400">
+              Saving...
+            </div>
+          )}
+
+          <div className="flex items-center justify-center space-x-6">
+            {/* Minus button */}
+            <button
+              onClick={handleSubtractPoint}
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-red-100 hover:border-red-200 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:border-red-800 dark:hover:text-red-400"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+
+            {/* Current Points */}
             <button
               onClick={handleOpenPointsModal}
-              className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-dark-primary transition-colors"
+              className="text-5xl font-bold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity cursor-pointer"
             >
-              Edit Points
+              {points}
+            </button>
+
+            {/* Plus button */}
+            <button
+              onClick={handleAddPoint}
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-green-100 hover:border-green-200 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:border-green-800 dark:hover:text-green-400"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </button>
           </div>
-            </div>
-        
-        {/* Points Modal */}
-        {showPointsModal && (
-          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
-              <div className="p-5">
-                <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Edit Points</h3>
-                
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    value={pointsInput}
-                    onChange={handlePointsInputChange}
-                    className="w-full text-center p-3 text-2xl font-bold border rounded-md dark:bg-dark-background-tertiary dark:border-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary"
-                    aria-label="Set points value"
-                    autoFocus
-                  />
-          </div>
-                
-                {/* Numpad */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((num) => (
-                    <button
-                      key={num}
-                      onClick={() => setPointsInput(prev => num === 0 && prev === '0' ? '0' : prev === '0' ? num.toString() : prev + num.toString())}
-                      className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
-                    >
-                      {num}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPointsInput('0')}
-                    className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
-                  >
-                    Clear
-                  </button>
-                </div>
-                
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleClosePointsModal}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-dark-background-tertiary dark:text-white dark:hover:bg-dark-background-quaternary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleManualPointsEntry}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Answer Professor's Question
-          </h3>
-          
-          {activeQuestion ? (
-            <div>
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                <div>
-                  <h3 className="font-semibold mb-2">Current Question:</h3>
-                  <p className="font-medium">{activeQuestion.text}</p>
-                </div>
-              </div>
 
-              {studentAnswer ? (
-                <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/10 dark:border-green-800 dark:text-white">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-grow">
-                      <h3 className="font-semibold mb-2">Your Answer:</h3>
-                      {editingAnswerId === studentAnswer.id ? (
-                        <div>
-                          <textarea
-                            value={editAnswerText}
-                            onChange={(e) => setEditAnswerText(e.target.value)}
-                            className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
-                            rows={3}
-                          />
-                          <div className="mt-2 flex space-x-2">
-                            <button
-                              onClick={handleSaveEditAnswer}
-                              className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingAnswerId(null);
-                                setEditAnswerText('');
-                              }}
-                              className="px-3 py-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-start">
-                          <p className="font-medium">{studentAnswer.text}</p>
-                          <div className="flex space-x-2 ml-4">
-                            <button
-                              onClick={() => handleEditAnswer(studentAnswer)}
-                              className="p-1 text-gray-500 hover:text-blue-500 transition-colors"
-                              title="Edit answer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => setDeleteAnswerId(studentAnswer.id)}
-                              className="p-1 text-gray-500 hover:text-red-500 transition-colors"
-                              title="Delete answer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleAnswerSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Your Answer
-                    </label>
-                    <textarea
-                      id="answer"
-                      value={answerText}
-                      onChange={(e) => setAnswerText(e.target.value)}
-                      className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
-                      rows={3}
-                      placeholder="Type your answer here..."
-                      disabled={cooldownActive}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!answerText.trim() || isSubmittingAnswer || cooldownActive}
-                    className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
-                      !answerText.trim() || isSubmittingAnswer || cooldownActive
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-500 hover:bg-blue-600'
-                    }`}
-                  >
-                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s...` : 'Submit Answer'}
-                  </button>
-                </form>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400">No active question at the moment.</p>
-          )}
+          <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
+            Total points earned in this class
+          </p>
+
+          <button
+            onClick={handleOpenPointsModal}
+            className="text-center w-full mt-2 text-blue-600 dark:text-blue-400"
+          >
+            Edit Points
+          </button>
         </div>
       </div>
-    );
-  };
+
+      {/* Points Modal with Keypad */}
+      {showPointsModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
+              Edit Points
+            </h3>
+
+            {/* Points Display and Manual Input */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={pointsInput}
+                onChange={handlePointsInputChange}
+                className="w-full p-3 text-right text-2xl font-bold bg-gray-50 border rounded-lg dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0"
+                readOnly
+              />
+            </div>
+
+            {/* Number Keypad */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map((key) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (key === 'C') {
+                      setPointsInput('0');
+                    } else if (key === '⌫') {
+                      setPointsInput(prev => prev.slice(0, -1) || '0');
+                    } else {
+                      setPointsInput(prev => (prev === '0' ? key.toString() : prev + key));
+                    }
+                  }}
+                  className="p-4 text-xl font-semibold rounded-lg transition-colors
+                    ${typeof key === 'number' 
+                      ? 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600' 
+                      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500'}
+                    text-gray-800 dark:text-gray-100"
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleClosePointsModal}
+                className="px-4 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleManualPointsEntry}
+                className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+              >
+                Set Points
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Question Card */}
+      <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Current Question
+        </h2>
+        
+        {activeQuestion ? (
+          <div>
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+              <p className="font-medium text-blue-900 dark:text-blue-100">{activeQuestion.text}</p>
+            </div>
+            
+            {studentAnswer ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Your Answer:</p>
+                  <p className="text-gray-700 dark:text-gray-300">{studentAnswer.text}</p>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEditAnswer(studentAnswer)}
+                    className="flex-1 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  >
+                    Edit Answer
+                  </button>
+                  <button
+                    onClick={handleDeleteAnswer}
+                    className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
+                  >
+                    Delete Answer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleAnswerSubmit} className="space-y-4">
+                <textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  placeholder="Type your answer here..."
+                  className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={4}
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                >
+                  Submit Answer
+                </button>
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-300 mb-1">No active question</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Wait for your professor to ask a question.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   /**
    * Function to manually refresh student points from the database
@@ -1630,21 +1606,30 @@ export default function StudentPage() {
                     </div>
                   </div>
                   
-                  {/* Add student count display */}
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
-                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
-                      <svg className="mr-2 h-4 w-4 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      Class Statistics
-                    </h3>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600 dark:text-dark-text-secondary">Active Students:</span>
-                        <span className="font-medium text-blue-600 dark:text-dark-primary">{studentCount}</span>
-                      </div>
-                    </div>
+                  {/* Leave Class Button */}
+                  <div className="mt-4">
+                    <button
+                      onClick={handleLeaveClass}
+                      disabled={isLeavingClass}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLeavingClass ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Leaving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span>Leave Class</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                   
                   {/* Tab Navigation */}
@@ -1657,48 +1642,37 @@ export default function StudentPage() {
                     </h3>
                     
                     <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
-              <button
-                onClick={() => handleTabChange('questions')}
-                className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
-                  activeTab === 'questions'
+                      <button
+                        onClick={() => handleTabChange('questions')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
+                          activeTab === 'questions'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                }`}
-              >
-                Questions
-                {newQuestionsCount > 0 && activeTab !== 'questions' && (
-                  <>
-                    <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                      {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
-                    </div>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => handleTabChange('points')}
+                        }`}
+                      >
+                        Questions
+                        {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                          <>
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                            </div>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleTabChange('points')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                  activeTab === 'points'
+                          activeTab === 'points'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                }`}
-              >
+                        }`}
+                      >
                         My Points
-              </button>
-            </div>
-          </div>
-          
-          {/* Leave Class Button */}
-          <button
-            onClick={handleLeaveClass}
-            className="w-full px-4 py-2 mt-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center"
-          >
-            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Leave Class
-          </button>
-            </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -1725,13 +1699,13 @@ export default function StudentPage() {
                   <p className="text-gray-600 dark:text-dark-text-secondary">
                     You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
                   </p>
-            </div>
-          )}
-          
+                </div>
+              )}
+              
               {/* Tabs Content */}
               <div className="mb-6">
-          {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-        </div>
+                {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+              </div>
             </div>
           </div>
         )}
