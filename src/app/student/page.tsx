@@ -147,8 +147,8 @@ export default function StudentPage() {
   // Add these near the top with other state declarations
   const lastQuestionUpdateRef = useRef<number>(Date.now());
   const lastAnswerUpdateRef = useRef<number>(Date.now());
-  const DEBOUNCE_DELAY = 5000; // 5 seconds between updates
-  const CACHE_DURATION = 10000; // 10 seconds cache duration
+  const DEBOUNCE_DELAY = 10000; // Increase to 10 seconds
+  const CACHE_DURATION = 30000; // Increase to 30 seconds
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -536,18 +536,18 @@ export default function StudentPage() {
             console.log("Active question update received:", question ? "yes" : "no");
             
             if (question) {
-              console.log(`Active question details - ID: ${question.id}, Text: ${question.text.substring(0, 30)}...`);
+              console.log(`Active question details - ID: ${question.id}`);
               
               // Check if this is a new question that we haven't seen before
               const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
               
               if (isNewQuestion) {
                 console.log("New active question detected!");
-                
-                // Reset answer state for the new question
-              setAnswerText('');
-              setAnswerSubmitted(false);
-            }
+                setAnswerText('');
+                setAnswerSubmitted(false);
+                setStudentAnswer(null);
+                previousAnswerRef.current = null;
+              }
             }
             
             // Mark as no longer first load after first update
@@ -558,8 +558,8 @@ export default function StudentPage() {
             setIsLoadingQuestion(false);
             lastQuestionCheckRef.current = Date.now();
           }, { 
-            maxWaitTime: 10000, // Set higher debounce time (10 seconds) to reduce server calls
-            useCache: true // Enable caching to reduce server calls
+            maxWaitTime: DEBOUNCE_DELAY,
+            useCache: true
           });
         unsubscribers.push(unsubscribeActiveQuestion);
 
@@ -577,7 +577,7 @@ export default function StudentPage() {
           console.log("Questions update received:", questions.length);
           setQuestions(questions);
         }, {
-          maxWaitTime: 5000, // 5 second debounce for questions
+          maxWaitTime: DEBOUNCE_DELAY,
           useCache: true
         });
         unsubscribers.push(unsubscribeQuestions);
@@ -588,7 +588,7 @@ export default function StudentPage() {
           console.log("User questions update received:", userQuestions.length);
           setUserQuestions(userQuestions);
         }, {
-          maxWaitTime: 5000, // 5 second debounce for user questions
+          maxWaitTime: DEBOUNCE_DELAY,
           useCache: true
         });
         unsubscribers.push(unsubscribeUserQuestions);
@@ -755,7 +755,7 @@ export default function StudentPage() {
       const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         setUserQuestions(questions);
       }, {
-        maxWaitTime: 5000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribePersonal);
@@ -764,7 +764,7 @@ export default function StudentPage() {
       const unsubscribeClass = listenForQuestions(code, (questions) => {
         setQuestions(questions);
       }, {
-        maxWaitTime: 5000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribeClass);
@@ -776,7 +776,7 @@ export default function StudentPage() {
           setIsLoadingQuestion(false);
         }
       }, {
-        maxWaitTime: 10000,
+        maxWaitTime: DEBOUNCE_DELAY,
         useCache: true
       });
       unsubscribers.push(unsubscribeActiveQuestion);
@@ -950,12 +950,10 @@ export default function StudentPage() {
     let unsubscribeAnswers: (() => void) | undefined;
 
     if (activeQuestion && studentId) {
-      // Set up the listener with debouncing and caching
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
         const studentAnswer = answers.find(a => a.studentId === studentId);
         const hadPreviousAnswer = previousAnswerRef.current !== null;
         
-        // If we previously had an answer but now it's gone, it was deleted
         if (!studentAnswer && hadPreviousAnswer) {
           console.log("Answer was deleted, resetting state");
           setShowAnswerDeletedModal(true);
@@ -964,14 +962,12 @@ export default function StudentPage() {
           setStudentAnswer(null);
           previousAnswerRef.current = null;
           setEditingAnswerId(null);
-          setDeleteAnswerId(null); // Also clear deleteAnswerId here
+          setDeleteAnswerId(null);
         } else if (studentAnswer) {
-          // Always update the state with the latest answer from the database
           setStudentAnswer(studentAnswer);
           previousAnswerRef.current = studentAnswer;
           setAnswerSubmitted(true);
           
-          // If we're editing and the answer was updated by someone else, update the edit text
           if (editingAnswerId === studentAnswer.id && studentAnswer.text !== editAnswerText) {
             setEditAnswerText(studentAnswer.text);
           }
@@ -1492,23 +1488,6 @@ export default function StudentPage() {
                     </div>
                   </div>
                   
-                  {/* Add student count display */}
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
-                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
-                      <svg className="mr-2 h-4 w-4 text-green-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      Class Statistics
-                    </h3>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600 dark:text-dark-text-secondary">Active Students:</span>
-                        <span className="font-medium text-blue-600 dark:text-dark-primary">{studentCount}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
                   {/* Tab Navigation */}
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
                     <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
@@ -1519,48 +1498,37 @@ export default function StudentPage() {
                     </h3>
                     
                     <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
-              <button
-                onClick={() => handleTabChange('questions')}
-                className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
-                  activeTab === 'questions'
+                      <button
+                        onClick={() => handleTabChange('questions')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
+                          activeTab === 'questions'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                }`}
-              >
-                Questions
-                {newQuestionsCount > 0 && activeTab !== 'questions' && (
-                  <>
-                    <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                      {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
-                    </div>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => handleTabChange('points')}
+                        }`}
+                      >
+                        Questions
+                        {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                          <>
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                            </div>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleTabChange('points')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                  activeTab === 'points'
+                          activeTab === 'points'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                }`}
-              >
+                        }`}
+                      >
                         My Points
-              </button>
-            </div>
-          </div>
-          
-          {/* Leave Class Button */}
-          <button
-            onClick={handleLeaveClass}
-            className="w-full px-4 py-2 mt-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center"
-          >
-            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Leave Class
-          </button>
-            </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -1587,13 +1555,13 @@ export default function StudentPage() {
                   <p className="text-gray-600 dark:text-dark-text-secondary">
                     You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
                   </p>
-            </div>
-          )}
-          
+                </div>
+              )}
+              
               {/* Tabs Content */}
               <div className="mb-6">
-          {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
-        </div>
+                {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+              </div>
             </div>
           </div>
         )}

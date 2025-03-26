@@ -1198,10 +1198,6 @@ export default function ProfessorPage() {
                       
                       <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
                         <div className="flex items-center justify-between mb-1">
-                          <span>Active students:</span>
-                          <span className="font-medium">{studentCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between mb-1">
                           <span>Session duration:</span>
                           <span className="font-medium">{formatSessionDuration(sessionStartTime)}</span>
                         </div>
