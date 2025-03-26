@@ -891,6 +891,7 @@ export default function StudentPage() {
         setAnswerText('');
         setAnswerSubmitted(false);
         previousAnswerRef.current = null;
+        setDeleteAnswerId(null); // Clear the deleteAnswerId immediately
       } else {
         setError("Failed to delete answer. Please try again.");
       }
@@ -963,7 +964,7 @@ export default function StudentPage() {
           setStudentAnswer(null);
           previousAnswerRef.current = null;
           setEditingAnswerId(null);
-          setEditAnswerText('');
+          setDeleteAnswerId(null); // Also clear deleteAnswerId here
         } else if (studentAnswer) {
           // Always update the state with the latest answer from the database
           setStudentAnswer(studentAnswer);
@@ -983,7 +984,7 @@ export default function StudentPage() {
         unsubscribeAnswers();
       }
     };
-  }, [activeQuestion, studentId, editingAnswerId, editAnswerText]);
+  }, [activeQuestion, studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
@@ -1198,6 +1199,7 @@ export default function StudentPage() {
                             onChange={(e) => setEditAnswerText(e.target.value)}
                             className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
                             rows={3}
+                            placeholder="Edit your answer..."
                           />
                           <div className="mt-2 flex space-x-2">
                             <button
