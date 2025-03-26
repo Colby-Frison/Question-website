@@ -664,6 +664,7 @@ export const listenForActiveQuestion = (
     let pendingData: {id: string, text: string, timestamp: number} | null = null;
     let debounceTimer: NodeJS.Timeout | null = null;
     let lastUpdate = 0;
+    let lastQuestionId: string | null = null;
     
     // Function to send updates to the callback
     const sendUpdate = (data: {id: string, text: string, timestamp: number} | null) => {
@@ -719,8 +720,10 @@ export const listenForActiveQuestion = (
         const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdate;
         
-        // If we've waited long enough, send the update immediately
-        if (timeSinceLastUpdate >= maxWaitTime) {
+        // If this is a new question (different ID) or we've waited long enough, send the update immediately
+        if (pendingData.id !== lastQuestionId || timeSinceLastUpdate >= maxWaitTime) {
+          console.log(`[listenForActiveQuestion] Sending immediate update for new question: ${pendingData.id}`);
+          lastQuestionId = pendingData.id;
           sendUpdate(pendingData);
         } else {
           // Otherwise, set a timer to send the update after the remaining wait time
