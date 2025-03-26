@@ -144,6 +144,11 @@ export default function StudentPage() {
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
   // Add this ref to track the previous answer
   const previousAnswerRef = useRef<Answer | null>(null);
+  // Add these near the top with other state declarations
+  const lastQuestionUpdateRef = useRef<number>(Date.now());
+  const lastAnswerUpdateRef = useRef<number>(Date.now());
+  const DEBOUNCE_DELAY = 5000; // 5 seconds between updates
+  const CACHE_DURATION = 10000; // 10 seconds cache duration
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -873,9 +878,11 @@ export default function StudentPage() {
     try {
       const success = await deleteAnswer(deleteAnswerId, studentId);
       if (success) {
+        // Reset all answer-related state
         setStudentAnswer(null);
         setAnswerText('');
         setAnswerSubmitted(false);
+        previousAnswerRef.current = null;
         setDeleteAnswerId(null);
       } else {
         setError("Failed to delete answer. Please try again.");
@@ -931,72 +938,72 @@ export default function StudentPage() {
     }
   };
 
-  // Update the active question listener to track the student's answer
+  // Update the active question listener to track the student's answer with debouncing
   useEffect(() => {
     let unsubscribeAnswers: (() => void) | undefined;
 
     if (activeQuestion && studentId) {
+      // Set up the listener with debouncing and caching
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
-        const studentAnswer = answers.find(a => a.studentId === studentId);
-        
-        // If we previously had an answer but now it's gone, it was deleted
-        if (!studentAnswer && previousAnswerRef.current) {
-          setShowAnswerDeletedModal(true);
-          setAnswerText('');
-          setAnswerSubmitted(false);
+        const currentTime = Date.now();
+        // Only process updates if enough time has passed since the last update
+        if (currentTime - lastAnswerUpdateRef.current >= DEBOUNCE_DELAY) {
+          const studentAnswer = answers.find(a => a.studentId === studentId);
+          const hadPreviousAnswer = previousAnswerRef.current !== null;
+          
+          // If we previously had an answer but now it's gone, it was deleted
+          if (!studentAnswer && hadPreviousAnswer) {
+            console.log("Answer was deleted, resetting state");
+            setShowAnswerDeletedModal(true);
+            setAnswerText('');
+            setAnswerSubmitted(false);
+            setStudentAnswer(null);
+            previousAnswerRef.current = null;
+          } else if (studentAnswer?.id !== previousAnswerRef.current?.id) {
+            // Only update if the answer has actually changed
+            setStudentAnswer(studentAnswer || null);
+            previousAnswerRef.current = studentAnswer || null;
+          }
+          lastAnswerUpdateRef.current = currentTime;
         }
-        
-        // Update the previous answer ref
-        previousAnswerRef.current = studentAnswer || null;
-        
-        // Update the state
-        setStudentAnswer(studentAnswer || null);
       });
     }
 
-    // Clean up the listener when the component unmounts or when activeQuestion changes
     return () => {
       if (unsubscribeAnswers) {
         unsubscribeAnswers();
       }
-      // Reset answer state when question changes
-      setAnswerText('');
-      setAnswerSubmitted(false);
-      setStudentAnswer(null);
-      previousAnswerRef.current = null;
     };
   }, [activeQuestion, studentId]);
 
-  // Add a separate effect to handle active question updates
+  // Add a separate effect to handle active question updates with debouncing
   useEffect(() => {
     if (!sessionCode) return;
 
+    // Set up the listener with debouncing and caching
     const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
-      console.log("Active question update received:", question);
-      
-      if (question) {
-        // If this is a new question (different from current one)
-        if (!activeQuestion || activeQuestion.id !== question.id) {
-          console.log("New question detected, resetting answer state");
+      const currentTime = Date.now();
+      // Only process updates if enough time has passed since the last update
+      if (currentTime - lastQuestionUpdateRef.current >= DEBOUNCE_DELAY) {
+        console.log("Active question update received:", question);
+        
+        // Only update if the question has actually changed
+        if (!question || (activeQuestion && question.id !== activeQuestion.id)) {
+          console.log("Resetting answer state due to new/removed question");
           setAnswerText('');
           setAnswerSubmitted(false);
           setStudentAnswer(null);
           previousAnswerRef.current = null;
+          setActiveQuestion(question);
         }
-      } else {
-        // No active question
-        setAnswerText('');
-        setAnswerSubmitted(false);
-        setStudentAnswer(null);
-        previousAnswerRef.current = null;
+        
+        lastQuestionUpdateRef.current = currentTime;
       }
-      
-      setActiveQuestion(question);
       setIsLoadingQuestion(false);
     });
 
     return () => unsubscribeActiveQuestion();
-  }, [sessionCode, activeQuestion]);
+  }, [sessionCode]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
