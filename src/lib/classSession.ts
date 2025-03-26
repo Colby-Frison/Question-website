@@ -365,8 +365,6 @@ export const cleanupSessionData = async (sessionCode: string): Promise<{
   
   try {
     // Get documents for each collection that needs cleanup
-    
-    // Step 1: Fetch all documents that need to be deleted
     console.log(`Fetching documents for session: ${sessionCode}`);
     
     // Get questions
@@ -401,83 +399,69 @@ export const cleanupSessionData = async (sessionCode: string): Promise<{
     const answersSnapshot = await getDocs(answersQuery);
     console.log(`Found ${answersSnapshot.docs.length} answers to delete for session ${sessionCode}`);
     
-    // Step 2: Delete documents in batches
+    // Delete documents in batches
     const BATCH_SIZE = 400; // Firestore limit is 500 operations per batch
-    let batchFailed = false;
     
-    // Process each collection in turn
-    const collections = [
-      { name: 'questions', docs: questionsSnapshot.docs, statKey: 'questionsDeleted' as keyof typeof stats },
-      { name: 'userQuestions', docs: userQuestionsSnapshot.docs, statKey: 'userQuestionsDeleted' as keyof typeof stats },
-      { name: 'activeQuestions', docs: activeQuestionsSnapshot.docs, statKey: 'activeQuestionsDeleted' as keyof typeof stats },
-      { name: 'answers', docs: answersSnapshot.docs, statKey: 'answersDeleted' as keyof typeof stats }
-    ];
-    
-    for (const collection of collections) {
-      const { name, docs, statKey } = collection;
-      
-      if (docs.length === 0) {
-        console.log(`No ${name} to delete for session ${sessionCode}`);
-        continue;
-      }
-      
-      console.log(`Starting deletion of ${docs.length} ${name} for session ${sessionCode}`);
-      
-      // Process in batches
+    // Function to delete documents in batches
+    const deleteInBatches = async (docs: any[], collectionName: string) => {
       for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-        if (batchFailed) {
-          console.log(`Switching to individual deletions for remaining ${name}`);
-          break;
-        }
-        
+        const batch = writeBatch(db);
         const batchDocs = docs.slice(i, i + BATCH_SIZE);
         
+        batchDocs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        
         try {
-          // Create a new batch
-          const batch = writeBatch(db);
-          
-          // Add delete operations to batch
-          batchDocs.forEach(doc => batch.delete(doc.ref));
-          
-          // Commit the batch
           await batch.commit();
-          
-          // Update stats
-          stats[statKey] += batchDocs.length;
-          console.log(`Deleted batch of ${batchDocs.length} ${name} (${i + batchDocs.length}/${docs.length})`);
+          console.log(`Deleted batch of ${batchDocs.length} ${collectionName} (${i + batchDocs.length}/${docs.length})`);
         } catch (error) {
-          console.error(`Error deleting batch of ${name}:`, error);
-          batchFailed = true;
-          
-          // Switch to individual deletes
-          console.log(`Batch delete failed for ${name}, switching to individual deletes`);
-        }
-      }
-      
-      // If batch operations failed, fall back to individual deletes for remaining items
-      if (batchFailed) {
-        const remainingDocs = docs.slice(stats[statKey]);
-        
-        console.log(`Deleting ${remainingDocs.length} remaining ${name} one by one`);
-        
-        for (const doc of remainingDocs) {
-          try {
-            await deleteDoc(doc.ref);
-            stats[statKey]++;
-            
-            // Log progress in chunks
-            if (stats[statKey] % 10 === 0) {
-              console.log(`Deleted ${stats[statKey]}/${docs.length} ${name}`);
+          console.error(`Error deleting batch of ${collectionName}:`, error);
+          // If batch delete fails, try individual deletes
+          for (const doc of batchDocs) {
+            try {
+              await deleteDoc(doc.ref);
+              console.log(`Deleted individual ${collectionName} document ${doc.id}`);
+            } catch (deleteError) {
+              console.error(`Error deleting individual ${collectionName} document ${doc.id}:`, deleteError);
             }
-          } catch (error) {
-            console.error(`Error deleting individual ${name} document ${doc.id}:`, error);
-            // Continue despite errors
           }
         }
       }
-      
-      console.log(`Completed deletion of ${stats[statKey]}/${docs.length} ${name} for session ${sessionCode}`);
-    }
+    };
+    
+    // Delete all documents in parallel for better performance
+    await Promise.all([
+      deleteInBatches(questionsSnapshot.docs, 'questions').then(() => {
+        stats.questionsDeleted = questionsSnapshot.docs.length;
+      }),
+      deleteInBatches(userQuestionsSnapshot.docs, 'userQuestions').then(() => {
+        stats.userQuestionsDeleted = userQuestionsSnapshot.docs.length;
+      }),
+      deleteInBatches(activeQuestionsSnapshot.docs, 'activeQuestions').then(() => {
+        stats.activeQuestionsDeleted = activeQuestionsSnapshot.docs.length;
+      }),
+      deleteInBatches(answersSnapshot.docs, 'answers').then(() => {
+        stats.answersDeleted = answersSnapshot.docs.length;
+      })
+    ]);
+    
+    // Clean up additional collections
+    // Clean up student points for this session
+    const studentPointsQuery = query(
+      collection(db, 'studentPoints'),
+      where('sessionCode', '==', sessionCode)
+    );
+    const studentPointsSnapshot = await getDocs(studentPointsQuery);
+    await deleteInBatches(studentPointsSnapshot.docs, 'studentPoints');
+    
+    // Clean up any other session-related data
+    const sessionDataQuery = query(
+      collection(db, 'sessionData'),
+      where('sessionCode', '==', sessionCode)
+    );
+    const sessionDataSnapshot = await getDocs(sessionDataQuery);
+    await deleteInBatches(sessionDataSnapshot.docs, 'sessionData');
     
     console.log(`Successfully cleaned up all data for session ${sessionCode}:`, stats);
     return stats;
@@ -517,24 +501,40 @@ export const endClassSession = async (sessionId: string): Promise<boolean> => {
     const sessionData = sessionSnap.data();
     const sessionCode = sessionData.sessionCode;
     
-    // Instead of deleting, mark as closed
-    await updateDoc(sessionRef, {
-      status: 'closed',
-      closedAt: Date.now(),
-      lastActiveAt: Date.now(),
-      lastActive: Date.now()
-    });
-    
-    console.log(`Session ${sessionId} successfully marked as closed`);
-    
-    // Clean up all associated data
+    // Clean up all associated data first
     if (sessionCode) {
       console.log(`Starting cleanup for session code: ${sessionCode}`);
+      
+      // Clean up questions and answers
       const cleanupResult = await cleanupSessionData(sessionCode);
       console.log(`Cleanup completed:`, cleanupResult);
+      
+      // Clean up student counts
+      const studentCountRef = doc(db, 'studentCounts', sessionCode);
+      await deleteDoc(studentCountRef);
+      console.log(`Cleaned up student count for session ${sessionCode}`);
+      
+      // Clean up joined classes records
+      const joinedClassesQuery = query(
+        collection(db, 'joinedClasses'),
+        where('sessionCode', '==', sessionCode)
+      );
+      const joinedClassesSnapshot = await getDocs(joinedClassesQuery);
+      const joinedClassesBatch = writeBatch(db);
+      
+      joinedClassesSnapshot.docs.forEach(doc => {
+        joinedClassesBatch.delete(doc.ref);
+      });
+      
+      await joinedClassesBatch.commit();
+      console.log(`Cleaned up ${joinedClassesSnapshot.size} joined class records`);
     } else {
       console.warn(`No session code found for session ${sessionId}, skipping data cleanup`);
     }
+    
+    // Now delete the session itself
+    await deleteDoc(sessionRef);
+    console.log(`Session ${sessionId} successfully deleted`);
     
     return true;
   } catch (error) {
@@ -726,51 +726,57 @@ export async function cleanupInactiveClassSessions(inactiveHours: number = 2): P
       return 0;
     }
     
-    // Delete inactive sessions in batches to avoid overwhelming Firestore
-    const BATCH_SIZE = 20;
-    let deletedCount = 0;
+    let processedCount = 0;
     
-    // Process in batches
-    for (let i = 0; i < querySnapshot.docs.length; i += BATCH_SIZE) {
-      const batchDocs = querySnapshot.docs.slice(i, i + BATCH_SIZE);
+    // Process each session
+    for (const sessionDoc of querySnapshot.docs) {
+      const sessionData = sessionDoc.data();
+      const sessionId = sessionDoc.id;
+      const sessionCode = sessionData.sessionCode;
       
-      // Use a writeBatch for better performance with multiple deletes
-      const batch = writeBatch(db);
+      console.log(`Processing inactive session: ${sessionId} (${sessionCode})`);
       
-      // First, clean up associated data for each session
-      for (const doc of batchDocs) {
-        const sessionData = doc.data();
-        const sessionCode = sessionData.sessionCode;
-        
+      try {
+        // Clean up all associated data first
         if (sessionCode) {
           console.log(`Cleaning up data for inactive session: ${sessionCode}`);
+          await cleanupSessionData(sessionCode);
           
-          try {
-            // Mark session as closed before deleting it
-            batch.update(doc.ref, {
-              status: 'closed',
-              closedAt: Date.now(),
-              lastActiveAt: Date.now(),
-              lastActive: Date.now()
-            });
-            
-            // Clean up associated data
-            await cleanupSessionData(sessionCode);
-          } catch (error) {
-            console.error(`Error cleaning up data for session ${sessionCode}:`, error);
+          // Clean up student counts
+          const studentCountRef = doc(db, 'studentCounts', sessionCode);
+          await deleteDoc(studentCountRef).catch(error => {
+            console.error(`Error deleting student count for ${sessionCode}:`, error);
+          });
+          
+          // Clean up joined classes records
+          const joinedClassesQuery = query(
+            collection(db, 'joinedClasses'),
+            where('sessionCode', '==', sessionCode)
+          );
+          const joinedClassesSnapshot = await getDocs(joinedClassesQuery);
+          const joinedClassesBatch = writeBatch(db);
+          
+          joinedClassesSnapshot.docs.forEach(doc => {
+            joinedClassesBatch.delete(doc.ref);
+          });
+          
+          if (joinedClassesSnapshot.docs.length > 0) {
+            await joinedClassesBatch.commit();
           }
         }
+        
+        // Delete the session document itself
+        await deleteDoc(sessionDoc.ref);
+        processedCount++;
+        console.log(`Successfully cleaned up session ${sessionId}`);
+      } catch (error) {
+        console.error(`Error cleaning up session ${sessionId}:`, error);
+        // Continue with next session even if this one fails
       }
-      
-      // Commit the batch update
-      await batch.commit();
-      
-      deletedCount += batchDocs.length;
-      console.log(`Processed batch of ${batchDocs.length} inactive sessions (${deletedCount}/${querySnapshot.docs.length} total)`);
     }
     
-    console.log(`Successfully processed ${deletedCount}/${querySnapshot.docs.length} inactive class sessions`);
-    return deletedCount;
+    console.log(`Successfully cleaned up ${processedCount}/${querySnapshot.docs.length} inactive class sessions`);
+    return processedCount;
   } catch (error) {
     console.error("Error cleaning up inactive class sessions:", error);
     return 0;
