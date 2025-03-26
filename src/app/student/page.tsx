@@ -915,21 +915,6 @@ export default function StudentPage() {
       if (result) {
         setAnswerSubmitted(true);
         setAnswerText('');
-        
-        // Start cooldown timer
-        setCooldownActive(true);
-        setCooldownTime(10);
-        
-        const timer = setInterval(() => {
-          setCooldownTime(prev => {
-            if (prev <= 1) {
-              clearInterval(timer);
-              setCooldownActive(false);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
@@ -937,6 +922,35 @@ export default function StudentPage() {
       setIsSubmittingAnswer(false);
     }
   };
+
+  // Add a separate effect to handle active question updates with debouncing
+  useEffect(() => {
+    if (!sessionCode) return;
+
+    // Set up the listener with debouncing and caching
+    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
+      const currentTime = Date.now();
+      // Only process updates if enough time has passed since the last update
+      if (currentTime - lastQuestionUpdateRef.current >= DEBOUNCE_DELAY) {
+        console.log("Active question update received:", question);
+        
+        // Only update if the question has actually changed
+        if (!question || (activeQuestion && question.id !== activeQuestion.id)) {
+          console.log("New question detected, resetting answer state");
+          setAnswerText('');
+          setAnswerSubmitted(false);
+          setStudentAnswer(null);
+          previousAnswerRef.current = null;
+          setActiveQuestion(question);
+        }
+        
+        lastQuestionUpdateRef.current = currentTime;
+      }
+      setIsLoadingQuestion(false);
+    });
+
+    return () => unsubscribeActiveQuestion();
+  }, [sessionCode]);
 
   // Update the active question listener to track the student's answer with debouncing
   useEffect(() => {
@@ -963,6 +977,7 @@ export default function StudentPage() {
             // Only update if the answer has actually changed
             setStudentAnswer(studentAnswer || null);
             previousAnswerRef.current = studentAnswer || null;
+            setAnswerSubmitted(!!studentAnswer);
           }
           lastAnswerUpdateRef.current = currentTime;
         }
@@ -975,35 +990,6 @@ export default function StudentPage() {
       }
     };
   }, [activeQuestion, studentId]);
-
-  // Add a separate effect to handle active question updates with debouncing
-  useEffect(() => {
-    if (!sessionCode) return;
-
-    // Set up the listener with debouncing and caching
-    const unsubscribeActiveQuestion = listenForActiveQuestion(sessionCode, (question) => {
-      const currentTime = Date.now();
-      // Only process updates if enough time has passed since the last update
-      if (currentTime - lastQuestionUpdateRef.current >= DEBOUNCE_DELAY) {
-        console.log("Active question update received:", question);
-        
-        // Only update if the question has actually changed
-        if (!question || (activeQuestion && question.id !== activeQuestion.id)) {
-          console.log("Resetting answer state due to new/removed question");
-          setAnswerText('');
-          setAnswerSubmitted(false);
-          setStudentAnswer(null);
-          previousAnswerRef.current = null;
-          setActiveQuestion(question);
-        }
-        
-        lastQuestionUpdateRef.current = currentTime;
-      }
-      setIsLoadingQuestion(false);
-    });
-
-    return () => unsubscribeActiveQuestion();
-  }, [sessionCode]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
@@ -1191,132 +1177,6 @@ export default function StudentPage() {
       <div className="grid grid-cols-1 gap-6">
         <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
           <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Your Points
-          </h3>
-          
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-            <p className="text-sm text-blue-800 dark:text-white">
-              Points are awarded by your professor for participation and correct answers.
-            </p>
-              </div>
-          
-          <div className="bg-white dark:bg-dark-background-tertiary shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center mb-6 relative">
-            {isSavingPoints && (
-              <div className="absolute top-2 right-2 text-xs text-blue-600 dark:text-dark-text-tertiary flex items-center">
-                <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Saving...
-            </div>
-            )}
-            
-            <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Points</h4>
-            <div className="flex justify-center items-center mb-4">
-              <button
-                onClick={handleSubtractPoint}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-dark-red-400 transition-colors mr-4"
-                title="Subtract 1 point"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              
-              <div 
-                id="points-display" 
-                className="text-5xl font-bold text-blue-600 dark:text-dark-primary transition-all transform cursor-pointer"
-                onClick={handleOpenPointsModal}
-                title="Click to edit points"
-              >
-                {points}
-        </div>
-              
-              <button
-                onClick={handleAddPoint}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-green-900/30 dark:hover:text-green-400 transition-colors ml-4"
-                title="Add 1 point"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
-                </svg>
-              </button>
-      </div>
-            
-            <div className="text-sm text-blue-800 dark:text-white text-center mb-2">
-              Total points earned in this class
-    </div>
-            
-            <button
-              onClick={handleOpenPointsModal}
-              className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-dark-primary transition-colors"
-            >
-              Edit Points
-            </button>
-          </div>
-            </div>
-        
-        {/* Points Modal */}
-        {showPointsModal && (
-          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-dark-background-secondary rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
-              <div className="p-5">
-                <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Edit Points</h3>
-                
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    value={pointsInput}
-                    onChange={handlePointsInputChange}
-                    className="w-full text-center p-3 text-2xl font-bold border rounded-md dark:bg-dark-background-tertiary dark:border-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary"
-                    aria-label="Set points value"
-                    autoFocus
-                  />
-          </div>
-                
-                {/* Numpad */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((num) => (
-                    <button
-                      key={num}
-                      onClick={() => setPointsInput(prev => num === 0 && prev === '0' ? '0' : prev === '0' ? num.toString() : prev + num.toString())}
-                      className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
-                    >
-                      {num}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPointsInput('0')}
-                    className="p-3 text-xl bg-gray-100 hover:bg-gray-200 rounded-md dark:bg-dark-background-tertiary dark:hover:bg-dark-background-quaternary dark:text-white"
-                  >
-                    Clear
-                  </button>
-                </div>
-                
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleClosePointsModal}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-dark-background-tertiary dark:text-white dark:hover:bg-dark-background-quaternary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleManualPointsEntry}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
             <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -1404,19 +1264,18 @@ export default function StudentPage() {
                       className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
                       rows={3}
                       placeholder="Type your answer here..."
-                      disabled={cooldownActive}
                     />
                   </div>
                   <button
                     type="submit"
-                    disabled={!answerText.trim() || isSubmittingAnswer || cooldownActive}
+                    disabled={!answerText.trim() || isSubmittingAnswer}
                     className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
-                      !answerText.trim() || isSubmittingAnswer || cooldownActive
+                      !answerText.trim() || isSubmittingAnswer
                         ? 'bg-gray-400 cursor-not-allowed'
                         : 'bg-blue-500 hover:bg-blue-600'
                     }`}
                   >
-                    {isSubmittingAnswer ? 'Submitting...' : cooldownActive ? `Wait ${cooldownTime}s...` : 'Submit Answer'}
+                    {isSubmittingAnswer ? 'Submitting...' : 'Submit Answer'}
                   </button>
                 </form>
               )}
