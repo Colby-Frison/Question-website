@@ -1359,7 +1359,7 @@ export default function StudentPage() {
                     Edit Answer
                   </button>
                   <button
-                    onClick={handleDeleteAnswer}
+                    onClick={() => setDeleteAnswerId(studentAnswer.id)}
                     className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
                   >
                     Delete Answer
@@ -1378,9 +1378,10 @@ export default function StudentPage() {
                 />
                 <button
                   type="submit"
-                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  disabled={isSubmittingAnswer}
+                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Submit Answer
+                  {isSubmittingAnswer ? 'Submitting...' : 'Submit Answer'}
                 </button>
               </form>
             )}
