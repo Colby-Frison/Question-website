@@ -1200,191 +1200,128 @@ export default function StudentPage() {
   /**
    * Render the points tab content
    */
-  const renderPointsTab = () => {
-    return (
-      <div className="grid grid-cols-1 gap-6">
-        {/* Points Counter Card */}
-        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            My Points
-          </h3>
-          
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
-              <div id="points-display" className="text-3xl font-bold text-purple-600 dark:text-dark-primary">
-                {points}
-              </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                {isSavingPoints ? 'Saving...' : 'Points'}
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleSubtractPoint}
-                className="p-2 text-gray-500 hover:text-red-500 transition-colors"
-                title="Subtract 1 point"
-              >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={pointsInput}
-                  onChange={handlePointsInputChange}
-                  className="w-16 p-1 text-center border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
-                  placeholder="0"
-                />
-                <button
-                  onClick={handleSetPoints}
-                  className="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                >
-                  Set
-                </button>
-              </div>
-              
-              <button
-                onClick={handleAddPoint}
-                className="p-2 text-gray-500 hover:text-green-500 transition-colors"
-                title="Add 1 point"
-              >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-            </div>
+  const renderPointsTab = () => (
+    <div>
+      {/* Points Counter Card */}
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          My Points
+        </h2>
+        
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+            {points}
           </div>
-          
-          <div className="mt-4">
-            <button
-              onClick={refreshStudentPoints}
-              className="text-sm text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-            >
-              Refresh Points
-            </button>
-          </div>
-        </div>
-
-        {/* Active Question Card */}
-        <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-          <h3 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
-            <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Answer Professor's Question
-          </h3>
-          
-          {activeQuestion ? (
-            <div>
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/10 dark:border-blue-800 dark:text-white">
-                <div>
-                  <h3 className="font-semibold mb-2">Current Question:</h3>
-                  <p className="font-medium">{activeQuestion.text}</p>
-                </div>
-              </div>
-              
-              {studentAnswer ? (
-                <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-900/10 dark:border-green-800 dark:text-white">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-grow">
-                      <h3 className="font-semibold mb-2">Your Answer:</h3>
-                      {editingAnswerId === studentAnswer.id ? (
-                        <div>
-                          <textarea
-                            value={editAnswerText}
-                            onChange={(e) => setEditAnswerText(e.target.value)}
-                            className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
-                            rows={3}
-                            placeholder="Edit your answer..."
-                          />
-                          <div className="mt-2 flex space-x-2">
-                            <button
-                              onClick={handleSaveEditAnswer}
-                              className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingAnswerId(null);
-                                setEditAnswerText('');
-                              }}
-                              className="px-3 py-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-start">
-                          <p className="font-medium">{studentAnswer.text}</p>
-                          <div className="flex space-x-2 ml-4">
-                            <button
-                              onClick={() => handleEditAnswer(studentAnswer)}
-                              className="p-1 text-gray-500 hover:text-blue-500 transition-colors"
-                              title="Edit answer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => setDeleteAnswerId(studentAnswer.id)}
-                              className="p-1 text-gray-500 hover:text-red-500 transition-colors"
-                              title="Delete answer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleAnswerSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Your Answer
-                    </label>
-                    <textarea
-                      id="answer"
-                      value={answerText}
-                      onChange={(e) => setAnswerText(e.target.value)}
-                      className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-700 dark:text-white"
-                      rows={3}
-                      placeholder="Type your answer here..."
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!answerText.trim() || isSubmittingAnswer}
-                    className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
-                      !answerText.trim() || isSubmittingAnswer
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-500 hover:bg-blue-600'
-                    }`}
-                  >
-                    {isSubmittingAnswer ? 'Submitting...' : 'Submit Answer'}
-                  </button>
-                </form>
-              )}
+          {isSavingPoints && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Saving...
             </div>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400">No active question at the moment.</p>
           )}
         </div>
+        
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={handleAddPoint}
+            className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors dark:bg-green-600 dark:hover:bg-green-700"
+          >
+            +1
+          </button>
+          <button
+            onClick={handleSubtractPoint}
+            className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
+          >
+            -1
+          </button>
+        </div>
+        
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={pointsInput}
+            onChange={handlePointsInputChange}
+            className="flex-1 p-2 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter points"
+          />
+          <button
+            onClick={handleSetPoints}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+          >
+            Set
+          </button>
+        </div>
       </div>
-    );
-  };
+
+      {/* Active Question Card */}
+      <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Current Question
+        </h2>
+        
+        {activeQuestion ? (
+          <div>
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+              <p className="font-medium text-blue-900 dark:text-blue-100">{activeQuestion.text}</p>
+            </div>
+            
+            {studentAnswer ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Your Answer:</p>
+                  <p className="text-gray-700 dark:text-gray-300">{studentAnswer.text}</p>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEditAnswer(studentAnswer)}
+                    className="flex-1 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                  >
+                    Edit Answer
+                  </button>
+                  <button
+                    onClick={handleDeleteAnswer}
+                    className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
+                  >
+                    Delete Answer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleAnswerSubmit} className="space-y-4">
+                <textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  placeholder="Type your answer here..."
+                  className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={4}
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
+                >
+                  Submit Answer
+                </button>
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 dark:text-gray-300 mb-1">No active question</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Wait for your professor to ask a question.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   /**
    * Function to manually refresh student points from the database
