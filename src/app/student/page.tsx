@@ -856,8 +856,16 @@ export default function StudentPage() {
     if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
 
     try {
-      const success = await updateAnswer(editingAnswerId, editAnswerText, studentId);
+      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), studentId);
       if (success) {
+        // Update local state immediately
+        const updatedAnswer = {
+          ...studentAnswer!,
+          text: editAnswerText.trim(),
+          timestamp: Date.now()
+        };
+        setStudentAnswer(updatedAnswer);
+        previousAnswerRef.current = updatedAnswer;
         setEditingAnswerId(null);
         setEditAnswerText('');
       } else {
@@ -883,7 +891,6 @@ export default function StudentPage() {
         setAnswerText('');
         setAnswerSubmitted(false);
         previousAnswerRef.current = null;
-        setDeleteAnswerId(null);
       } else {
         setError("Failed to delete answer. Please try again.");
       }
@@ -919,10 +926,11 @@ export default function StudentPage() {
           text: answerText.trim(),
           timestamp: Date.now(),
           studentId,
-          questionText: activeQuestion.text
+          questionText: activeQuestion.text,
+          activeQuestionId: activeQuestion.id
         };
         
-        // Update all relevant state
+        // Update all relevant state immediately
         setStudentAnswer(newAnswer);
         previousAnswerRef.current = newAnswer;
         setAnswerSubmitted(true);
@@ -943,27 +951,29 @@ export default function StudentPage() {
     if (activeQuestion && studentId) {
       // Set up the listener with debouncing and caching
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
-        const currentTime = Date.now();
-        // Only process updates if enough time has passed since the last update
-        if (currentTime - lastAnswerUpdateRef.current >= DEBOUNCE_DELAY) {
-          const studentAnswer = answers.find(a => a.studentId === studentId);
-          const hadPreviousAnswer = previousAnswerRef.current !== null;
+        const studentAnswer = answers.find(a => a.studentId === studentId);
+        const hadPreviousAnswer = previousAnswerRef.current !== null;
+        
+        // If we previously had an answer but now it's gone, it was deleted
+        if (!studentAnswer && hadPreviousAnswer) {
+          console.log("Answer was deleted, resetting state");
+          setShowAnswerDeletedModal(true);
+          setAnswerText('');
+          setAnswerSubmitted(false);
+          setStudentAnswer(null);
+          previousAnswerRef.current = null;
+          setEditingAnswerId(null);
+          setEditAnswerText('');
+        } else if (studentAnswer) {
+          // Always update the state with the latest answer from the database
+          setStudentAnswer(studentAnswer);
+          previousAnswerRef.current = studentAnswer;
+          setAnswerSubmitted(true);
           
-          // If we previously had an answer but now it's gone, it was deleted
-          if (!studentAnswer && hadPreviousAnswer) {
-            console.log("Answer was deleted, resetting state");
-            setShowAnswerDeletedModal(true);
-            setAnswerText('');
-            setAnswerSubmitted(false);
-            setStudentAnswer(null);
-            previousAnswerRef.current = null;
-          } else if (studentAnswer) {
-            // Always update the state with the latest answer from the database
-            setStudentAnswer(studentAnswer);
-            previousAnswerRef.current = studentAnswer;
-            setAnswerSubmitted(true);
+          // If we're editing and the answer was updated by someone else, update the edit text
+          if (editingAnswerId === studentAnswer.id && studentAnswer.text !== editAnswerText) {
+            setEditAnswerText(studentAnswer.text);
           }
-          lastAnswerUpdateRef.current = currentTime;
         }
       });
     }
@@ -973,7 +983,7 @@ export default function StudentPage() {
         unsubscribeAnswers();
       }
     };
-  }, [activeQuestion, studentId]);
+  }, [activeQuestion, studentId, editingAnswerId, editAnswerText]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback((questionId: string) => {
