@@ -1204,55 +1204,98 @@ export default function StudentPage() {
     <div>
       {/* Points Counter Card */}
       <div className="bg-white shadow-md rounded-lg p-6 mb-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-        <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
-          <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          My Points
+        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">
+          Your Points
         </h2>
-        
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-            {points}
-          </div>
+
+        <div className="bg-blue-50/50 rounded-lg p-4 dark:bg-blue-900/10">
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            Points are awarded by your professor for participation and correct answers.
+          </p>
+        </div>
+
+        <div className="mt-6 relative">
+          {/* Loading indicator */}
           {isSavingPoints && (
-            <div className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="absolute top-0 right-0 text-sm text-gray-500 dark:text-gray-400">
               Saving...
             </div>
           )}
-        </div>
-        
-        <div className="flex gap-2 mb-4">
+
+          <div className="flex items-center justify-center space-x-6">
+            {/* Minus button */}
+            <button
+              onClick={handleSubtractPoint}
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 hover:bg-red-500 hover:border-red-500 hover:text-white dark:hover:border-red-500"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+
+            {/* Current Points */}
+            <button
+              onClick={handleOpenPointsModal}
+              className="text-5xl font-bold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity cursor-pointer"
+            >
+              {points}
+            </button>
+
+            {/* Plus button */}
+            <button
+              onClick={handleAddPoint}
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 hover:bg-green-500 hover:border-green-500 hover:text-white dark:hover:border-green-500"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
+
+          <p className="text-center mt-2 text-gray-600 dark:text-gray-400">
+            Total points earned in this class
+          </p>
+
           <button
-            onClick={handleAddPoint}
-            className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors dark:bg-green-600 dark:hover:bg-green-700"
+            onClick={handleOpenPointsModal}
+            className="text-center w-full mt-2 text-blue-600 dark:text-blue-400 hover:underline"
           >
-            +1
-          </button>
-          <button
-            onClick={handleSubtractPoint}
-            className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700"
-          >
-            -1
-          </button>
-        </div>
-        
-        <div className="flex gap-2">
-          <input
-            type="number"
-            value={pointsInput}
-            onChange={handlePointsInputChange}
-            className="flex-1 p-2 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Enter points"
-          />
-          <button
-            onClick={handleSetPoints}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
-          >
-            Set
+            Edit Points
           </button>
         </div>
       </div>
+
+      {/* Points Modal */}
+      {showPointsModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
+              Edit Points
+            </h3>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={pointsInput}
+                onChange={handlePointsInputChange}
+                className="flex-1 p-2 border rounded-lg dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter points"
+              />
+              <button
+                onClick={handleManualPointsEntry}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+              >
+                Set
+              </button>
+            </div>
+            <button
+              onClick={handleClosePointsModal}
+              className="mt-4 w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Active Question Card */}
       <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
