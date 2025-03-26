@@ -1214,7 +1214,7 @@ export default function StudentPage() {
           </p>
         </div>
 
-        <div className="mt-6 relative">
+        <div className="mt-8 mb-8 relative">
           {/* Loading indicator */}
           {isSavingPoints && (
             <div className="absolute top-0 right-0 text-sm text-gray-500 dark:text-gray-400">
@@ -1226,7 +1226,7 @@ export default function StudentPage() {
             {/* Minus button */}
             <button
               onClick={handleSubtractPoint}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 hover:bg-red-500 hover:border-red-500 hover:text-white dark:hover:border-red-500"
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-red-100 hover:border-red-200 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:border-red-800 dark:hover:text-red-400"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -1244,7 +1244,7 @@ export default function StudentPage() {
             {/* Plus button */}
             <button
               onClick={handleAddPoint}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 hover:bg-green-500 hover:border-green-500 hover:text-white dark:hover:border-green-500"
+              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors border-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-green-100 hover:border-green-200 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:border-green-800 dark:hover:text-green-400"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1252,47 +1252,79 @@ export default function StudentPage() {
             </button>
           </div>
 
-          <p className="text-center mt-2 text-gray-600 dark:text-gray-400">
+          <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
             Total points earned in this class
           </p>
 
           <button
             onClick={handleOpenPointsModal}
-            className="text-center w-full mt-2 text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-center w-full mt-2 text-blue-600 dark:text-blue-400"
           >
             Edit Points
           </button>
         </div>
       </div>
 
-      {/* Points Modal */}
+      {/* Points Modal with Keypad */}
       {showPointsModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 mx-4">
             <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
               Edit Points
             </h3>
-            <div className="flex gap-2">
+
+            {/* Points Display and Manual Input */}
+            <div className="mb-4">
               <input
-                type="number"
+                type="text"
                 value={pointsInput}
                 onChange={handlePointsInputChange}
-                className="flex-1 p-2 border rounded-lg dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter points"
+                className="w-full p-3 text-right text-2xl font-bold bg-gray-50 border rounded-lg dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0"
+                readOnly
               />
+            </div>
+
+            {/* Number Keypad */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map((key) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (key === 'C') {
+                      setPointsInput('0');
+                    } else if (key === '⌫') {
+                      setPointsInput(prev => prev.slice(0, -1) || '0');
+                    } else {
+                      setPointsInput(prev => (prev === '0' ? key.toString() : prev + key));
+                    }
+                  }}
+                  className="p-4 text-xl font-semibold rounded-lg transition-colors
+                    ${typeof key === 'number' 
+                      ? 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600' 
+                      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500'}
+                    text-gray-800 dark:text-gray-100"
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleClosePointsModal}
+                className="px-4 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleManualPointsEntry}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+                className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
               >
-                Set
+                Set Points
               </button>
             </div>
-            <button
-              onClick={handleClosePointsModal}
-              className="mt-4 w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
