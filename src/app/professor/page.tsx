@@ -41,7 +41,8 @@ import {
   isSessionInactive,
   SESSION_INACTIVITY_TIMEOUT,
   forceIndexCreation,
-  listenForStudentCount
+  listenForStudentCount,
+  getMostRecentActiveSession
 } from '@/lib/classSession';
 import { ClassSession, Question } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
@@ -314,9 +315,37 @@ export default function ProfessorPage() {
       if (existingClassName) {
         setClassName(existingClassName);
       }
+
+      // Check for any active session
+      const activeSession = await getMostRecentActiveSession(userId);
+      if (activeSession) {
+        console.log("Found active session:", activeSession);
+        setSessionId(activeSession.id);
+        setSessionCode(activeSession.sessionCode);
+        setSessionActive(true);
+        setSessionStartTime(activeSession.createdAt);
+        setLastActivity(activeSession.lastActiveAt);
+
+        // Start listening for questions with optimized listener
+        const unsubscribe = listenForQuestions(activeSession.sessionCode, (newQuestions) => {
+          setQuestions(newQuestions);
+        }, { 
+          maxWaitTime: 5000, // 5 second debounce
+          useCache: true // Enable caching
+        });
+
+        // Set up student count listener
+        const studentCountUnsubscribe = listenForStudentCount(activeSession.sessionCode, (count) => {
+          setStudentCount(count);
+        });
+
+        // Return cleanup function
+        return () => {
+          unsubscribe();
+          studentCountUnsubscribe();
+        };
+      }
       
-      // We don't automatically create a session anymore
-      // The professor needs to click "Start Class" button
       setIsLoading(false);
       
     } catch (error) {
