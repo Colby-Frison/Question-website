@@ -44,7 +44,7 @@ import {
   updateStudentCount,
   listenForStudentCount
 } from '@/lib/classCode';
-import { getSessionByCode, listenForSessionStatus, SESSION_INACTIVITY_TIMEOUT } from '@/lib/classSession';
+import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question, ClassSession } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
@@ -72,41 +72,23 @@ interface Answer {
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
 
-// Move getSessionTimeRemaining outside the component
-const getSessionTimeRemaining = (lastActivity: number, sessionCode: string | null) => {
-  if (!sessionCode || !lastActivity) return null;
-  
-  const elapsedMs = Date.now() - lastActivity;
-  const remainingMs = SESSION_INACTIVITY_TIMEOUT - elapsedMs;
-  
-  if (remainingMs <= 0) return 0;
-  
-  // Convert to minutes and round
-  return Math.round(remainingMs / (60 * 1000));
-};
-
 export default function StudentPage() {
   const router = useRouter();
   
   // Add initialization logging
   console.log("== STUDENT PAGE INITIALIZING ==");
   
-  // State for initialization
-  const [initState, setInitState] = useState({
-    isInitialized: false,
-    isLoading: true,
-    studentId: '',
-    error: null as string | null,
-    stage: 'starting'
-  });
-
   // State for class and session management
   const [className, setClassName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
   const [joined, setJoined] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [studentId, setStudentId] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
+  const [initStage, setInitStage] = useState('starting');
   const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   
@@ -168,8 +150,6 @@ export default function StudentPage() {
   const lastAnswerUpdateRef = useRef<number>(Date.now());
   const DEBOUNCE_DELAY = 10000; // Increase to 10 seconds
   const CACHE_DURATION = 30000; // Increase to 30 seconds
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const timeRemainingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -201,14 +181,14 @@ export default function StudentPage() {
     setIsLeavingClass(true);
     
     // Clean up Firebase data first
-    if (initState.studentId && sessionCode) {
+    if (studentId && sessionCode) {
       // Update student count before leaving
       updateStudentCount(sessionCode, false)
         .catch((error: Error) => {
           console.error("Error updating student count:", error);
         });
 
-      leaveClass(initState.studentId)
+      leaveClass(studentId)
         .catch(error => {
           console.error("Error leaving class:", error);
         })
@@ -255,7 +235,7 @@ export default function StudentPage() {
       
       setIsLeavingClass(false);
     }
-  }, [initState.studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
+  }, [studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
 
   /**
    * Handle adding a point to student's total
@@ -301,7 +281,7 @@ export default function StudentPage() {
     setPointsInput(newValue.toString());
     
     // Sync with database if student is authenticated
-      if (initState.studentId) {
+      if (studentId) {
       // Indicate saving status
       setIsSavingPoints(true);
       
@@ -320,7 +300,7 @@ export default function StudentPage() {
             
             // Use a promise to get the current points value
             await new Promise<void>((resolve) => {
-              const unsubscribe = listenForStudentPoints(initState.studentId, (dbPoints) => {
+              const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
               currentDbPoints = dbPoints;
                 unsubscribe();
                 resolve();
@@ -332,7 +312,7 @@ export default function StudentPage() {
             
             if (pointsDifference !== 0) {
             console.log(`Updating database with points difference: ${pointsDifference}`);
-            const success = await updateStudentPoints(initState.studentId, pointsDifference);
+            const success = await updateStudentPoints(studentId, pointsDifference);
             
             if (success) {
               console.log(`Points saved to database. New total: ${newValue}`);
@@ -367,12 +347,12 @@ export default function StudentPage() {
    * Updates the points state when changes occur in the database
    */
   useEffect(() => {
-    if (!initState.studentId) return () => {};
+    if (!studentId) return () => {};
     
-    console.log("Setting up points listener for student:", initState.studentId);
+    console.log("Setting up points listener for student:", studentId);
     let isInitialLoad = true;
     
-    const unsubscribe = listenForStudentPoints(initState.studentId, (newPoints) => {
+    const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
       console.log("Received points update from database:", newPoints);
       
       // If it's the initial load or the points are different from local state
@@ -407,159 +387,280 @@ export default function StudentPage() {
       console.log("Cleaning up points listener");
       unsubscribe();
     };
-  }, [initState.studentId]); // Remove points dependency to avoid constant re-subscriptions
+  }, [studentId]); // Remove points dependency to avoid constant re-subscriptions
 
   /**
-   * Single initialization effect that handles all setup
+   * Initial setup effect - runs once when component mounts
+   * Checks if user is a student and gets their ID
    */
   useEffect(() => {
-    let isMounted = true;
-    let unsubscribers: (() => void)[] = [];
+    console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
+    setInitStage('checking-user-type');
     
-    const initialize = async () => {
-      try {
-        console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
-        
-        // Check if user is a student
-        if (!isStudent()) {
-          console.log("Not a student, redirecting to home");
-          router.push('/');
-          return;
-        }
-
-        // Get user ID
-        const userId = getUserId();
-        console.log("User ID retrieved:", userId ? "success" : "failed");
-        
-        if (!userId) {
-          console.log("No user ID found, redirecting to home");
-          router.push('/');
-          return;
-        }
-
-        if (!isMounted) return;
-
-        // Update initialization state
-        setInitState(prev => ({
-          ...prev,
-          studentId: userId,
-          stage: 'checking-firebase'
-        }));
-
-        // Verify Firebase connection
-        const connected = await checkFirebaseConnection();
-        if (!connected) {
-          throw new Error("Firebase connection failed");
-        }
-
-        if (!isMounted) return;
-
-        // Check for joined class
-        const joinedClass = await getJoinedClass(userId);
-        
-        if (joinedClass) {
-          setJoined(true);
-          setClassName(joinedClass.className);
-          setSessionCode(joinedClass.sessionCode);
-          
-          // Set up session status listener
-          const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
-            if (!isMounted) return;
-            if (status === 'closed' || status === 'archived') {
-              handleLeaveClass();
-              setShowInactivityNotification(true);
-            }
-            setSessionStatus(status || '');
-          });
-          unsubscribers.push(unsubscribeSession);
-          
-          // Set up student count listener
-          const unsubscribeCount = listenForStudentCount(joinedClass.sessionCode, (count) => {
-            if (!isMounted) return;
-            setStudentCount(count);
-          });
-          unsubscribers.push(unsubscribeCount);
-        }
-
-        if (!isMounted) return;
-
-        // Complete initialization
-        setInitState(prev => ({
-          ...prev,
-          isInitialized: true,
-          isLoading: false,
-          stage: 'complete'
-        }));
-
-      } catch (error) {
-        console.error("Initialization error:", error);
-        if (isMounted) {
-          setInitState(prev => ({
-            ...prev,
-            error: error instanceof Error ? error.message : "Failed to initialize",
-            isLoading: false,
-            stage: 'error'
-          }));
-        }
-      }
-    };
-
-    initialize();
-
-    return () => {
-      isMounted = false;
-      unsubscribers.forEach(unsubscribe => {
-        try {
-          unsubscribe();
-        } catch (error) {
-          console.error("Error during cleanup:", error);
-        }
-      });
-    };
-  }, [router, handleLeaveClass]);
-
-  /**
-   * Effect to handle class-specific setup after initialization
-   */
-  useEffect(() => {
-    if (!initState.isInitialized || !initState.studentId || !sessionCode) {
+    // Check if user is a student
+    if (!isStudent()) {
+      console.log("Not a student, redirecting to home");
+      router.push('/');
+      setIsLoading(false);
       return;
     }
 
+    setInitStage('getting-user-id');
+    const userId = getUserId();
+    console.log("User ID retrieved:", userId ? "success" : "failed");
+    
+    if (!userId) {
+      console.log("No user ID found, redirecting to home");
+      router.push('/');
+      setIsLoading(false);
+      return;
+    }
+    
+    setStudentId(userId);
+    setIsLoading(false);
+
+    // Check network status
+    const handleOnline = () => {
+      console.log("Network connection restored");
+      setNetworkStatus('online');
+    };
+    
+    const handleOffline = () => {
+      console.log("Network connection lost");
+      setNetworkStatus('offline');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    setInitStage('checking-firebase');
+    // Verify Firebase connection on page load
+    checkFirebaseConnection()
+      .then(connected => {
+        if (!connected) {
+          console.error("Firebase connection failed. Check your Firebase configuration.");
+          setError("Unable to connect to database. Please refresh or try again later.");
+          setInitStage('firebase-connection-failed');
+        } else {
+          console.log("Firebase connection verified successfully.");
+          setInitStage('firebase-connection-success');
+        }
+      })
+      .catch(error => {
+        console.error("Error checking Firebase connection:", error);
+        setInitStage('firebase-connection-error');
+      });
+    
+    console.log("== STUDENT PAGE MOUNT EFFECT COMPLETED ==");
+    
+    // Cleanup function
+    return () => {
+      // Clean up event listeners
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      
+      // Clean up any pending timeouts
+      if (pointsSaveTimeoutRef.current) {
+        clearTimeout(pointsSaveTimeoutRef.current);
+      }
+      
+      // Clear points cache for this student when the component unmounts
+      if (userId) {
+        clearPointsCache(userId);
+      }
+      
+      console.log("== STUDENT PAGE CLEANUP COMPLETED ==");
+    };
+  }, [router]);
+
+  /**
+   * Set up automatic database maintenance
+   * This runs periodically to clean up orphaned data and inactive sessions
+   */
+  useEffect(() => {
+    if (maintenanceSetup) return;
+    
+    // Only set up maintenance once
+    const cleanupMaintenance = setupAutomaticMaintenance();
+    setMaintenanceSetup(true);
+    
+    return () => {
+      cleanupMaintenance();
+    };
+  }, [maintenanceSetup]);
+
+  /**
+   * Effect to check if student has joined a class and set up listeners
+   * for questions, class questions, and active questions
+   */
+  useEffect(() => {
+    console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
+    
+    if (!studentId) {
+      console.log("No student ID available, skipping class check");
+      setIsLoading(false);
+      return;
+    }
+    
+    let unsubscribers: (() => void)[] = [];
     let isComponentMounted = true;
-    const unsubscribers: (() => void)[] = [];
 
-    const setupClassListeners = async () => {
+    const checkJoinedClass = async () => {
       try {
-        // Set up questions listener
-        const unsubscribeQuestions = listenForQuestions(sessionCode, (questions) => {
-          if (!isComponentMounted) return;
-          setQuestions(questions);
-        });
-        unsubscribers.push(unsubscribeQuestions);
+        console.log("Checking for joined class...");
+        const joinedClass = await getJoinedClass(studentId);
+        
+        if (!joinedClass || !isComponentMounted) {
+          console.log("No joined class found or component unmounted");
+          setIsLoading(false);
+          return;
+        }
 
-        // Set up active question listener
-        const unsubscribeActive = listenForActiveQuestion(sessionCode, (question) => {
+        console.log("Found joined class:", joinedClass);
+        setJoinedClass(joinedClass);
+        setJoined(true);
+        setClassName(joinedClass.className);
+        setSessionCode(joinedClass.sessionCode);
+        
+        // Set up session status listener with enhanced error handling
+        const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
           if (!isComponentMounted) return;
-          setActiveQuestion(question);
-          setIsLoadingQuestion(false);
+          console.log("Session status update:", status);
+          
+          if (status === 'closed' || status === 'archived') {
+            console.log(`Session ${joinedClass.sessionCode} has been ${status}`);
+            // Clean up all listeners
+            unsubscribers.forEach(unsubscribe => {
+              try {
+                unsubscribe();
+              } catch (error) {
+                console.error("Error during cleanup:", error);
+              }
+            });
+            
+            // Reset all state
+            setJoined(false);
+            setClassName('');
+            setSessionCode('');
+            setQuestions([]);
+            setActiveQuestion(null);
+            setStudentCount(0);
+            setStudentAnswer(null);
+            setAnswerText('');
+            setAnswerSubmitted(false);
+            setEditingAnswerId(null);
+            setDeleteAnswerId(null);
+            setShowAnswerDeletedModal(false);
+            
+            // Show appropriate notification
+            if (status === 'closed') {
+              setShowInactivityNotification(true);
+            }
+          }
+          
+          setSessionStatus(status || '');
         });
-        unsubscribers.push(unsubscribeActive);
+        unsubscribers.push(unsubscribeSession);
+
+        // Set up active question listener with optimized settings
+          setIsLoadingQuestion(true);
+          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+          if (!isComponentMounted) return;
+            console.log("Active question update received:", question ? "yes" : "no");
+            
+            if (question) {
+              console.log(`Active question details - ID: ${question.id}`);
+              
+              // Check if this is a new question that we haven't seen before
+              const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
+              
+              // Update the active question state immediately
+              setActiveQuestion(question);
+              setIsLoadingQuestion(false);
+              
+              if (isNewQuestion) {
+                console.log("New active question detected - clearing previous answer state");
+                // Reset answer-related state for the new question
+                setAnswerText('');
+                setAnswerSubmitted(false);
+                setStudentAnswer(null);
+                previousAnswerRef.current = null;
+                setEditingAnswerId(null);
+                setDeleteAnswerId(null);
+              }
+            } else {
+              // Only clear the question if we explicitly receive null (session ended)
+              setActiveQuestion(null);
+              setIsLoadingQuestion(false);
+            }
+            
+            lastQuestionCheckRef.current = Date.now();
+          }, { 
+            maxWaitTime: DEBOUNCE_DELAY,
+            useCache: true
+          });
+        unsubscribers.push(unsubscribeActiveQuestion);
 
         // Set up points listener
-        const unsubscribePoints = listenForStudentPoints(initState.studentId, (points) => {
+        const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
           if (!isComponentMounted) return;
+          console.log("Points update received:", points);
           setStudentPoints(points);
         });
         unsubscribers.push(unsubscribePoints);
 
+        // Set up questions listener with optimized settings
+        const unsubscribeQuestions = listenForQuestions(joinedClass.sessionCode, (questions) => {
+          if (!isComponentMounted) return;
+          console.log("Questions update received:", questions.length);
+          setQuestions(questions);
+        }, {
+          maxWaitTime: DEBOUNCE_DELAY,
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeQuestions);
+
+        // Set up user questions listener with optimized settings
+        const unsubscribeUserQuestions = listenForUserQuestions(studentId, joinedClass.sessionCode, (userQuestions) => {
+          if (!isComponentMounted) return;
+          console.log("User questions update received:", userQuestions.length);
+          setUserQuestions(userQuestions);
+        }, {
+          maxWaitTime: DEBOUNCE_DELAY,
+          useCache: true
+        });
+        unsubscribers.push(unsubscribeUserQuestions);
+
+        // Set up answers listener only when there's an active question
+        if (activeQuestion) {
+          const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
+            if (!isComponentMounted) return;
+            console.log("Answers update received:", answers.length);
+            setAnswers(answers);
+          });
+          unsubscribers.push(unsubscribeAnswers);
+        }
+
+        // Set up student count listener
+        const unsubscribeStudentCount = listenForStudentCount(joinedClass.sessionCode, (count: number) => {
+          setStudentCount(count);
+        });
+        unsubscribers.push(unsubscribeStudentCount);
+        setStudentCountListener(unsubscribeStudentCount);
+
+          setIsLoading(false);
       } catch (error) {
-        console.error("Error setting up class listeners:", error);
+        console.error("Error in checkJoinedClass:", error);
+        if (isComponentMounted) {
+        setIsLoading(false);
+          setError("Failed to initialize class. Please try again.");
+        }
       }
     };
 
-    setupClassListeners();
-
+    checkJoinedClass();
+    
+    // Cleanup function
     return () => {
       isComponentMounted = false;
       unsubscribers.forEach(unsubscribe => {
@@ -570,7 +671,7 @@ export default function StudentPage() {
         }
       });
     };
-  }, [initState.isInitialized, initState.studentId, sessionCode]);
+  }, [studentId, activeQuestion?.id]); // Remove isLoading from dependencies
 
   /**
    * Record user activity
@@ -650,24 +751,28 @@ export default function StudentPage() {
    */
   const handleJoinClass = async (code: string) => {
     try {
-      setInitState(prev => ({ ...prev, isLoading: true, error: null }));
+      setIsLoading(true);
+      setError(null);
       
       // Check if session exists and is active
       const session = await getSessionByCode(code);
       if (!session) {
-        setInitState(prev => ({ ...prev, isLoading: false, error: "Invalid session code. Please check and try again." }));
+        setError("Invalid session code. Please check and try again.");
+        setIsLoading(false);
         return;
       }
       
       if (session.status !== 'active') {
-        setInitState(prev => ({ ...prev, isLoading: false, error: "This session is no longer active." }));
+        setError("This session is no longer active.");
+        setIsLoading(false);
         return;
       }
       
       // Join the class
-      const success = await joinClass(code, initState.studentId);
+      const success = await joinClass(code, studentId);
       if (!success) {
-        setInitState(prev => ({ ...prev, isLoading: false, error: "Failed to join class. Please try again." }));
+        setError("Failed to join class. Please try again.");
+        setIsLoading(false);
         return;
       }
 
@@ -685,7 +790,7 @@ export default function StudentPage() {
       setStudentCountListener(unsubscribeStudentCount);
       
       // Set up personal questions listener with optimized settings
-      const unsubscribePersonal = listenForUserQuestions(initState.studentId, code, (questions) => {
+      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
         setUserQuestions(questions);
       }, {
         maxWaitTime: DEBOUNCE_DELAY,
@@ -721,7 +826,7 @@ export default function StudentPage() {
       unsubscribers.push(unsubscribeSessionStatus);
       
       // Set up points listener
-      const unsubscribePoints = listenForStudentPoints(initState.studentId, (points) => {
+      const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
         setStudentPoints(points);
       });
       unsubscribers.push(unsubscribePoints);
@@ -745,7 +850,9 @@ export default function StudentPage() {
       
     } catch (error) {
       console.error("Error joining class:", error);
-      setInitState(prev => ({ ...prev, isLoading: false, error: "Failed to join class. Please try again." }));
+      setError("Failed to join class. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -784,10 +891,10 @@ export default function StudentPage() {
    * Handle saving an edited answer
    */
   const handleSaveEditAnswer = async () => {
-    if (!editingAnswerId || !editAnswerText.trim() || !initState.studentId) return;
+    if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
 
     try {
-      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), initState.studentId);
+      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), studentId);
       if (success) {
         // Update local state immediately
         const updatedAnswer = {
@@ -800,11 +907,11 @@ export default function StudentPage() {
         setEditingAnswerId(null);
         setEditAnswerText('');
       } else {
-        setInitState(prev => ({ ...prev, error: "Failed to update answer. Please try again." }));
+        setError("Failed to update answer. Please try again.");
       }
     } catch (error) {
       console.error("Error updating answer:", error);
-      setInitState(prev => ({ ...prev, error: "Failed to update answer. Please try again." }));
+      setError("Failed to update answer. Please try again.");
     }
   };
 
@@ -812,10 +919,10 @@ export default function StudentPage() {
    * Handle deleting an answer
    */
   const handleDeleteAnswer = async () => {
-    if (!deleteAnswerId || !initState.studentId) return;
+    if (!deleteAnswerId || !studentId) return;
 
     try {
-      const success = await deleteAnswer(deleteAnswerId, initState.studentId);
+      const success = await deleteAnswer(deleteAnswerId, studentId);
       if (success) {
         // Reset all answer-related state
         setStudentAnswer(null);
@@ -824,11 +931,11 @@ export default function StudentPage() {
         previousAnswerRef.current = null;
         setDeleteAnswerId(null); // Clear the deleteAnswerId immediately
       } else {
-        setInitState(prev => ({ ...prev, error: "Failed to delete answer. Please try again." }));
+        setError("Failed to delete answer. Please try again.");
       }
     } catch (error) {
       console.error("Error deleting answer:", error);
-      setInitState(prev => ({ ...prev, error: "Failed to delete answer. Please try again." }));
+      setError("Failed to delete answer. Please try again.");
     }
   };
 
@@ -836,7 +943,7 @@ export default function StudentPage() {
   const handleAnswerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!activeQuestion || !answerText.trim() || !initState.studentId || !sessionCode) {
+    if (!activeQuestion || !answerText.trim() || !studentId || !sessionCode) {
       return;
     }
     
@@ -846,7 +953,7 @@ export default function StudentPage() {
       const result = await addAnswer({
         text: answerText.trim(),
         activeQuestionId: activeQuestion.id,
-        studentId: initState.studentId,
+        studentId,
         sessionCode,
         questionText: activeQuestion.text
       });
@@ -857,7 +964,7 @@ export default function StudentPage() {
           id: result,
           text: answerText.trim(),
           timestamp: Date.now(),
-          studentId: initState.studentId,
+          studentId,
           questionText: activeQuestion.text,
           activeQuestionId: activeQuestion.id
         };
@@ -870,7 +977,7 @@ export default function StudentPage() {
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
-      setInitState(prev => ({ ...prev, error: "Failed to submit answer. Please try again." }));
+      setError("Failed to submit answer. Please try again.");
     } finally {
       setIsSubmittingAnswer(false);
     }
@@ -880,9 +987,9 @@ export default function StudentPage() {
   useEffect(() => {
     let unsubscribeAnswers: (() => void) | undefined;
 
-    if (activeQuestion && initState.studentId) {
+    if (activeQuestion && studentId) {
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
-        const studentAnswer = answers.find(a => a.studentId === initState.studentId);
+        const studentAnswer = answers.find(a => a.studentId === studentId);
         const hadPreviousAnswer = previousAnswerRef.current !== null;
         
         if (!studentAnswer && hadPreviousAnswer) {
@@ -911,7 +1018,7 @@ export default function StudentPage() {
         unsubscribeAnswers();
       }
     };
-  }, [activeQuestion, initState.studentId, editingAnswerId]);
+  }, [activeQuestion, studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback(async (questionId: string) => {
@@ -922,11 +1029,11 @@ export default function StudentPage() {
         setQuestions(prev => prev.filter(q => q.id !== questionId));
         setUserQuestions(prev => prev.filter(q => q.id !== questionId));
       } else {
-        setInitState(prev => ({ ...prev, error: "Failed to delete question. Please try again." }));
+        setError("Failed to delete question. Please try again.");
       }
     } catch (error) {
       console.error("Error deleting question:", error);
-      setInitState(prev => ({ ...prev, error: "Failed to delete question. Please try again." }));
+      setError("Failed to delete question. Please try again.");
     }
   }, []);
   
@@ -1048,7 +1155,7 @@ export default function StudentPage() {
               Ask a Question
             </h2>
             <QuestionForm 
-              studentId={initState.studentId}
+              studentId={studentId}
               sessionCode={sessionCode}
             />
           </div>
@@ -1067,7 +1174,7 @@ export default function StudentPage() {
               questions={questions}
               isProfessor={false}
               isStudent={true}
-              studentId={initState.studentId}
+              studentId={studentId}
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
@@ -1090,7 +1197,7 @@ export default function StudentPage() {
               questions={userQuestions}
               isProfessor={false}
               isStudent={true}
-              studentId={initState.studentId}
+              studentId={studentId}
               showControls={true}
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
@@ -1346,20 +1453,20 @@ export default function StudentPage() {
    * Function to manually refresh student points from the database
    */
   const refreshStudentPoints = async () => {
-    if (!initState.studentId) {
+    if (!studentId) {
       console.log("Cannot refresh points: no student ID available");
       return;
     }
 
     try {
-      setInitState(prev => ({ ...prev, isLoading: true }));
-      console.log(`Manually refreshing points for student: ${initState.studentId}`);
+      setIsLoading(true);
+      console.log(`Manually refreshing points for student: ${studentId}`);
       
       // Clear cache first to ensure we get fresh data
-      clearPointsCache(initState.studentId);
+      clearPointsCache(studentId);
       
       // Get the points data from Firestore
-      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, initState.studentId);
+      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
       const pointsDoc = await getDoc(pointsRef);
       
       if (pointsDoc.exists()) {
@@ -1368,7 +1475,7 @@ export default function StudentPage() {
         setPoints(pointsData.total || 0);
         setPointsInput((pointsData.total || 0).toString());
       } else {
-        console.log(`No points record found for student: ${initState.studentId}, initializing with 0`);
+        console.log(`No points record found for student: ${studentId}, initializing with 0`);
         // Initialize with 0 points if no record exists
         await setDoc(pointsRef, { 
           total: 0,
@@ -1378,10 +1485,11 @@ export default function StudentPage() {
         setPointsInput('0');
       }
       
-      setInitState(prev => ({ ...prev, isLoading: false }));
+      setIsLoading(false);
     } catch (error) {
       console.error("Error refreshing student points:", error);
-      setInitState(prev => ({ ...prev, error: "Failed to refresh points data. Please try again.", isLoading: false }));
+      setError("Failed to refresh points data. Please try again.");
+      setIsLoading(false);
     }
   };
 
@@ -1407,17 +1515,17 @@ export default function StudentPage() {
   }
 
   // Show error state if there's a problem
-  if (initState.error) {
+  if (error) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
-            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{initState.error}</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => setInitState(prev => ({ ...prev, error: null }))}
+                onClick={() => setError(null)}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
                 Dismiss
@@ -1436,7 +1544,7 @@ export default function StudentPage() {
   }
 
   // Show loading state
-  if (initState.isLoading) {
+  if (isLoading) {
   return (
       <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
@@ -1449,103 +1557,6 @@ export default function StudentPage() {
       </div>
     );
   }
-
-  /**
-   * Update time remaining display
-   */
-  useEffect(() => {
-    if (!sessionCode) {
-      setTimeRemaining(null);
-      return;
-    }
-
-    // Update immediately
-    setTimeRemaining(getSessionTimeRemaining(lastActivity, sessionCode));
-
-    // Update every minute
-    const intervalId = setInterval(() => {
-      const remaining = getSessionTimeRemaining(lastActivity, sessionCode);
-      setTimeRemaining(remaining);
-
-      // If time is up, leave the class
-      if (remaining === 0) {
-        handleLeaveClass();
-        setShowInactivityNotification(true);
-      }
-    }, 60000);
-
-    // Cleanup function
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [sessionCode, lastActivity, handleLeaveClass]);
-
-  /**
-   * Handle session status updates
-   */
-  useEffect(() => {
-    if (!sessionCode) return;
-
-    const unsubscribe = listenForSessionStatus(sessionCode, (status) => {
-      console.log("Session status update:", status);
-      
-      if (status === 'closed' || status === 'archived') {
-        console.log(`Session ${sessionCode} has been ${status}`);
-        handleLeaveClass();
-        setShowInactivityNotification(true);
-      }
-      
-      setSessionStatus(status || '');
-    });
-
-    setSessionListener(unsubscribe);
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [sessionCode, handleLeaveClass]);
-
-  /**
-   * Check for session inactivity
-   */
-  useEffect(() => {
-    if (!sessionCode) return;
-
-    const checkInactivity = () => {
-      const currentTime = Date.now();
-      const inactivityThreshold = SESSION_INACTIVITY_TIMEOUT;
-      
-      if (currentTime - lastActivity > inactivityThreshold) {
-        console.log('Session inactive for too long, leaving class...');
-        handleLeaveClass();
-        setShowInactivityNotification(true);
-      }
-    };
-
-    // Check every minute
-    const intervalId = setInterval(checkInactivity, 60000);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [sessionCode, lastActivity, handleLeaveClass]);
-
-  /**
-   * Show inactivity notification
-   */
-  useEffect(() => {
-    if (showInactivityNotification) {
-      const timeoutId = setTimeout(() => {
-        setShowInactivityNotification(false);
-      }, 5000); // Hide after 5 seconds
-
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [showInactivityNotification]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
@@ -1576,206 +1587,180 @@ export default function StudentPage() {
         </div>
       )}
 
-      {joined && (
-        <div className="container mx-auto px-4 py-6">
-          <div className="mb-6 flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-dark-text-primary">
-                {className}
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-dark-text-secondary">
-                Session Code: {sessionCode}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-gray-600 dark:text-dark-text-secondary">
-                <div className="flex items-center justify-end mb-1">
-                  <span className="mr-2">Time remaining:</span>
-                  <span className={`font-medium ${timeRemaining !== null && timeRemaining < 30 ? 'text-red-500' : ''}`}>
-                    {timeRemaining !== null ? `${timeRemaining} min` : '...'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-end">
-                  <span className="mr-2">Students:</span>
-                  <span className="font-medium">{studentCount}</span>
+      <div className="container mx-auto px-4 py-6">
+        {!joined ? (
+          <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
+            <div className="max-w-sm w-full mx-auto">
+              <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                <div className="p-8">
+                  <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-dark-text-primary">Join a Class</h2>
+                  
+                  <div className="group relative mb-4">
+                    <div className="flex items-center mb-1 justify-center">
+                      <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">
+                        Session Code
+                      </label>
+                      <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-60 p-2 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          Enter the 6-digit code provided by your professor
+                        </div>
+                        <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <JoinClass studentId={studentId} onSuccess={handleJoinClass} />
                 </div>
               </div>
             </div>
           </div>
-          {!joined ? (
-            <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
-              <div className="max-w-sm w-full mx-auto">
-                <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-                  <div className="p-8">
-                    <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-dark-text-primary">Join a Class</h2>
-                    
-                    <div className="group relative mb-4">
-                      <div className="flex items-center mb-1 justify-center">
-                        <label htmlFor="infoSessionCode" className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">
-                          Session Code
-                        </label>
-                        <div className="relative ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                          <div className="absolute top-0 left-full transform -translate-y-1/2 mt-1 ml-1 w-60 p-2 bg-gray-800 text-xs text-white rounded-md shadow-lg z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            Enter the 6-digit code provided by your professor
-                          </div>
-                          <svg className="h-4 w-4 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <JoinClass studentId={initState.studentId} onSuccess={handleJoinClass} />
+        ) : (
+          <div className="flex flex-col lg:flex-row items-start gap-6">
+            {/* Sidebar */}
+            <div className="w-full lg:w-1/3">
+              <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                {error && (
+                  <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
+                    <p className="text-sm font-medium">{error}</p>
                   </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col lg:flex-row items-start gap-6">
-              {/* Sidebar */}
-              <div className="w-full lg:w-1/3">
-                <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-                  {initState.error && (
-                    <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
-                      <p className="text-sm font-medium">{initState.error}</p>
-                    </div>
-                  )}
+                )}
 
-                  <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
-                    <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                    Class Information
-                  </h2>
+                <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-dark-text-primary">
+                  <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  Class Information
+                </h2>
 
-                  <div className="space-y-4">
-                    {/* Session Information Section */}
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
-                      <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
-                        <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Session Details
-                      </h3>
+                <div className="space-y-4">
+                  {/* Session Information Section */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Session Details
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-center dark:bg-blue-900/10 dark:border-blue-900 dark:text-dark-text-primary">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Class:</p>
+                        <p className="text-lg font-bold text-blue-600 dark:text-dark-primary">{className}</p>
+                      </div>
                       
-                      <div className="space-y-3">
-                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-center dark:bg-blue-900/10 dark:border-blue-900 dark:text-dark-text-primary">
-                          <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Class:</p>
-                          <p className="text-lg font-bold text-blue-600 dark:text-dark-primary">{className}</p>
-                        </div>
-                        
-                        <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
-                          <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
-                          <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
-                        </div>
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
+                        <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
                       </div>
                     </div>
+                  </div>
+                  
+                  {/* Leave Class Button */}
+                  <div className="mt-4">
+                    <button
+                      onClick={handleLeaveClass}
+                      disabled={isLeavingClass}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLeavingClass ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Leaving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span>Leave Class</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  
+                  {/* Tab Navigation */}
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
+                    <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                      <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                      </svg>
+                      Dashboard Views
+                    </h3>
                     
-                    {/* Leave Class Button */}
-                    <div className="mt-4">
+                    <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
                       <button
-                        onClick={handleLeaveClass}
-                        disabled={isLeavingClass}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors dark:bg-red-600 dark:hover:bg-red-700 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => handleTabChange('questions')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
+                          activeTab === 'questions'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                        }`}
                       >
-                        {isLeavingClass ? (
+                        Questions
+                        {newQuestionsCount > 0 && activeTab !== 'questions' && (
                           <>
-                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span>Leaving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                            </svg>
-                            <span>Leave Class</span>
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                            </div>
                           </>
                         )}
                       </button>
-                    </div>
-                    
-                    {/* Tab Navigation */}
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 dark:bg-dark-background-tertiary dark:border-gray-700">
-                      <h3 className="font-medium mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
-                        <svg className="mr-2 h-4 w-4 text-purple-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                        </svg>
-                        Dashboard Views
-                      </h3>
-                      
-                      <div className="flex border rounded-md overflow-hidden border-gray-300 dark:border-gray-600">
-                        <button
-                          onClick={() => handleTabChange('questions')}
-                          className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
-                            activeTab === 'questions'
-                              ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                              : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                          }`}
-                        >
-                          Questions
-                          {newQuestionsCount > 0 && activeTab !== 'questions' && (
-                            <>
-                              <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                                {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
-                              </div>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleTabChange('points')}
-                          className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
-                            activeTab === 'points'
-                              ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
-                              : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
-                          }`}
-                        >
-                          My Points
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleTabChange('points')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors ${
+                          activeTab === 'points'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary dark:text-dark-text-inverted'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-dark-background-tertiary dark:text-dark-text-secondary dark:hover:bg-dark-background-quaternary'
+                        }`}
+                      >
+                        My Points
+                      </button>
                     </div>
                   </div>
-                </div>
-              </div>
-              
-              {/* Main Content Area */}
-              <div className="w-full lg:w-2/3">
-                {/* Welcome Message */}
-                {showWelcome && (
-                  <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 mb-6 relative dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-                    <button 
-                      onClick={handleCloseWelcome}
-                      className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary"
-                      aria-label="Close welcome message"
-                    >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                    <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
-                      <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Welcome, Student!
-                    </h2>
-                    <p className="text-gray-600 dark:text-dark-text-secondary">
-                      You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
-                    </p>
-                  </div>
-                )}
-                
-                {/* Tabs Content */}
-                <div className="mb-6">
-                  {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      )}
+            
+            {/* Main Content Area */}
+            <div className="w-full lg:w-2/3">
+              {/* Welcome Message */}
+              {showWelcome && (
+                <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 mb-6 relative dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+                  <button 
+                    onClick={handleCloseWelcome}
+                    className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-dark-text-tertiary dark:hover:text-dark-text-secondary"
+                    aria-label="Close welcome message"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-dark-text-primary">
+                    <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Welcome, Student!
+                  </h2>
+                  <p className="text-gray-600 dark:text-dark-text-secondary">
+                    You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
+                  </p>
+                </div>
+              )}
+              
+              {/* Tabs Content */}
+              <div className="mb-6">
+                {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Delete Answer Confirmation Modal */}
       {deleteAnswerId && (
