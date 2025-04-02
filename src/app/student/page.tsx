@@ -92,19 +92,21 @@ export default function StudentPage() {
   console.log("== STUDENT PAGE INITIALIZING ==");
   
   // State for initialization
-  const [isInitialized, setIsInitialized] = useState(false);
-  
+  const [initState, setInitState] = useState({
+    isInitialized: false,
+    isLoading: true,
+    studentId: '',
+    error: null as string | null,
+    stage: 'starting'
+  });
+
   // State for class and session management
   const [className, setClassName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
   const [joined, setJoined] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [studentId, setStudentId] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
-  const [initStage, setInitStage] = useState('starting');
   const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   
@@ -199,14 +201,14 @@ export default function StudentPage() {
     setIsLeavingClass(true);
     
     // Clean up Firebase data first
-    if (studentId && sessionCode) {
+    if (initState.studentId && sessionCode) {
       // Update student count before leaving
       updateStudentCount(sessionCode, false)
         .catch((error: Error) => {
           console.error("Error updating student count:", error);
         });
 
-      leaveClass(studentId)
+      leaveClass(initState.studentId)
         .catch(error => {
           console.error("Error leaving class:", error);
         })
@@ -253,7 +255,7 @@ export default function StudentPage() {
       
       setIsLeavingClass(false);
     }
-  }, [studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
+  }, [initState.studentId, sessionCode, sessionListener, studentCountListener, isLeavingClass]);
 
   /**
    * Handle adding a point to student's total
@@ -299,7 +301,7 @@ export default function StudentPage() {
     setPointsInput(newValue.toString());
     
     // Sync with database if student is authenticated
-      if (studentId) {
+      if (initState.studentId) {
       // Indicate saving status
       setIsSavingPoints(true);
       
@@ -318,7 +320,7 @@ export default function StudentPage() {
             
             // Use a promise to get the current points value
             await new Promise<void>((resolve) => {
-              const unsubscribe = listenForStudentPoints(studentId, (dbPoints) => {
+              const unsubscribe = listenForStudentPoints(initState.studentId, (dbPoints) => {
               currentDbPoints = dbPoints;
                 unsubscribe();
                 resolve();
@@ -330,7 +332,7 @@ export default function StudentPage() {
             
             if (pointsDifference !== 0) {
             console.log(`Updating database with points difference: ${pointsDifference}`);
-            const success = await updateStudentPoints(studentId, pointsDifference);
+            const success = await updateStudentPoints(initState.studentId, pointsDifference);
             
             if (success) {
               console.log(`Points saved to database. New total: ${newValue}`);
@@ -365,12 +367,12 @@ export default function StudentPage() {
    * Updates the points state when changes occur in the database
    */
   useEffect(() => {
-    if (!studentId) return () => {};
+    if (!initState.studentId) return () => {};
     
-    console.log("Setting up points listener for student:", studentId);
+    console.log("Setting up points listener for student:", initState.studentId);
     let isInitialLoad = true;
     
-    const unsubscribe = listenForStudentPoints(studentId, (newPoints) => {
+    const unsubscribe = listenForStudentPoints(initState.studentId, (newPoints) => {
       console.log("Received points update from database:", newPoints);
       
       // If it's the initial load or the points are different from local state
@@ -405,246 +407,159 @@ export default function StudentPage() {
       console.log("Cleaning up points listener");
       unsubscribe();
     };
-  }, [studentId]); // Remove points dependency to avoid constant re-subscriptions
+  }, [initState.studentId]); // Remove points dependency to avoid constant re-subscriptions
 
   /**
-   * Initial setup effect - runs once when component mounts
-   * Checks if user is a student and gets their ID
+   * Single initialization effect that handles all setup
    */
   useEffect(() => {
     let isMounted = true;
+    let unsubscribers: (() => void)[] = [];
     
     const initialize = async () => {
-      console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
-      setInitStage('checking-user-type');
-      
-      // Check if user is a student
-      if (!isStudent()) {
-        console.log("Not a student, redirecting to home");
-        router.push('/');
-        return;
-      }
-
-      setInitStage('getting-user-id');
-      const userId = getUserId();
-      console.log("User ID retrieved:", userId ? "success" : "failed");
-      
-      if (!userId) {
-        console.log("No user ID found, redirecting to home");
-        router.push('/');
-        return;
-      }
-      
-      if (!isMounted) return;
-      
-      setStudentId(userId);
-      
-      // Verify Firebase connection
-      setInitStage('checking-firebase');
       try {
-        const connected = await checkFirebaseConnection();
-        if (!connected) {
-          console.error("Firebase connection failed");
-          setError("Unable to connect to database. Please refresh or try again later.");
-          setInitStage('firebase-connection-failed');
+        console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
+        
+        // Check if user is a student
+        if (!isStudent()) {
+          console.log("Not a student, redirecting to home");
+          router.push('/');
           return;
         }
+
+        // Get user ID
+        const userId = getUserId();
+        console.log("User ID retrieved:", userId ? "success" : "failed");
         
-        if (!isMounted) return;
-        
-        console.log("Firebase connection verified successfully");
-        setInitStage('firebase-connection-success');
-        setIsInitialized(true);
-      } catch (error) {
-        console.error("Error checking Firebase connection:", error);
-        setInitStage('firebase-connection-error');
-        if (isMounted) {
-          setError("Failed to connect to database. Please refresh or try again later.");
+        if (!userId) {
+          console.log("No user ID found, redirecting to home");
+          router.push('/');
+          return;
         }
-      } finally {
+
+        if (!isMounted) return;
+
+        // Update initialization state
+        setInitState(prev => ({
+          ...prev,
+          studentId: userId,
+          stage: 'checking-firebase'
+        }));
+
+        // Verify Firebase connection
+        const connected = await checkFirebaseConnection();
+        if (!connected) {
+          throw new Error("Firebase connection failed");
+        }
+
+        if (!isMounted) return;
+
+        // Check for joined class
+        const joinedClass = await getJoinedClass(userId);
+        
+        if (joinedClass) {
+          setJoined(true);
+          setClassName(joinedClass.className);
+          setSessionCode(joinedClass.sessionCode);
+          
+          // Set up session status listener
+          const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
+            if (!isMounted) return;
+            if (status === 'closed' || status === 'archived') {
+              handleLeaveClass();
+              setShowInactivityNotification(true);
+            }
+            setSessionStatus(status || '');
+          });
+          unsubscribers.push(unsubscribeSession);
+          
+          // Set up student count listener
+          const unsubscribeCount = listenForStudentCount(joinedClass.sessionCode, (count) => {
+            if (!isMounted) return;
+            setStudentCount(count);
+          });
+          unsubscribers.push(unsubscribeCount);
+        }
+
+        if (!isMounted) return;
+
+        // Complete initialization
+        setInitState(prev => ({
+          ...prev,
+          isInitialized: true,
+          isLoading: false,
+          stage: 'complete'
+        }));
+
+      } catch (error) {
+        console.error("Initialization error:", error);
         if (isMounted) {
-          setIsLoading(false);
+          setInitState(prev => ({
+            ...prev,
+            error: error instanceof Error ? error.message : "Failed to initialize",
+            isLoading: false,
+            stage: 'error'
+          }));
         }
       }
     };
 
     initialize();
-    
+
     return () => {
       isMounted = false;
+      unsubscribers.forEach(unsubscribe => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.error("Error during cleanup:", error);
+        }
+      });
     };
-  }, [router]);
+  }, [router, handleLeaveClass]);
 
   /**
-   * Effect to check if student has joined a class and set up listeners
-   * Only runs after initialization is complete and we have a student ID
+   * Effect to handle class-specific setup after initialization
    */
   useEffect(() => {
-    if (!isInitialized || !studentId || isLoading) {
-      console.log("Waiting for initialization to complete", { isInitialized, studentId, isLoading });
+    if (!initState.isInitialized || !initState.studentId || !sessionCode) {
       return;
     }
-    
-    console.log("== JOINED CLASS EFFECT STARTED ==", { studentId, isLoading });
-    
-    let unsubscribers: (() => void)[] = [];
+
     let isComponentMounted = true;
+    const unsubscribers: (() => void)[] = [];
 
-    const checkJoinedClass = async () => {
+    const setupClassListeners = async () => {
       try {
-        console.log("Checking for joined class...");
-        const joinedClass = await getJoinedClass(studentId);
-        
-        if (!joinedClass || !isComponentMounted) {
-          console.log("No joined class found or component unmounted");
-          return;
-        }
-
-        console.log("Found joined class:", joinedClass);
-        setJoinedClass(joinedClass);
-        setJoined(true);
-        setClassName(joinedClass.className);
-        setSessionCode(joinedClass.sessionCode);
-        
-        // Set up session status listener with enhanced error handling
-        const unsubscribeSession = listenForSessionStatus(joinedClass.sessionCode, (status) => {
+        // Set up questions listener
+        const unsubscribeQuestions = listenForQuestions(sessionCode, (questions) => {
           if (!isComponentMounted) return;
-          console.log("Session status update:", status);
-          
-          if (status === 'closed' || status === 'archived') {
-            console.log(`Session ${joinedClass.sessionCode} has been ${status}`);
-            // Clean up all listeners
-            unsubscribers.forEach(unsubscribe => {
-              try {
-                unsubscribe();
-              } catch (error) {
-                console.error("Error during cleanup:", error);
-              }
-            });
-            
-            // Reset all state
-            setJoined(false);
-            setClassName('');
-            setSessionCode('');
-            setQuestions([]);
-            setActiveQuestion(null);
-            setStudentCount(0);
-            setStudentAnswer(null);
-            setAnswerText('');
-            setAnswerSubmitted(false);
-            setEditingAnswerId(null);
-            setDeleteAnswerId(null);
-            setShowAnswerDeletedModal(false);
-            
-            // Show appropriate notification
-            if (status === 'closed') {
-              setShowInactivityNotification(true);
-            }
-          }
-          
-          setSessionStatus(status || '');
+          setQuestions(questions);
         });
-        unsubscribers.push(unsubscribeSession);
+        unsubscribers.push(unsubscribeQuestions);
 
-        // Set up active question listener with optimized settings
-        setIsLoadingQuestion(true);
-        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+        // Set up active question listener
+        const unsubscribeActive = listenForActiveQuestion(sessionCode, (question) => {
           if (!isComponentMounted) return;
-          console.log("Active question update received:", question ? "yes" : "no");
-          
-          if (question) {
-            console.log(`Active question details - ID: ${question.id}`);
-            
-            // Check if this is a new question that we haven't seen before
-            const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
-            
-            // Update the active question state immediately
-            setActiveQuestion(question);
-            setIsLoadingQuestion(false);
-            
-            if (isNewQuestion) {
-              console.log("New active question detected - clearing previous answer state");
-              // Reset answer-related state for the new question
-              setAnswerText('');
-              setAnswerSubmitted(false);
-              setStudentAnswer(null);
-              previousAnswerRef.current = null;
-              setEditingAnswerId(null);
-              setDeleteAnswerId(null);
-            }
-          } else {
-            // Only clear the question if we explicitly receive null (session ended)
-            setActiveQuestion(null);
-            setIsLoadingQuestion(false);
-          }
-          
-          lastQuestionCheckRef.current = Date.now();
-        }, { 
-          maxWaitTime: DEBOUNCE_DELAY,
-          useCache: true
+          setActiveQuestion(question);
+          setIsLoadingQuestion(false);
         });
-        unsubscribers.push(unsubscribeActiveQuestion);
+        unsubscribers.push(unsubscribeActive);
 
         // Set up points listener
-        const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
+        const unsubscribePoints = listenForStudentPoints(initState.studentId, (points) => {
           if (!isComponentMounted) return;
-          console.log("Points update received:", points);
           setStudentPoints(points);
         });
         unsubscribers.push(unsubscribePoints);
 
-        // Set up questions listener with optimized settings
-        const unsubscribeQuestions = listenForQuestions(joinedClass.sessionCode, (questions) => {
-          if (!isComponentMounted) return;
-          console.log("Questions update received:", questions.length);
-          setQuestions(questions);
-        }, {
-          maxWaitTime: DEBOUNCE_DELAY,
-          useCache: true
-        });
-        unsubscribers.push(unsubscribeQuestions);
-
-        // Set up user questions listener with optimized settings
-        const unsubscribeUserQuestions = listenForUserQuestions(studentId, joinedClass.sessionCode, (userQuestions) => {
-          if (!isComponentMounted) return;
-          console.log("User questions update received:", userQuestions.length);
-          setUserQuestions(userQuestions);
-        }, {
-          maxWaitTime: DEBOUNCE_DELAY,
-          useCache: true
-        });
-        unsubscribers.push(unsubscribeUserQuestions);
-
-        // Set up answers listener only when there's an active question
-        if (activeQuestion) {
-          const unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
-            if (!isComponentMounted) return;
-            console.log("Answers update received:", answers.length);
-            setAnswers(answers);
-          });
-          unsubscribers.push(unsubscribeAnswers);
-        }
-
-        // Set up student count listener
-        const unsubscribeStudentCount = listenForStudentCount(joinedClass.sessionCode, (count: number) => {
-          if (!isComponentMounted) return;
-          setStudentCount(count);
-        });
-        unsubscribers.push(unsubscribeStudentCount);
-        setStudentCountListener(unsubscribeStudentCount);
-
-        setIsLoading(false);
       } catch (error) {
-        console.error("Error in checkJoinedClass:", error);
-        if (isComponentMounted) {
-          setIsLoading(false);
-          setError("Failed to initialize class. Please try again.");
-        }
+        console.error("Error setting up class listeners:", error);
       }
     };
 
-    checkJoinedClass();
-    
+    setupClassListeners();
+
     return () => {
       isComponentMounted = false;
       unsubscribers.forEach(unsubscribe => {
@@ -655,7 +570,7 @@ export default function StudentPage() {
         }
       });
     };
-  }, [isInitialized, studentId, isLoading]); // Add isInitialized to dependencies
+  }, [initState.isInitialized, initState.studentId, sessionCode]);
 
   /**
    * Record user activity
@@ -735,28 +650,24 @@ export default function StudentPage() {
    */
   const handleJoinClass = async (code: string) => {
     try {
-      setIsLoading(true);
-      setError(null);
+      setInitState(prev => ({ ...prev, isLoading: true, error: null }));
       
       // Check if session exists and is active
       const session = await getSessionByCode(code);
       if (!session) {
-        setError("Invalid session code. Please check and try again.");
-        setIsLoading(false);
+        setInitState(prev => ({ ...prev, isLoading: false, error: "Invalid session code. Please check and try again." }));
         return;
       }
       
       if (session.status !== 'active') {
-        setError("This session is no longer active.");
-        setIsLoading(false);
+        setInitState(prev => ({ ...prev, isLoading: false, error: "This session is no longer active." }));
         return;
       }
       
       // Join the class
-      const success = await joinClass(code, studentId);
+      const success = await joinClass(code, initState.studentId);
       if (!success) {
-        setError("Failed to join class. Please try again.");
-        setIsLoading(false);
+        setInitState(prev => ({ ...prev, isLoading: false, error: "Failed to join class. Please try again." }));
         return;
       }
 
@@ -774,7 +685,7 @@ export default function StudentPage() {
       setStudentCountListener(unsubscribeStudentCount);
       
       // Set up personal questions listener with optimized settings
-      const unsubscribePersonal = listenForUserQuestions(studentId, code, (questions) => {
+      const unsubscribePersonal = listenForUserQuestions(initState.studentId, code, (questions) => {
         setUserQuestions(questions);
       }, {
         maxWaitTime: DEBOUNCE_DELAY,
@@ -810,7 +721,7 @@ export default function StudentPage() {
       unsubscribers.push(unsubscribeSessionStatus);
       
       // Set up points listener
-      const unsubscribePoints = listenForStudentPoints(studentId, (points) => {
+      const unsubscribePoints = listenForStudentPoints(initState.studentId, (points) => {
         setStudentPoints(points);
       });
       unsubscribers.push(unsubscribePoints);
@@ -834,9 +745,7 @@ export default function StudentPage() {
       
     } catch (error) {
       console.error("Error joining class:", error);
-      setError("Failed to join class. Please try again.");
-    } finally {
-      setIsLoading(false);
+      setInitState(prev => ({ ...prev, isLoading: false, error: "Failed to join class. Please try again." }));
     }
   };
 
@@ -875,10 +784,10 @@ export default function StudentPage() {
    * Handle saving an edited answer
    */
   const handleSaveEditAnswer = async () => {
-    if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
+    if (!editingAnswerId || !editAnswerText.trim() || !initState.studentId) return;
 
     try {
-      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), studentId);
+      const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), initState.studentId);
       if (success) {
         // Update local state immediately
         const updatedAnswer = {
@@ -891,11 +800,11 @@ export default function StudentPage() {
         setEditingAnswerId(null);
         setEditAnswerText('');
       } else {
-        setError("Failed to update answer. Please try again.");
+        setInitState(prev => ({ ...prev, error: "Failed to update answer. Please try again." }));
       }
     } catch (error) {
       console.error("Error updating answer:", error);
-      setError("Failed to update answer. Please try again.");
+      setInitState(prev => ({ ...prev, error: "Failed to update answer. Please try again." }));
     }
   };
 
@@ -903,10 +812,10 @@ export default function StudentPage() {
    * Handle deleting an answer
    */
   const handleDeleteAnswer = async () => {
-    if (!deleteAnswerId || !studentId) return;
+    if (!deleteAnswerId || !initState.studentId) return;
 
     try {
-      const success = await deleteAnswer(deleteAnswerId, studentId);
+      const success = await deleteAnswer(deleteAnswerId, initState.studentId);
       if (success) {
         // Reset all answer-related state
         setStudentAnswer(null);
@@ -915,11 +824,11 @@ export default function StudentPage() {
         previousAnswerRef.current = null;
         setDeleteAnswerId(null); // Clear the deleteAnswerId immediately
       } else {
-        setError("Failed to delete answer. Please try again.");
+        setInitState(prev => ({ ...prev, error: "Failed to delete answer. Please try again." }));
       }
     } catch (error) {
       console.error("Error deleting answer:", error);
-      setError("Failed to delete answer. Please try again.");
+      setInitState(prev => ({ ...prev, error: "Failed to delete answer. Please try again." }));
     }
   };
 
@@ -927,7 +836,7 @@ export default function StudentPage() {
   const handleAnswerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!activeQuestion || !answerText.trim() || !studentId || !sessionCode) {
+    if (!activeQuestion || !answerText.trim() || !initState.studentId || !sessionCode) {
       return;
     }
     
@@ -937,7 +846,7 @@ export default function StudentPage() {
       const result = await addAnswer({
         text: answerText.trim(),
         activeQuestionId: activeQuestion.id,
-        studentId,
+        studentId: initState.studentId,
         sessionCode,
         questionText: activeQuestion.text
       });
@@ -948,7 +857,7 @@ export default function StudentPage() {
           id: result,
           text: answerText.trim(),
           timestamp: Date.now(),
-          studentId,
+          studentId: initState.studentId,
           questionText: activeQuestion.text,
           activeQuestionId: activeQuestion.id
         };
@@ -961,7 +870,7 @@ export default function StudentPage() {
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
-      setError("Failed to submit answer. Please try again.");
+      setInitState(prev => ({ ...prev, error: "Failed to submit answer. Please try again." }));
     } finally {
       setIsSubmittingAnswer(false);
     }
@@ -971,9 +880,9 @@ export default function StudentPage() {
   useEffect(() => {
     let unsubscribeAnswers: (() => void) | undefined;
 
-    if (activeQuestion && studentId) {
+    if (activeQuestion && initState.studentId) {
       unsubscribeAnswers = listenForAnswers(activeQuestion.id, (answers) => {
-        const studentAnswer = answers.find(a => a.studentId === studentId);
+        const studentAnswer = answers.find(a => a.studentId === initState.studentId);
         const hadPreviousAnswer = previousAnswerRef.current !== null;
         
         if (!studentAnswer && hadPreviousAnswer) {
@@ -1002,7 +911,7 @@ export default function StudentPage() {
         unsubscribeAnswers();
       }
     };
-  }, [activeQuestion, studentId, editingAnswerId]);
+  }, [activeQuestion, initState.studentId, editingAnswerId]);
 
   // Handle deleting a question from both lists
   const handleQuestionDelete = useCallback(async (questionId: string) => {
@@ -1013,11 +922,11 @@ export default function StudentPage() {
         setQuestions(prev => prev.filter(q => q.id !== questionId));
         setUserQuestions(prev => prev.filter(q => q.id !== questionId));
       } else {
-        setError("Failed to delete question. Please try again.");
+        setInitState(prev => ({ ...prev, error: "Failed to delete question. Please try again." }));
       }
     } catch (error) {
       console.error("Error deleting question:", error);
-      setError("Failed to delete question. Please try again.");
+      setInitState(prev => ({ ...prev, error: "Failed to delete question. Please try again." }));
     }
   }, []);
   
@@ -1139,7 +1048,7 @@ export default function StudentPage() {
               Ask a Question
             </h2>
             <QuestionForm 
-              studentId={studentId}
+              studentId={initState.studentId}
               sessionCode={sessionCode}
             />
           </div>
@@ -1158,7 +1067,7 @@ export default function StudentPage() {
               questions={questions}
               isProfessor={false}
               isStudent={true}
-              studentId={studentId}
+              studentId={initState.studentId}
               showControls={false}
               emptyMessage="No questions have been asked yet."
               onDelete={handleQuestionDelete}
@@ -1181,7 +1090,7 @@ export default function StudentPage() {
               questions={userQuestions}
               isProfessor={false}
               isStudent={true}
-              studentId={studentId}
+              studentId={initState.studentId}
               showControls={true}
               emptyMessage="You haven't asked any questions yet."
               onDelete={handleQuestionDelete}
@@ -1437,20 +1346,20 @@ export default function StudentPage() {
    * Function to manually refresh student points from the database
    */
   const refreshStudentPoints = async () => {
-    if (!studentId) {
+    if (!initState.studentId) {
       console.log("Cannot refresh points: no student ID available");
       return;
     }
 
     try {
-      setIsLoading(true);
-      console.log(`Manually refreshing points for student: ${studentId}`);
+      setInitState(prev => ({ ...prev, isLoading: true }));
+      console.log(`Manually refreshing points for student: ${initState.studentId}`);
       
       // Clear cache first to ensure we get fresh data
-      clearPointsCache(studentId);
+      clearPointsCache(initState.studentId);
       
       // Get the points data from Firestore
-      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      const pointsRef = doc(db, STUDENT_POINTS_COLLECTION, initState.studentId);
       const pointsDoc = await getDoc(pointsRef);
       
       if (pointsDoc.exists()) {
@@ -1459,7 +1368,7 @@ export default function StudentPage() {
         setPoints(pointsData.total || 0);
         setPointsInput((pointsData.total || 0).toString());
       } else {
-        console.log(`No points record found for student: ${studentId}, initializing with 0`);
+        console.log(`No points record found for student: ${initState.studentId}, initializing with 0`);
         // Initialize with 0 points if no record exists
         await setDoc(pointsRef, { 
           total: 0,
@@ -1469,11 +1378,10 @@ export default function StudentPage() {
         setPointsInput('0');
       }
       
-      setIsLoading(false);
+      setInitState(prev => ({ ...prev, isLoading: false }));
     } catch (error) {
       console.error("Error refreshing student points:", error);
-      setError("Failed to refresh points data. Please try again.");
-      setIsLoading(false);
+      setInitState(prev => ({ ...prev, error: "Failed to refresh points data. Please try again.", isLoading: false }));
     }
   };
 
@@ -1499,17 +1407,17 @@ export default function StudentPage() {
   }
 
   // Show error state if there's a problem
-  if (error) {
+  if (initState.error) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
         <Navbar userType="student" onLogout={handleLogout} />
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full dark:bg-dark-background-secondary dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
             <h2 className="text-red-600 text-2xl font-bold mb-4 dark:text-red-400">Error</h2>
-            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{error}</p>
+            <p className="mb-4 text-gray-700 dark:text-dark-text-secondary">{initState.error}</p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => setError(null)}
+                onClick={() => setInitState(prev => ({ ...prev, error: null }))}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 dark:bg-dark-primary dark:hover:bg-dark-primary-hover dark:text-dark-text-inverted transition-colors"
               >
                 Dismiss
@@ -1528,7 +1436,7 @@ export default function StudentPage() {
   }
 
   // Show loading state
-  if (isLoading) {
+  if (initState.isLoading) {
   return (
       <div className="min-h-screen bg-gray-100 dark:bg-dark-background flex flex-col">
       <Navbar userType="student" onLogout={handleLogout} />
@@ -1717,7 +1625,7 @@ export default function StudentPage() {
                       </div>
                     </div>
                     
-                    <JoinClass studentId={studentId} onSuccess={handleJoinClass} />
+                    <JoinClass studentId={initState.studentId} onSuccess={handleJoinClass} />
                   </div>
                 </div>
               </div>
@@ -1727,9 +1635,9 @@ export default function StudentPage() {
               {/* Sidebar */}
               <div className="w-full lg:w-1/3">
                 <div className="bg-white dark:bg-dark-background-secondary shadow-md rounded-lg p-6 sticky top-6 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-                  {error && (
+                  {initState.error && (
                     <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg dark:bg-red-900/20 dark:text-red-300 dark:border dark:border-red-800">
-                      <p className="text-sm font-medium">{error}</p>
+                      <p className="text-sm font-medium">{initState.error}</p>
                     </div>
                   )}
 
