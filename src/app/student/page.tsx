@@ -511,9 +511,9 @@ export default function StudentPage() {
   useEffect(() => {
     console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
     
-    if (!studentId) {
-      console.log("No student ID available, skipping class check");
-      setIsLoading(false);
+    // Don't proceed if we're still loading or don't have a student ID
+    if (isLoading || !studentId) {
+      console.log("Waiting for initialization or no student ID available");
       return;
     }
     
@@ -687,7 +687,7 @@ export default function StudentPage() {
         }
       });
     };
-  }, [studentId, activeQuestion?.id]); // Remove isLoading from dependencies
+  }, [studentId, isLoading]); // Add isLoading to dependencies
 
   /**
    * Record user activity
