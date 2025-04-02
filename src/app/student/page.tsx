@@ -565,42 +565,42 @@ export default function StudentPage() {
         unsubscribers.push(unsubscribeSession);
 
         // Set up active question listener with optimized settings
-          setIsLoadingQuestion(true);
-          const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
+        setIsLoadingQuestion(true);
+        const unsubscribeActiveQuestion = listenForActiveQuestion(joinedClass.sessionCode, (question) => {
           if (!isComponentMounted) return;
-            console.log("Active question update received:", question ? "yes" : "no");
+          console.log("Active question update received:", question ? "yes" : "no");
+          
+          if (question) {
+            console.log(`Active question details - ID: ${question.id}`);
             
-            if (question) {
-              console.log(`Active question details - ID: ${question.id}`);
-              
-              // Check if this is a new question that we haven't seen before
-              const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
-              
-              // Update the active question state immediately
-              setActiveQuestion(question);
-              setIsLoadingQuestion(false);
-              
-              if (isNewQuestion) {
-                console.log("New active question detected - clearing previous answer state");
-                // Reset answer-related state for the new question
-                setAnswerText('');
-                setAnswerSubmitted(false);
-                setStudentAnswer(null);
-                previousAnswerRef.current = null;
-                setEditingAnswerId(null);
-                setDeleteAnswerId(null);
-              }
-            } else {
-              // Only clear the question if we explicitly receive null (session ended)
-              setActiveQuestion(null);
-              setIsLoadingQuestion(false);
+            // Check if this is a new question that we haven't seen before
+            const isNewQuestion = !activeQuestion || activeQuestion.id !== question.id;
+            
+            // Update the active question state immediately
+            setActiveQuestion(question);
+            setIsLoadingQuestion(false);
+            
+            if (isNewQuestion) {
+              console.log("New active question detected - clearing previous answer state");
+              // Reset answer-related state for the new question
+              setAnswerText('');
+              setAnswerSubmitted(false);
+              setStudentAnswer(null);
+              previousAnswerRef.current = null;
+              setEditingAnswerId(null);
+              setDeleteAnswerId(null);
             }
-            
-            lastQuestionCheckRef.current = Date.now();
-          }, { 
-            maxWaitTime: DEBOUNCE_DELAY,
-            useCache: true
-          });
+          } else {
+            // Only clear the question if we explicitly receive null (session ended)
+            setActiveQuestion(null);
+            setIsLoadingQuestion(false);
+          }
+          
+          lastQuestionCheckRef.current = Date.now();
+        }, { 
+          maxWaitTime: DEBOUNCE_DELAY,
+          useCache: true
+        });
         unsubscribers.push(unsubscribeActiveQuestion);
 
         // Set up points listener
@@ -645,16 +645,17 @@ export default function StudentPage() {
 
         // Set up student count listener
         const unsubscribeStudentCount = listenForStudentCount(joinedClass.sessionCode, (count: number) => {
+          if (!isComponentMounted) return;
           setStudentCount(count);
         });
         unsubscribers.push(unsubscribeStudentCount);
         setStudentCountListener(unsubscribeStudentCount);
 
-          setIsLoading(false);
+        setIsLoading(false);
       } catch (error) {
         console.error("Error in checkJoinedClass:", error);
         if (isComponentMounted) {
-        setIsLoading(false);
+          setIsLoading(false);
           setError("Failed to initialize class. Please try again.");
         }
       }
@@ -1589,7 +1590,7 @@ export default function StudentPage() {
     setTimeRemaining(getSessionTimeRemaining());
 
     // Update every minute
-    timeRemainingIntervalRef.current = setInterval(() => {
+    const intervalId = setInterval(() => {
       const remaining = getSessionTimeRemaining();
       setTimeRemaining(remaining);
 
@@ -1602,11 +1603,9 @@ export default function StudentPage() {
 
     // Cleanup function
     return () => {
-      if (timeRemainingIntervalRef.current) {
-        clearInterval(timeRemainingIntervalRef.current);
-      }
+      clearInterval(intervalId);
     };
-  }, [sessionCode, lastActivity, handleLeaveClass]);
+  }, [sessionCode, lastActivity, handleLeaveClass, getSessionTimeRemaining]);
 
   /**
    * Handle session status updates
