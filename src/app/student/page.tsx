@@ -72,6 +72,19 @@ interface Answer {
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
 
+// Move getSessionTimeRemaining outside the component
+const getSessionTimeRemaining = (lastActivity: number, sessionCode: string | null) => {
+  if (!sessionCode || !lastActivity) return null;
+  
+  const elapsedMs = Date.now() - lastActivity;
+  const remainingMs = SESSION_INACTIVITY_TIMEOUT - elapsedMs;
+  
+  if (remainingMs <= 0) return 0;
+  
+  // Convert to minutes and round
+  return Math.round(remainingMs / (60 * 1000));
+};
+
 export default function StudentPage() {
   const router = useRouter();
   
@@ -1562,22 +1575,6 @@ export default function StudentPage() {
   }
 
   /**
-   * Calculate time remaining before session auto-ends
-   * Returns the time in minutes or null if no session is active
-   */
-  const getSessionTimeRemaining = () => {
-    if (!sessionCode || !lastActivity) return null;
-    
-    const elapsedMs = Date.now() - lastActivity;
-    const remainingMs = SESSION_INACTIVITY_TIMEOUT - elapsedMs;
-    
-    if (remainingMs <= 0) return 0;
-    
-    // Convert to minutes and round
-    return Math.round(remainingMs / (60 * 1000));
-  };
-
-  /**
    * Update time remaining display
    */
   useEffect(() => {
@@ -1587,11 +1584,11 @@ export default function StudentPage() {
     }
 
     // Update immediately
-    setTimeRemaining(getSessionTimeRemaining());
+    setTimeRemaining(getSessionTimeRemaining(lastActivity, sessionCode));
 
     // Update every minute
     const intervalId = setInterval(() => {
-      const remaining = getSessionTimeRemaining();
+      const remaining = getSessionTimeRemaining(lastActivity, sessionCode);
       setTimeRemaining(remaining);
 
       // If time is up, leave the class
@@ -1605,7 +1602,7 @@ export default function StudentPage() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [sessionCode, lastActivity, handleLeaveClass, getSessionTimeRemaining]);
+  }, [sessionCode, lastActivity, handleLeaveClass]);
 
   /**
    * Handle session status updates
