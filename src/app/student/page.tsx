@@ -91,6 +91,9 @@ export default function StudentPage() {
   // Add initialization logging
   console.log("== STUDENT PAGE INITIALIZING ==");
   
+  // State for initialization
+  const [isInitialized, setIsInitialized] = useState(false);
+  
   // State for class and session management
   const [className, setClassName] = useState('');
   const [sessionCode, setSessionCode] = useState('');
@@ -409,113 +412,80 @@ export default function StudentPage() {
    * Checks if user is a student and gets their ID
    */
   useEffect(() => {
-    console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
-    setInitStage('checking-user-type');
+    let isMounted = true;
     
-    // Check if user is a student
-    if (!isStudent()) {
-      console.log("Not a student, redirecting to home");
-      router.push('/');
-      setIsLoading(false);
-      return;
-    }
+    const initialize = async () => {
+      console.log("== STUDENT PAGE MOUNT EFFECT STARTED ==");
+      setInitStage('checking-user-type');
+      
+      // Check if user is a student
+      if (!isStudent()) {
+        console.log("Not a student, redirecting to home");
+        router.push('/');
+        return;
+      }
 
-    setInitStage('getting-user-id');
-    const userId = getUserId();
-    console.log("User ID retrieved:", userId ? "success" : "failed");
-    
-    if (!userId) {
-      console.log("No user ID found, redirecting to home");
-      router.push('/');
-      setIsLoading(false);
-      return;
-    }
-    
-    setStudentId(userId);
-    setIsLoading(false);
-
-    // Check network status
-    const handleOnline = () => {
-      console.log("Network connection restored");
-      setNetworkStatus('online');
-    };
-    
-    const handleOffline = () => {
-      console.log("Network connection lost");
-      setNetworkStatus('offline');
-    };
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    setInitStage('checking-firebase');
-    // Verify Firebase connection on page load
-    checkFirebaseConnection()
-      .then(connected => {
+      setInitStage('getting-user-id');
+      const userId = getUserId();
+      console.log("User ID retrieved:", userId ? "success" : "failed");
+      
+      if (!userId) {
+        console.log("No user ID found, redirecting to home");
+        router.push('/');
+        return;
+      }
+      
+      if (!isMounted) return;
+      
+      setStudentId(userId);
+      
+      // Verify Firebase connection
+      setInitStage('checking-firebase');
+      try {
+        const connected = await checkFirebaseConnection();
         if (!connected) {
-          console.error("Firebase connection failed. Check your Firebase configuration.");
+          console.error("Firebase connection failed");
           setError("Unable to connect to database. Please refresh or try again later.");
           setInitStage('firebase-connection-failed');
-        } else {
-          console.log("Firebase connection verified successfully.");
-          setInitStage('firebase-connection-success');
+          return;
         }
-      })
-      .catch(error => {
+        
+        if (!isMounted) return;
+        
+        console.log("Firebase connection verified successfully");
+        setInitStage('firebase-connection-success');
+        setIsInitialized(true);
+      } catch (error) {
         console.error("Error checking Firebase connection:", error);
         setInitStage('firebase-connection-error');
-      });
+        if (isMounted) {
+          setError("Failed to connect to database. Please refresh or try again later.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initialize();
     
-    console.log("== STUDENT PAGE MOUNT EFFECT COMPLETED ==");
-    
-    // Cleanup function
     return () => {
-      // Clean up event listeners
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      
-      // Clean up any pending timeouts
-      if (pointsSaveTimeoutRef.current) {
-        clearTimeout(pointsSaveTimeoutRef.current);
-      }
-      
-      // Clear points cache for this student when the component unmounts
-      if (userId) {
-        clearPointsCache(userId);
-      }
-      
-      console.log("== STUDENT PAGE CLEANUP COMPLETED ==");
+      isMounted = false;
     };
   }, [router]);
 
   /**
-   * Set up automatic database maintenance
-   * This runs periodically to clean up orphaned data and inactive sessions
-   */
-  useEffect(() => {
-    if (maintenanceSetup) return;
-    
-    // Only set up maintenance once
-    const cleanupMaintenance = setupAutomaticMaintenance();
-    setMaintenanceSetup(true);
-    
-    return () => {
-      cleanupMaintenance();
-    };
-  }, [maintenanceSetup]);
-
-  /**
    * Effect to check if student has joined a class and set up listeners
-   * for questions, class questions, and active questions
+   * Only runs after initialization is complete and we have a student ID
    */
   useEffect(() => {
-    console.log("== JOINED CLASS EFFECT STARTED ==", {studentId, isLoading});
-    
-    // Don't proceed if we're still loading or don't have a student ID
-    if (isLoading || !studentId) {
-      console.log("Waiting for initialization or no student ID available");
+    if (!isInitialized || !studentId || isLoading) {
+      console.log("Waiting for initialization to complete", { isInitialized, studentId, isLoading });
       return;
     }
+    
+    console.log("== JOINED CLASS EFFECT STARTED ==", { studentId, isLoading });
     
     let unsubscribers: (() => void)[] = [];
     let isComponentMounted = true;
@@ -527,7 +497,6 @@ export default function StudentPage() {
         
         if (!joinedClass || !isComponentMounted) {
           console.log("No joined class found or component unmounted");
-          setIsLoading(false);
           return;
         }
 
@@ -676,7 +645,6 @@ export default function StudentPage() {
 
     checkJoinedClass();
     
-    // Cleanup function
     return () => {
       isComponentMounted = false;
       unsubscribers.forEach(unsubscribe => {
@@ -687,7 +655,7 @@ export default function StudentPage() {
         }
       });
     };
-  }, [studentId, isLoading]); // Add isLoading to dependencies
+  }, [isInitialized, studentId, isLoading]); // Add isInitialized to dependencies
 
   /**
    * Record user activity
