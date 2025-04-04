@@ -127,7 +127,7 @@ export default function ProfessorPage() {
       try {
         const savedSession = localStorage.getItem('professorSession');
         if (savedSession) {
-          const { sessionId: savedSessionId, sessionCode: savedSessionCode, className: savedClassName, startTime } = JSON.parse(savedSession);
+          const { sessionId: savedSessionId, sessionCode: savedSessionCode, className: savedClassName, startTime, activeQuestionId: savedActiveQuestionId } = JSON.parse(savedSession);
           
           // Check if the session is still active in the database
           const sessionDoc = await getDoc(doc(db, CLASS_SESSIONS_COLLECTION, savedSessionId));
@@ -138,6 +138,16 @@ export default function ProfessorPage() {
             setSessionActive(true);
             setSessionStartTime(startTime);
             setLastActivity(Date.now());
+            
+            // Restore active question if it exists
+            if (savedActiveQuestionId) {
+              setActiveQuestionId(savedActiveQuestionId);
+              // Get the question text from the database
+              const questionDoc = await getDoc(doc(db, ACTIVE_QUESTION_COLLECTION, savedActiveQuestionId));
+              if (questionDoc.exists()) {
+                setActiveQuestionText(questionDoc.data().text);
+              }
+            }
             
             // Start listening for questions
             const unsubscribe = listenForQuestions(savedSessionCode, (newQuestions) => {
@@ -460,6 +470,8 @@ export default function ProfessorPage() {
       setSessionId('');
       setSessionCode('');
       setQuestions([]);
+      setActiveQuestionId(null);
+      setActiveQuestionText('');
       setIsLoading(false);
       // Clear session from localStorage
       localStorage.removeItem('professorSession');
@@ -572,7 +584,6 @@ export default function ProfessorPage() {
       setSessionActive(false);
       setSessionId('');
       setSessionCode('');
-      setQuestions([]);
       
       // Clear session from localStorage in all cases
       localStorage.removeItem('professorSession');
@@ -736,6 +747,14 @@ export default function ProfessorPage() {
       // Set as the active question and clear form
       setActiveQuestionId(id);
       setQuestionText('');
+      
+      // Save active question to localStorage
+      const savedSession = localStorage.getItem('professorSession');
+      if (savedSession) {
+        const sessionData = JSON.parse(savedSession);
+        sessionData.activeQuestionId = id;
+        localStorage.setItem('professorSession', JSON.stringify(sessionData));
+      }
       
       // Clear previous answers when setting new question
       setAnswers([]);
