@@ -1356,60 +1356,59 @@ export default function ProfessorPage() {
                       <button
                         onClick={() => handleTabChange('questions')}
                         className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
-                      activeTab === 'questions'
+                          activeTab === 'questions'
                             ? 'bg-blue-500 text-white dark:bg-dark-primary'
                             : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Questions
-                      {newQuestionsCount > 0 && activeTab !== 'questions' && (
-                        <>
-                          <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
-                          </div>
-                        </>
-                      )}
-                    </button>
-                    <button
-                          onClick={() => handleTabChange('points')}
-                          className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
-                        activeTab === 'points'
-                              ? 'bg-blue-500 text-white dark:bg-dark-primary'
-                              : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      Points
-                      {newAnswersCount > 0 && activeTab !== 'points' && (
-                        <>
-                          <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {newAnswersCount} new answer{newAnswersCount !== 1 ? 's' : ''}
-                          </div>
-                        </>
-                      )}
-                    </button>
+                        }`}
+                      >
+                        Questions
+                        {newQuestionsCount > 0 && activeTab !== 'questions' && (
+                          <>
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {newQuestionsCount} new question{newQuestionsCount !== 1 ? 's' : ''}
+                            </div>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleTabChange('points')}
+                        className={`flex-1 py-2 text-center text-sm font-medium transition-colors relative ${
+                          activeTab === 'points'
+                            ? 'bg-blue-500 text-white dark:bg-dark-primary'
+                            : 'bg-white hover:bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        Points
+                        {newAnswersCount > 0 && activeTab !== 'points' && (
+                          <>
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-gray-800 text-white text-xs rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {newAnswersCount} new answer{newAnswersCount !== 1 ? 's' : ''}
+                            </div>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-          </div>
               </div>
             </div>
 
             {/* Main Content Area */}
             <div className="w-full lg:w-2/3">
-              {/* Welcome Message - Now inside the tab content with the same styling as other elements */}
+              {/* Welcome Message */}
               {activeTab === 'questions' && showWelcome ? (
                 <div className="bg-white dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)] shadow-md rounded-lg p-6 mb-6 relative">
-              <button 
+                  <button 
                     onClick={handleCloseWelcome}
                     className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                     aria-label="Close welcome message"
-              >
+                  >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-              </button>
+                  </button>
                   <h2 className="text-2xl font-bold mb-2 flex items-center text-gray-900 dark:text-gray-100">
                     <svg className="mr-2 h-6 w-6 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1421,12 +1420,12 @@ export default function ProfessorPage() {
                       ? `Share the session code "${sessionCode}" with your students to let them join this class.` 
                       : "Start a new session to begin collecting questions and awarding points to your students."}
                   </p>
-            </div>
+                </div>
               ) : null}
               {activeTab === 'questions' ? renderQuestionsTab() : renderPointsTab()}
+            </div>
           </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
