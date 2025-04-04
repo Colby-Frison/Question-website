@@ -924,7 +924,15 @@ export const addAnswer = async (
  */
 export const listenForAnswers = (
   activeQuestionId: string, 
-  callback: (answers: {id: string, text: string, timestamp: number, studentId: string, questionText?: string}[]) => void
+  callback: (answers: {
+    id: string,
+    text: string,
+    timestamp: number,
+    studentId: string,
+    questionText?: string,
+    likes?: number,
+    likedBy?: string[]
+  }[]) => void
 ): (() => void) => {
   if (!activeQuestionId) {
     console.error("[listenForAnswers] No active question ID provided");
@@ -994,7 +1002,9 @@ export const listenForAnswers = (
             timestamp: data.timestamp || Date.now(),
             studentId: data.studentId || "unknown",
             questionText: questionText || data.questionText || "",
-            activeQuestionId
+            activeQuestionId,
+            likes: data.likes || 0,
+            likedBy: data.likedBy || []
           };
         });
         

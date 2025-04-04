@@ -74,6 +74,7 @@ interface Answer {
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
 const ANSWERS_COLLECTION = 'answers';
+const DEBOUNCE_DELAY = 1000; // 1 second debounce delay
 
 export default function StudentPage() {
   const router = useRouter();
@@ -83,17 +84,18 @@ export default function StudentPage() {
   
   // State for class and session management
   const [className, setClassName] = useState('');
-  const [sessionCode, setSessionCode] = useState<string | null>(null);
+  const [sessionCode, setSessionCode] = useState<string>('');
   const [joined, setJoined] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentId, setStudentId] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'questions' | 'points'>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
   const [newQuestionsCount, setNewQuestionsCount] = useState(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
+  const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
   
   // Add state to track welcome message visibility
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -139,7 +141,6 @@ export default function StudentPage() {
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
-  const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
   const lastQuestionRef = useRef<Question | null>(null);
   const lastAnswerRef = useRef<Answer | null>(null);
   const previousAnswerRef = useRef<Answer | null>(null);
@@ -1008,7 +1009,7 @@ export default function StudentPage() {
 
         // Update liked answers
         const newLikedAnswers = new Set<string>();
-        answers.forEach(answer => {
+        answers.forEach((answer: { id: string, likedBy?: string[] }) => {
           if (answer.likedBy?.includes(studentId)) {
             newLikedAnswers.add(answer.id);
           }
@@ -1552,6 +1553,48 @@ export default function StudentPage() {
     }
   };
 
+  const handleLikeAnswer = async (answerId: string) => {
+    if (!studentId || !answerId) return;
+
+    try {
+      const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
+      const answerDoc = await getDoc(answerRef);
+      
+      if (!answerDoc.exists()) return;
+      
+      const data = answerDoc.data();
+      const currentLikes = data.likes || 0;
+      const likedBy = data.likedBy || [];
+      const isLiked = likedBy.includes(studentId);
+      
+      if (isLiked) {
+        // Unlike
+        await updateDoc(answerRef, {
+          likes: currentLikes - 1,
+          likedBy: arrayRemove(studentId)
+        });
+        setLikedAnswers((prev: Set<string>) => {
+          const newSet = new Set(prev);
+          newSet.delete(answerId);
+          return newSet;
+        });
+      } else {
+        // Like
+        await updateDoc(answerRef, {
+          likes: currentLikes + 1,
+          likedBy: arrayUnion(studentId)
+        });
+        setLikedAnswers((prev: Set<string>) => {
+          const newSet = new Set(prev);
+          newSet.add(answerId);
+          return newSet;
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling like:", error);
+    }
+  };
+
   // Show network error if offline
   if (networkStatus === 'offline') {
     return (
@@ -1883,45 +1926,3 @@ export default function StudentPage() {
     </div>
   );
 } 
-
-const handleLikeAnswer = async (answerId: string) => {
-  if (!studentId || !answerId) return;
-
-  try {
-    const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
-    const answerDoc = await getDoc(answerRef);
-    
-    if (!answerDoc.exists()) return;
-    
-    const data = answerDoc.data();
-    const currentLikes = data.likes || 0;
-    const likedBy = data.likedBy || [];
-    const isLiked = likedBy.includes(studentId);
-    
-    if (isLiked) {
-      // Unlike
-      await updateDoc(answerRef, {
-        likes: currentLikes - 1,
-        likedBy: arrayRemove(studentId)
-      });
-      setLikedAnswers((prev: Set<string>) => {
-        const newSet = new Set(prev);
-        newSet.delete(answerId);
-        return newSet;
-      });
-    } else {
-      // Like
-      await updateDoc(answerRef, {
-        likes: currentLikes + 1,
-        likedBy: arrayUnion(studentId)
-      });
-      setLikedAnswers((prev: Set<string>) => {
-        const newSet = new Set(prev);
-        newSet.add(answerId);
-        return newSet;
-      });
-    }
-  } catch (error) {
-    console.error("Error toggling like:", error);
-  }
-};
