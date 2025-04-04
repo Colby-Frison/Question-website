@@ -1334,7 +1334,9 @@ export default function ProfessorPage() {
                       <div className="space-y-3">
                         <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-gray-700 dark:border-gray-600">
                           <p className="font-medium text-gray-700 dark:text-gray-300">Session Code:</p>
-                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-300">{sessionCode}</p>
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-300 font-mono tracking-wider bg-white dark:bg-gray-800 px-4 py-2 rounded-md shadow-sm">
+                            {sessionCode}
+                          </p>
                         </div>
                         
                         <div className="text-sm text-gray-600 dark:text-gray-300 px-1">
