@@ -1652,7 +1652,9 @@ export default function StudentPage() {
                       
                       <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
                         <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary font-mono tracking-wider bg-white dark:bg-gray-800 px-4 py-2 rounded-md shadow-sm">
+                          {sessionCode}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1748,7 +1750,7 @@ export default function StudentPage() {
                     Welcome, Student!
                   </h2>
                   <p className="text-gray-600 dark:text-dark-text-secondary">
-                    You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
+                    You've joined the class session with code <span className="font-mono tracking-wider bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md">{sessionCode}</span>. Ask questions and participate in class activities to earn points.
                   </p>
                 </div>
               )}
