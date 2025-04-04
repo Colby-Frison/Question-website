@@ -48,7 +48,7 @@ import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question, ClassSession } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Define tab types for the dashboard
@@ -67,10 +67,13 @@ interface Answer {
   timestamp: number;
   studentId: string;
   questionText?: string;
+  likes?: number;
+  likedBy?: string[];
 }
 
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
+const ANSWERS_COLLECTION = 'answers';
 
 export default function StudentPage() {
   const router = useRouter();
@@ -80,16 +83,16 @@ export default function StudentPage() {
   
   // State for class and session management
   const [className, setClassName] = useState('');
-  const [sessionCode, setSessionCode] = useState('');
+  const [sessionCode, setSessionCode] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentId, setStudentId] = useState<string>('');
+  const [studentId, setStudentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'points'>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
-  const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
+  const [newQuestionsCount, setNewQuestionsCount] = useState(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
   
   // Add state to track welcome message visibility
@@ -103,14 +106,7 @@ export default function StudentPage() {
   });
   
   // Points management state
-  const [points, setPoints] = useState<number>(() => {
-    // Initialize from localStorage if available
-    if (typeof window !== 'undefined') {
-      const savedPoints = localStorage.getItem('studentPoints');
-      return savedPoints ? parseInt(savedPoints, 10) : 0;
-    }
-    return 0;
-  });
+  const [points, setPoints] = useState(0);
   const [pointsInput, setPointsInput] = useState<string>('0');
   const [isSavingPoints, setIsSavingPoints] = useState(false);
   const [showPointsModal, setShowPointsModal] = useState(false);
@@ -143,13 +139,15 @@ export default function StudentPage() {
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
-  // Add this ref to track the previous answer
+  const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
+  const lastQuestionRef = useRef<Question | null>(null);
+  const lastAnswerRef = useRef<Answer | null>(null);
+  const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastQuestionCheckRef = useRef(Date.now());
+  const isFirstLoad = useRef(true);
   const previousAnswerRef = useRef<Answer | null>(null);
-  // Add these near the top with other state declarations
   const lastQuestionUpdateRef = useRef<number>(Date.now());
   const lastAnswerUpdateRef = useRef<number>(Date.now());
-  const DEBOUNCE_DELAY = 10000; // Increase to 10 seconds
-  const CACHE_DURATION = 30000; // Increase to 30 seconds
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -1010,6 +1008,15 @@ export default function StudentPage() {
             setEditAnswerText(studentAnswer.text);
           }
         }
+
+        // Update liked answers
+        const newLikedAnswers = new Set<string>();
+        answers.forEach(answer => {
+          if (answer.likedBy?.includes(studentId)) {
+            newLikedAnswers.add(answer.id);
+          }
+        });
+        setLikedAnswers(newLikedAnswers);
       });
     }
 
@@ -1456,8 +1463,34 @@ export default function StudentPage() {
                       }`}
                     >
                       <p className="text-gray-900 dark:text-gray-100">{answer.text}</p>
-                      <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                        {answer.studentId === studentId ? 'Your answer' : 'Classmate\'s answer'}
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          {answer.studentId === studentId ? 'Your answer' : 'Classmate\'s answer'}
+                        </div>
+                        <button
+                          onClick={() => handleLikeAnswer(answer.id)}
+                          className={`flex items-center space-x-1 px-2 py-1 rounded-md transition-colors ${
+                            likedAnswers.has(answer.id)
+                              ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <svg 
+                            className="w-4 h-4" 
+                            fill={likedAnswers.has(answer.id) ? "currentColor" : "none"} 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24" 
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                            />
+                          </svg>
+                          <span className="text-sm">{answer.likes || 0}</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1853,3 +1886,45 @@ export default function StudentPage() {
     </div>
   );
 } 
+
+const handleLikeAnswer = async (answerId: string) => {
+  if (!studentId || !answerId) return;
+
+  try {
+    const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
+    const answerDoc = await getDoc(answerRef);
+    
+    if (!answerDoc.exists()) return;
+    
+    const data = answerDoc.data();
+    const currentLikes = data.likes || 0;
+    const likedBy = data.likedBy || [];
+    const isLiked = likedBy.includes(studentId);
+    
+    if (isLiked) {
+      // Unlike
+      await updateDoc(answerRef, {
+        likes: currentLikes - 1,
+        likedBy: arrayRemove(studentId)
+      });
+      setLikedAnswers((prev: Set<string>) => {
+        const newSet = new Set(prev);
+        newSet.delete(answerId);
+        return newSet;
+      });
+    } else {
+      // Like
+      await updateDoc(answerRef, {
+        likes: currentLikes + 1,
+        likedBy: arrayUnion(studentId)
+      });
+      setLikedAnswers((prev: Set<string>) => {
+        const newSet = new Set(prev);
+        newSet.add(answerId);
+        return newSet;
+      });
+    }
+  } catch (error) {
+    console.error("Error toggling like:", error);
+  }
+};
