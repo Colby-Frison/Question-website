@@ -142,9 +142,6 @@ export default function StudentPage() {
   const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
   const lastQuestionRef = useRef<Question | null>(null);
   const lastAnswerRef = useRef<Answer | null>(null);
-  const pointsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastQuestionCheckRef = useRef(Date.now());
-  const isFirstLoad = useRef(true);
   const previousAnswerRef = useRef<Answer | null>(null);
   const lastQuestionUpdateRef = useRef<number>(Date.now());
   const lastAnswerUpdateRef = useRef<number>(Date.now());
