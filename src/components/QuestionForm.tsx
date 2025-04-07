@@ -50,28 +50,26 @@ export default function QuestionForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!question.trim()) {
-      setError('Please enter a question');
+    if (!question.trim()) return;
+    
+    // Check character limit
+    if (question.length > 1000) {
+      setError("Question cannot exceed 1000 characters");
       return;
     }
 
-    if (question.length > MAX_CHARS) {
-      setError(`Question is too long. Maximum ${MAX_CHARS} characters allowed.`);
-      return;
-    }
-    
     if (!studentId || !sessionCode) {
       setError('Missing student ID or session code. Please refresh and try again.');
       return;
     }
     
     setIsSubmitting(true);
+    setError('');
     
     try {
-      // Add the question using the new question system
-      const result = await addQuestion(question, studentId, sessionCode);
+      const success = await addQuestion(question.trim(), studentId, sessionCode);
       
-      if (!result) {
+      if (!success) {
         throw new Error('Failed to submit question');
       }
       
@@ -125,34 +123,28 @@ export default function QuestionForm({
         </div>
       )}
       
-      <form onSubmit={handleSubmit} className="w-full">
-        <div className="mb-3">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="relative">
           <textarea
-            id="question"
-            rows={3}
-            className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-primary focus:border-transparent transition"
-            placeholder="Type your question here..."
             value={question}
-            onChange={handleQuestionChange}
-            maxLength={MAX_CHARS + 10} // Allow a little extra for better UX, but still validate
-          ></textarea>
-          <div className={`mt-1 text-right text-xs ${
-            charCount > MAX_CHARS 
-              ? 'text-red-600 dark:text-red-400' 
-              : 'text-gray-500 dark:text-gray-400'
-          }`}>
-            {charCount}/{MAX_CHARS} characters
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Type your question here..."
+            className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={4}
+            maxLength={1000}
+            required
+          />
+          <div className="absolute bottom-2 right-2 text-sm text-gray-500 dark:text-gray-400">
+            {question.length}/1000
           </div>
         </div>
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isSubmitting || charCount > MAX_CHARS}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed dark:bg-dark-primary dark:hover:bg-dark-primary-hover"
-          >
-            {isSubmitting ? 'Submitting...' : 'Submit Question'}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={isSubmitting || question.length > 1000}
+          className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? 'Submitting...' : 'Submit Question'}
+        </button>
       </form>
     </div>
   );

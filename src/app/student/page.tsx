@@ -1022,6 +1022,12 @@ export default function StudentPage() {
   const handleSaveEditAnswer = async () => {
     if (!editingAnswerId || !editAnswerText.trim() || !studentId) return;
 
+    // Check character limit
+    if (editAnswerText.length > 1000) {
+      setError("Answer cannot exceed 1000 characters");
+      return;
+    }
+
     try {
       const success = await updateAnswer(editingAnswerId, editAnswerText.trim(), studentId);
       if (success) {
@@ -1073,6 +1079,12 @@ export default function StudentPage() {
     e.preventDefault();
     
     if (!activeQuestion || !answerText.trim() || !studentId || !sessionCode) {
+      return;
+    }
+
+    // Check character limit
+    if (answerText.length > 1000) {
+      setError("Answer cannot exceed 1000 characters");
       return;
     }
     
@@ -1502,13 +1514,19 @@ export default function StudentPage() {
                     <div className="flex-grow">
                       {editingAnswerId === studentAnswer.id ? (
                         <div className="space-y-2">
-                          <textarea
-                            value={editAnswerText}
-                            onChange={(e) => setEditAnswerText(e.target.value)}
-                            className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
-                            rows={3}
-                            placeholder="Edit your answer..."
-                          />
+                          <div className="relative">
+                            <textarea
+                              value={editAnswerText}
+                              onChange={(e) => setEditAnswerText(e.target.value)}
+                              className="w-full p-2 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md dark:bg-dark-background-tertiary focus:border-blue-500 dark:focus:border-dark-primary focus:outline-none"
+                              rows={3}
+                              maxLength={1000}
+                              placeholder="Edit your answer..."
+                            />
+                            <div className="absolute bottom-2 right-2 text-sm text-gray-500 dark:text-gray-400">
+                              {editAnswerText.length}/1000
+                            </div>
+                          </div>
                           <div className="flex justify-end space-x-2">
                             <button
                               onClick={() => {
@@ -1521,7 +1539,8 @@ export default function StudentPage() {
                             </button>
                             <button
                               onClick={handleSaveEditAnswer}
-                              className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors"
+                              disabled={editAnswerText.length > 1000}
+                              className="px-3 py-1 text-sm bg-blue-500 text-white dark:bg-dark-primary rounded-md hover:bg-blue-600 dark:hover:bg-dark-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Save
                             </button>
@@ -1565,17 +1584,23 @@ export default function StudentPage() {
               </div>
             ) : (
               <form onSubmit={handleAnswerSubmit} className="space-y-4">
-                <textarea
-                  value={answerText}
-                  onChange={(e) => setAnswerText(e.target.value)}
-                  placeholder="Type your answer here..."
-                  className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={4}
-                  required
-                />
+                <div className="relative">
+                  <textarea
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    placeholder="Type your answer here..."
+                    className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={4}
+                    maxLength={1000}
+                    required
+                  />
+                  <div className="absolute bottom-2 right-2 text-sm text-gray-500 dark:text-gray-400">
+                    {answerText.length}/1000
+                  </div>
+                </div>
                 <button
                   type="submit"
-                  disabled={isSubmittingAnswer}
+                  disabled={isSubmittingAnswer || answerText.length > 1000}
                   className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-dark-primary dark:hover:bg-dark-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmittingAnswer ? 'Submitting...' : 'Submit Answer'}
