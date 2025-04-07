@@ -71,6 +71,15 @@ interface Answer {
   likedBy?: string[];
 }
 
+// Add new interface for points history
+interface PointHistoryEntry {
+  question: string;
+  answer: string;
+  points: number;
+  timestamp: number;
+  saved: boolean; // true if manually saved or points were awarded
+}
+
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
 const ANSWERS_COLLECTION = 'answers';
@@ -146,6 +155,98 @@ export default function StudentPage() {
   const previousAnswerRef = useRef<Answer | null>(null);
   const lastQuestionUpdateRef = useRef<number>(Date.now());
   const lastAnswerUpdateRef = useRef<number>(Date.now());
+
+  // Points history state and functions
+  const [pointsHistory, setPointsHistory] = useState<PointHistoryEntry[]>([]);
+
+  // Load points history from localStorage on mount
+  useEffect(() => {
+    if (studentId) {
+      const savedHistory = localStorage.getItem(`pointsHistory_${studentId}`);
+      if (savedHistory) {
+        setPointsHistory(JSON.parse(savedHistory));
+      }
+    }
+  }, [studentId]);
+
+  // Save points history to localStorage whenever it changes
+  useEffect(() => {
+    if (studentId && pointsHistory.length > 0) {
+      localStorage.setItem(`pointsHistory_${studentId}`, JSON.stringify(pointsHistory));
+    }
+  }, [pointsHistory, studentId]);
+
+  // Function to manually save an answer to history
+  const handleSaveToHistory = () => {
+    if (!activeQuestion || !studentAnswer) return;
+
+    const newEntry: PointHistoryEntry = {
+      question: activeQuestion.text,
+      answer: studentAnswer.text,
+      points: 0,
+      timestamp: Date.now(),
+      saved: true
+    };
+
+    setPointsHistory(prev => [newEntry, ...prev]);
+  };
+
+  // Function to update history when points are awarded
+  const updateHistoryWithPoints = useCallback((answerId: string, points: number) => {
+    if (!activeQuestion || !studentAnswer || studentAnswer.id !== answerId) return;
+
+    // Check if this answer is already in history
+    const existingEntryIndex = pointsHistory.findIndex(
+      entry => entry.answer === studentAnswer.text && entry.question === activeQuestion.text
+    );
+
+    if (existingEntryIndex >= 0) {
+      // Update existing entry
+      const updatedHistory = [...pointsHistory];
+      updatedHistory[existingEntryIndex] = {
+        ...updatedHistory[existingEntryIndex],
+        points,
+        saved: true
+      };
+      setPointsHistory(updatedHistory);
+    } else {
+      // Add new entry
+      const newEntry: PointHistoryEntry = {
+        question: activeQuestion.text,
+        answer: studentAnswer.text,
+        points,
+        timestamp: Date.now(),
+        saved: true
+      };
+      setPointsHistory(prev => [newEntry, ...prev]);
+    }
+  }, [activeQuestion, studentAnswer, pointsHistory]);
+
+  // Track points awarded in history
+  useEffect(() => {
+    if (!studentAnswer || !activeQuestion) return;
+
+    const checkPointsAwarded = () => {
+      // Check if points were awarded for this answer
+      const pointsDoc = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      getDoc(pointsDoc).then((doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          if (data.lastAwardedPoints && data.lastAwardedAnswerId === studentAnswer.id) {
+            updateHistoryWithPoints(studentAnswer.id, data.lastAwardedPoints);
+          }
+        }
+      });
+    };
+
+    // Check for points when answer is submitted
+    checkPointsAwarded();
+
+    // Set up interval to check periodically
+    const interval = setInterval(checkPointsAwarded, 5000);
+
+    return () => clearInterval(interval);
+  }, [studentAnswer, activeQuestion, studentId, updateHistoryWithPoints]);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -1400,6 +1501,15 @@ export default function StudentPage() {
                     </div>
                     <div className="flex gap-2 ml-4">
                       <button
+                        onClick={handleSaveToHistory}
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+                        title="Save to history"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                      </button>
+                      <button
                         onClick={() => handleEditAnswer(studentAnswer)}
                         className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
                         title="Edit answer"
@@ -1462,8 +1572,18 @@ export default function StudentPage() {
                     >
                       <p className="text-gray-900 dark:text-gray-100">{answer.text}</p>
                       <div className="mt-2 flex items-center justify-between">
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          {answer.studentId === studentId ? 'Your answer' : 'Classmate\'s answer'}
+                        <div className="flex items-center space-x-2">
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {answer.studentId === studentId ? 'Your answer' : 'Classmate\'s answer'}
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex items-center">
+                              <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {new Date(answer.timestamp).toLocaleTimeString()}
+                            </span>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleLikeAnswer(answer.id)}
@@ -1506,7 +1626,60 @@ export default function StudentPage() {
         </div>
       )}
     </div>
+
+    {/* Points History Section */}
+    <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+      <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+        <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+      Points History
+    </h2>
+
+    {pointsHistory.length > 0 ? (
+      <div className="space-y-4">
+        {pointsHistory.map((entry, index) => (
+          <div key={index} className="p-4 border rounded-lg dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Question:</h3>
+              <p className="text-gray-700 dark:text-gray-300">{entry.question}</p>
+            </div>
+            <div className="mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Your Answer:</h3>
+              <p className="text-gray-700 dark:text-gray-300">{entry.answer}</p>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex items-center space-x-4">
+                <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300">
+                  {entry.points} points
+                </span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {new Date(entry.timestamp).toLocaleString()}
+                </span>
+              </div>
+              {entry.saved && (
+                <span className="text-sm text-green-600 dark:text-green-400 flex items-center">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Saved
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+        <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <p className="text-gray-600 dark:text-gray-300 mb-1">No points history yet</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Your answered questions and earned points will appear here.</p>
+      </div>
+    )}
   </div>
+</div>
 );
 
   /**
