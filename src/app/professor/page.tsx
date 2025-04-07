@@ -14,7 +14,7 @@
  * manages the professor's class session.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import ClassNameDisplay from '@/components/ClassCodeDisplay';
@@ -49,6 +49,22 @@ import JoinClass from '@/components/JoinClass';
 import { collection, query, where, getDocs, limit, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+// Define types for the component
+interface Answer {
+  id: string;
+  text: string;
+  timestamp: number;
+  studentId: string;
+  questionText?: string;
+  activeQuestionId?: string;
+  likes?: number;
+  likedBy?: string[];
+}
+
+interface PointsAwarded {
+  [key: string]: number;
+}
+
 // Constants for Firebase collections
 const ACTIVE_QUESTION_COLLECTION = 'activeQuestions';
 const ANSWERS_COLLECTION = 'answers';
@@ -79,8 +95,8 @@ export default function ProfessorPage() {
   // Points tab state for managing active questions and student answers
   const [questionText, setQuestionText] = useState('');
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<{id: string, text: string, timestamp: number, studentId: string, questionText?: string, activeQuestionId?: string}[]>([]);
-  const [pointsAwarded, setPointsAwarded] = useState<{[answerId: string]: number}>({});
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [pointsAwarded, setPointsAwarded] = useState<PointsAwarded>({});
   const [maintenanceSetup, setMaintenanceSetup] = useState(false);
 
   // New state for student join handling
@@ -601,12 +617,8 @@ export default function ProfessorPage() {
    */
   const handleDeleteQuestion = async (id: string) => {
     try {
-      console.log(`Deleting question ${id}`);
       await deleteQuestion(id);
-      
-      // Update the local state immediately to remove the deleted question
-      setQuestions(prevQuestions => prevQuestions.filter(q => q.id !== id));
-      
+      setQuestions((prevQuestions: Question[]) => prevQuestions.filter((q: Question) => q.id !== id));
       console.log(`Question ${id} deleted successfully`);
     } catch (error) {
       console.error("Error deleting question:", error);
@@ -729,44 +741,22 @@ export default function ProfessorPage() {
    * 
    * @param e - The form submit event
    */
-  const handleAskQuestion = async (e: React.FormEvent) => {
+  const handleAskQuestion = async (e: FormEvent) => {
     e.preventDefault();
     
     if (!questionText.trim() || !sessionCode) {
+      setError("Please enter a question and make sure you have an active session.");
       return;
     }
-    
+
     try {
-      // Set the active question text immediately for a smoother transition
-      const newQuestionText = questionText;
-      setActiveQuestionText(newQuestionText);
-      
-      // Add active question and get its ID back
-      const id = await addActiveQuestion(sessionCode, questionText);
-      
-      // Set as the active question and clear form
-      setActiveQuestionId(id);
+      const questionId = await addActiveQuestion(questionText, sessionCode);
+      setActiveQuestionId(questionId);
       setQuestionText('');
-      
-      // Save active question to localStorage
-      const savedSession = localStorage.getItem('professorSession');
-      if (savedSession) {
-        const sessionData = JSON.parse(savedSession);
-        sessionData.activeQuestionId = id;
-        localStorage.setItem('professorSession', JSON.stringify(sessionData));
-      }
-      
-      // Clear previous answers when setting new question
-      setAnswers([]);
-      setPointsAwarded({});
-      
-      // Update session activity
-      if (sessionId) {
-        await updateSessionActivity(sessionId);
-        setLastActivity(Date.now());
-      }
+      setError(null);
     } catch (error) {
-      console.error("Error asking question:", error);
+      console.error("Error adding active question:", error);
+      setError("Failed to add question. Please try again.");
     }
   };
   
@@ -816,66 +806,36 @@ export default function ProfessorPage() {
    */
   const handleRewardPoints = async (studentId: string, points: number, answerId: string) => {
     try {
-      // Check if we've already awarded points for this answer
       const previousPoints = pointsAwarded[answerId] || 0;
       
-      // If clicking the same number, reset to 0 points
-      if (previousPoints === points) {
-        const pointsDifference = -previousPoints;
+      if (points === 0) {
+        // Remove points
+        const success = await updateStudentPoints(studentId, -previousPoints);
         
-        // Update UI immediately for responsiveness
-        setPointsAwarded(prev => {
-          const newPointsAwarded = { ...prev };
-          delete newPointsAwarded[answerId];
-          return newPointsAwarded;
-        });
-        
-        console.log(`Resetting points to 0 for student ${studentId} on answer ${answerId} (was ${previousPoints})`);
-        
-        // Only make the database call if there's an actual change
-        if (pointsDifference !== 0) {
-          // Apply the points change in the database
-          const success = await updateStudentPoints(studentId, pointsDifference);
-          
-          if (!success) {
-            // Revert UI if database update failed
-      setPointsAwarded(prev => ({
-        ...prev,
-              [answerId]: previousPoints
-            }));
-            throw new Error("Failed to update points in the database");
-          }
-          
-          // Update session activity only if the update succeeded
-          if (sessionId) {
-            await updateSessionActivity(sessionId);
-            setLastActivity(Date.now());
-          }
+        if (success) {
+          setPointsAwarded((prev: PointsAwarded) => {
+            const newPointsAwarded = { ...prev };
+            delete newPointsAwarded[answerId];
+            return newPointsAwarded;
+          });
+        } else {
+          setPointsAwarded((prev: PointsAwarded) => ({
+            ...prev,
+            [answerId]: previousPoints
+          }));
         }
+      } else {
+        // Add points
+        const pointsToAdd = points - previousPoints;
+        const success = await updateStudentPoints(studentId, pointsToAdd);
         
-        return;
-      }
-      
-      // Handle assigning new points (different from current selection)
-      // Calculate the actual point difference to apply
-      const pointsDifference = points - previousPoints;
-      
-      // Update UI immediately for responsiveness
-            setPointsAwarded(prev => ({
-              ...prev,
-        [answerId]: points
-      }));
-      
-      console.log(`Changing points for student ${studentId} on answer ${answerId} from ${previousPoints} to ${points} (${pointsDifference > 0 ? '+' : ''}${pointsDifference})`);
-      
-      // Only make the database call if there's an actual change
-      if (pointsDifference !== 0) {
-        // Apply the points change in the database
-        const success = await updateStudentPoints(studentId, pointsDifference);
-        
-        if (!success) {
-          // Revert UI if database update failed
-          setPointsAwarded(prev => {
+        if (success) {
+          setPointsAwarded((prev: PointsAwarded) => ({
+            ...prev,
+            [answerId]: points
+          }));
+        } else {
+          setPointsAwarded((prev: PointsAwarded) => {
             const newPointsAwarded = { ...prev };
             if (previousPoints === 0) {
               delete newPointsAwarded[answerId];
@@ -884,19 +844,11 @@ export default function ProfessorPage() {
             }
             return newPointsAwarded;
           });
-          
-          throw new Error("Failed to update points in the database");
-        }
-        
-        // Update session activity only if the update succeeded
-        if (sessionId) {
-          await updateSessionActivity(sessionId);
-          setLastActivity(Date.now());
         }
       }
     } catch (error) {
-      console.error("Error managing reward points:", error);
-      setError("Failed to update student points. Please try again.");
+      console.error("Error updating points:", error);
+      setError("Failed to update points. Please try again.");
     }
   };
   
@@ -1066,6 +1018,16 @@ export default function ProfessorPage() {
                         </span>
                         
                         <div className="flex items-center space-x-2">
+                          {(answer.likes ?? 0) > 0 && (
+                            <span className="text-sm bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full text-gray-800 dark:text-gray-300 font-medium">
+                              <span className="inline-flex items-center">
+                                <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                                {answer.likes} likes
+                              </span>
+                            </span>
+                          )}
                           {pointsAwarded[answer.id] ? (
                             <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 font-medium">
                               <span className="inline-flex items-center">
