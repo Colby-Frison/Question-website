@@ -48,7 +48,7 @@ import { getSessionByCode, listenForSessionStatus } from '@/lib/classSession';
 import { Question, ClassSession } from '@/types';
 import { setupAutomaticMaintenance } from '@/lib/maintenance';
 import { checkFirebaseConnection } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Define tab types for the dashboard
@@ -67,10 +67,23 @@ interface Answer {
   timestamp: number;
   studentId: string;
   questionText?: string;
+  likes?: number;
+  likedBy?: string[];
+}
+
+// Add new interface for points history
+interface PointHistoryEntry {
+  question: string;
+  answer: string;
+  points: number;
+  timestamp: number;
+  saved: boolean; // true if manually saved or points were awarded
 }
 
 // Add this to constant declarations near the top with other collection constants
 const STUDENT_POINTS_COLLECTION = 'studentPoints';
+const ANSWERS_COLLECTION = 'answers';
+const DEBOUNCE_DELAY = 1000; // 1 second debounce delay
 
 export default function StudentPage() {
   const router = useRouter();
@@ -80,17 +93,18 @@ export default function StudentPage() {
   
   // State for class and session management
   const [className, setClassName] = useState('');
-  const [sessionCode, setSessionCode] = useState('');
+  const [sessionCode, setSessionCode] = useState<string>('');
   const [joined, setJoined] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [studentId, setStudentId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'points'>('questions');
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline'>('online');
   const [initStage, setInitStage] = useState('starting');
-  const [newQuestionsCount, setNewQuestionsCount] = useState<number>(0);
+  const [newQuestionsCount, setNewQuestionsCount] = useState(0);
   const [lastSeenQuestionId, setLastSeenQuestionId] = useState<string | null>(null);
+  const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
   
   // Add state to track welcome message visibility
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -103,14 +117,7 @@ export default function StudentPage() {
   });
   
   // Points management state
-  const [points, setPoints] = useState<number>(() => {
-    // Initialize from localStorage if available
-    if (typeof window !== 'undefined') {
-      const savedPoints = localStorage.getItem('studentPoints');
-      return savedPoints ? parseInt(savedPoints, 10) : 0;
-    }
-    return 0;
-  });
+  const [points, setPoints] = useState(0);
   const [pointsInput, setPointsInput] = useState<string>('0');
   const [isSavingPoints, setIsSavingPoints] = useState(false);
   const [showPointsModal, setShowPointsModal] = useState(false);
@@ -143,13 +150,135 @@ export default function StudentPage() {
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
-  // Add this ref to track the previous answer
+  const [editingPointsIndex, setEditingPointsIndex] = useState<number | null>(null);
+  const [editingPointsValue, setEditingPointsValue] = useState<string>('');
+  const lastQuestionRef = useRef<Question | null>(null);
+  const lastAnswerRef = useRef<Answer | null>(null);
   const previousAnswerRef = useRef<Answer | null>(null);
-  // Add these near the top with other state declarations
   const lastQuestionUpdateRef = useRef<number>(Date.now());
   const lastAnswerUpdateRef = useRef<number>(Date.now());
-  const DEBOUNCE_DELAY = 10000; // Increase to 10 seconds
-  const CACHE_DURATION = 30000; // Increase to 30 seconds
+
+  // Points history state and functions
+  const [pointsHistory, setPointsHistory] = useState<PointHistoryEntry[]>([]);
+
+  // Load points history from localStorage on mount
+  useEffect(() => {
+    if (studentId) {
+      const savedHistory = localStorage.getItem(`pointsHistory_${studentId}`);
+      if (savedHistory) {
+        setPointsHistory(JSON.parse(savedHistory));
+      }
+    }
+  }, [studentId]);
+
+  // Save points history to localStorage whenever it changes
+  useEffect(() => {
+    if (studentId && pointsHistory.length > 0) {
+      localStorage.setItem(`pointsHistory_${studentId}`, JSON.stringify(pointsHistory));
+    }
+  }, [pointsHistory, studentId]);
+
+  // Function to manually save an answer to history
+  const handleSaveToHistory = () => {
+    if (!activeQuestion || !studentAnswer) return;
+
+    const newEntry: PointHistoryEntry = {
+      question: activeQuestion.text,
+      answer: studentAnswer.text,
+      points: 0,
+      timestamp: Date.now(),
+      saved: true
+    };
+
+    setPointsHistory(prev => [newEntry, ...prev]);
+  };
+
+  // Function to update history when points are awarded
+  const updateHistoryWithPoints = useCallback((answerId: string, points: number) => {
+    if (!activeQuestion || !studentAnswer || studentAnswer.id !== answerId) return;
+
+    // Check if this answer is already in history
+    const existingEntryIndex = pointsHistory.findIndex(
+      entry => entry.answer === studentAnswer.text && entry.question === activeQuestion.text
+    );
+
+    if (existingEntryIndex >= 0) {
+      // Update existing entry
+      const updatedHistory = [...pointsHistory];
+      updatedHistory[existingEntryIndex] = {
+        ...updatedHistory[existingEntryIndex],
+        points,
+        saved: true
+      };
+      setPointsHistory(updatedHistory);
+    } else {
+      // Add new entry
+      const newEntry: PointHistoryEntry = {
+        question: activeQuestion.text,
+        answer: studentAnswer.text,
+        points,
+        timestamp: Date.now(),
+        saved: true
+      };
+      setPointsHistory(prev => [newEntry, ...prev]);
+    }
+  }, [activeQuestion, studentAnswer, pointsHistory]);
+
+  // Track points awarded in history
+  useEffect(() => {
+    if (!studentAnswer || !activeQuestion) return;
+
+    const checkPointsAwarded = () => {
+      // Check if points were awarded for this answer
+      const pointsDoc = doc(db, STUDENT_POINTS_COLLECTION, studentId);
+      getDoc(pointsDoc).then((doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          if (data.lastAwardedPoints && data.lastAwardedAnswerId === studentAnswer.id) {
+            // Check if this answer is already in history
+            const existingEntryIndex = pointsHistory.findIndex(
+              entry => entry.answer === studentAnswer.text && entry.question === activeQuestion.text
+            );
+
+            if (existingEntryIndex >= 0) {
+              // Update existing entry with new points
+              setPointsHistory(prev => {
+                const newHistory = [...prev];
+                newHistory[existingEntryIndex] = {
+                  ...newHistory[existingEntryIndex],
+                  points: data.lastAwardedPoints,
+                  saved: true
+                };
+                return newHistory;
+              });
+            } else {
+              // Add new entry with awarded points
+              const newEntry: PointHistoryEntry = {
+                question: activeQuestion.text,
+                answer: studentAnswer.text,
+                points: data.lastAwardedPoints,
+                timestamp: Date.now(),
+                saved: true
+              };
+              setPointsHistory(prev => [newEntry, ...prev]);
+            }
+
+            // Update local points to match awarded points
+            setPoints(data.lastAwardedPoints);
+            setPointsInput(data.lastAwardedPoints.toString());
+          }
+        }
+      });
+    };
+
+    // Check for points when answer is submitted
+    checkPointsAwarded();
+
+    // Set up interval to check periodically
+    const interval = setInterval(checkPointsAwarded, 5000);
+
+    return () => clearInterval(interval);
+  }, [studentAnswer, activeQuestion, studentId, pointsHistory]);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -1010,6 +1139,15 @@ export default function StudentPage() {
             setEditAnswerText(studentAnswer.text);
           }
         }
+
+        // Update liked answers
+        const newLikedAnswers = new Set<string>();
+        answers.forEach((answer: { id: string, likedBy?: string[] }) => {
+          if (answer.likedBy?.includes(studentId)) {
+            newLikedAnswers.add(answer.id);
+          }
+        });
+        setLikedAnswers(newLikedAnswers);
       });
     }
 
@@ -1395,6 +1533,15 @@ export default function StudentPage() {
                     </div>
                     <div className="flex gap-2 ml-4">
                       <button
+                        onClick={handleSaveToHistory}
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+                        title="Save to history"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                      </button>
+                      <button
                         onClick={() => handleEditAnswer(studentAnswer)}
                         className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
                         title="Edit answer"
@@ -1435,19 +1582,175 @@ export default function StudentPage() {
                 </button>
               </form>
             )}
+
+            {/* Display all student answers */}
+            {answers.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+                  <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+                  </svg>
+                  Class Answers
+                </h3>
+                <div className="space-y-4">
+                  {answers.map((answer) => (
+                    <div 
+                      key={answer.id} 
+                      className={`p-4 rounded-lg border ${
+                        answer.studentId === studentId 
+                          ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' 
+                          : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+                      }`}
+                    >
+                      <p className="text-gray-900 dark:text-gray-100">{answer.text}</p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {answer.studentId === studentId ? 'Your answer' : 'Classmate\'s answer'}
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex items-center">
+                              <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {new Date(answer.timestamp).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleLikeAnswer(answer.id)}
+                          className={`flex items-center space-x-1 px-2 py-1 rounded-md transition-colors ${
+                            likedAnswers.has(answer.id)
+                              ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <svg 
+                            className="w-4 h-4" 
+                            fill={likedAnswers.has(answer.id) ? "currentColor" : "none"} 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24" 
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                            />
+                          </svg>
+                          <span className="text-sm">{answer.likes || 0}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
             <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-gray-600 dark:text-gray-300 mb-1">No active question</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Wait for your professor to ask a question.</p>
-          </div>
-        )}
-      </div>
+          </svg>
+          <p className="text-gray-600 dark:text-gray-300 mb-1">No active question</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Wait for your professor to ask a question.</p>
+        </div>
+      )}
     </div>
-  );
+
+    {/* Points History Section */}
+    <div className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-900 dark:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
+      <h2 className="text-xl font-bold mb-4 flex items-center text-gray-900 dark:text-gray-100">
+        <svg className="mr-2 h-5 w-5 text-blue-500 dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+      Points History
+    </h2>
+
+    {pointsHistory.length > 0 ? (
+      <div className="space-y-4">
+        {pointsHistory.map((entry, index) => (
+          <div key={index} className="p-4 border rounded-lg dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Question:</h3>
+              <p className="text-gray-700 dark:text-gray-300">{entry.question}</p>
+            </div>
+            <div className="mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Your Answer:</h3>
+              <p className="text-gray-700 dark:text-gray-300">{entry.answer}</p>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex items-center space-x-4">
+                {editingPointsIndex === index ? (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingPointsValue}
+                      onChange={(e) => setEditingPointsValue(e.target.value)}
+                      className="w-16 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    />
+                    <button
+                      onClick={() => handleSaveHistoryPoints(index)}
+                      className="text-sm bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingPointsIndex(null)}
+                      className="text-sm bg-gray-500 text-white px-2 py-1 rounded hover:bg-gray-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleEditHistoryPoints(index, entry.points)}
+                    className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                  >
+                    {entry.points} points
+                  </button>
+                )}
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {new Date(entry.timestamp).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                {entry.saved && (
+                  <span className="text-sm text-green-600 dark:text-green-400 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Saved
+                  </span>
+                )}
+                <button
+                  onClick={() => handleRemoveFromHistory(index)}
+                  className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                  title="Remove from history"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg dark:border-gray-700">
+        <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <p className="text-gray-600 dark:text-gray-300 mb-1">No points history yet</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Your answered questions and earned points will appear here.</p>
+      </div>
+    )}
+  </div>
+</div>
+);
 
   /**
    * Function to manually refresh student points from the database
@@ -1491,6 +1794,80 @@ export default function StudentPage() {
       setError("Failed to refresh points data. Please try again.");
       setIsLoading(false);
     }
+  };
+
+  const handleLikeAnswer = async (answerId: string) => {
+    if (!studentId || !answerId) return;
+
+    try {
+      const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
+      const answerDoc = await getDoc(answerRef);
+      
+      if (!answerDoc.exists()) return;
+      
+      const data = answerDoc.data();
+      const currentLikes = data.likes || 0;
+      const likedBy = data.likedBy || [];
+      const isLiked = likedBy.includes(studentId);
+      
+      if (isLiked) {
+        // Unlike
+        await updateDoc(answerRef, {
+          likes: currentLikes - 1,
+          likedBy: arrayRemove(studentId)
+        });
+        setLikedAnswers((prev: Set<string>) => {
+          const newSet = new Set(prev);
+          newSet.delete(answerId);
+          return newSet;
+        });
+      } else {
+        // Like
+        await updateDoc(answerRef, {
+          likes: currentLikes + 1,
+          likedBy: arrayUnion(studentId)
+        });
+        setLikedAnswers((prev: Set<string>) => {
+          const newSet = new Set(prev);
+          newSet.add(answerId);
+          return newSet;
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling like:", error);
+    }
+  };
+
+  // Function to remove an entry from points history
+  const handleRemoveFromHistory = (index: number) => {
+    setPointsHistory(prev => {
+      const newHistory = [...prev];
+      newHistory.splice(index, 1);
+      return newHistory;
+    });
+  };
+
+  // Function to handle editing points in history
+  const handleEditHistoryPoints = (index: number, currentPoints: number) => {
+    setEditingPointsIndex(index);
+    setEditingPointsValue(currentPoints.toString());
+  };
+
+  // Function to save edited points
+  const handleSaveHistoryPoints = (index: number) => {
+    const newPoints = parseInt(editingPointsValue, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      setPointsHistory(prev => {
+        const newHistory = [...prev];
+        newHistory[index] = {
+          ...newHistory[index],
+          points: newPoints
+        };
+        return newHistory;
+      });
+    }
+    setEditingPointsIndex(null);
+    setEditingPointsValue('');
   };
 
   // Show network error if offline
@@ -1652,7 +2029,9 @@ export default function StudentPage() {
                       
                       <div className="p-3 bg-gray-100 border border-gray-200 rounded-md text-center dark:bg-dark-background-tertiary dark:border-gray-700">
                         <p className="font-medium text-gray-700 dark:text-dark-text-secondary">Session Code:</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary">{sessionCode}</p>
+                        <p className="text-2xl font-bold text-blue-600 dark:text-dark-primary font-mono tracking-wider bg-white dark:bg-gray-800 px-4 py-2 rounded-md shadow-sm">
+                          {sessionCode}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1748,7 +2127,7 @@ export default function StudentPage() {
                     Welcome, Student!
                   </h2>
                   <p className="text-gray-600 dark:text-dark-text-secondary">
-                    You've joined the class session with code "{sessionCode}". Ask questions and participate in class activities to earn points.
+                    You've joined the class session with code <span className="font-mono tracking-wider bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md">{sessionCode}</span>. Ask questions and participate in class activities to earn points.
                   </p>
                 </div>
               )}
