@@ -73,11 +73,12 @@ interface Answer {
 
 // Add new interface for points history
 interface PointHistoryEntry {
+  id: string;
   question: string;
   answer: string;
   points: number;
   timestamp: number;
-  saved: boolean; // true if manually saved or points were awarded
+  saved: boolean;
 }
 
 // Add this to constant declarations near the top with other collection constants
@@ -176,11 +177,17 @@ export default function StudentPage() {
     }
   }, [pointsHistory, studentId]);
 
+  // Function to remove an entry from history
+  const handleRemoveFromHistory = (entryId: string) => {
+    setPointsHistory(prev => prev.filter(entry => entry.id !== entryId));
+  };
+
   // Function to manually save an answer to history
   const handleSaveToHistory = () => {
     if (!activeQuestion || !studentAnswer) return;
 
     const newEntry: PointHistoryEntry = {
+      id: crypto.randomUUID(), // Generate a unique ID for each entry
       question: activeQuestion.text,
       answer: studentAnswer.text,
       points: 0,
@@ -212,6 +219,7 @@ export default function StudentPage() {
     } else {
       // Add new entry
       const newEntry: PointHistoryEntry = {
+        id: crypto.randomUUID(),
         question: activeQuestion.text,
         answer: studentAnswer.text,
         points,
@@ -1657,14 +1665,25 @@ export default function StudentPage() {
                   {new Date(entry.timestamp).toLocaleString()}
                 </span>
               </div>
-              {entry.saved && (
-                <span className="text-sm text-green-600 dark:text-green-400 flex items-center">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <div className="flex items-center space-x-2">
+                {entry.saved && (
+                  <span className="text-sm text-green-600 dark:text-green-400 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Saved
+                  </span>
+                )}
+                <button
+                  onClick={() => handleRemoveFromHistory(entry.id)}
+                  className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                  title="Remove from history"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Saved
-                </span>
-              )}
+                </button>
+              </div>
             </div>
           </div>
         ))}

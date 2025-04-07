@@ -62,8 +62,8 @@ interface Answer {
   text: string;
   timestamp: number;
   studentId: string;
+  studentName: string;
   questionText?: string;
-  activeQuestionId?: string;
   likes?: number;
   likedBy?: string[];
 }
@@ -311,13 +311,20 @@ export default function ProfessorPage() {
     const cachedData = cache.answers.get(activeQuestionId);
     if (cachedData && Date.now() - cachedData.timestamp < cache.CACHE_EXPIRATION) {
       console.log(`Using cached answers for question: ${activeQuestionId}`);
-      setAnswers(cachedData.data);
+      setAnswers(cachedData.data.map((answer: any) => ({
+        ...answer,
+        studentName: answer.studentName || 'Anonymous Student'
+      })));
+      return () => {};
     }
     
     const unsubscribe = listenForAnswers(activeQuestionId, (newAnswers) => {
       if (!isComponentMounted) return;
       console.log("Received answers update:", newAnswers);
-      setAnswers(newAnswers);
+      setAnswers(newAnswers.map((answer: any) => ({
+        ...answer,
+        studentName: answer.studentName || 'Anonymous Student'
+      })));
     });
     
     // Clean up listener when component unmounts or activeQuestionId changes
@@ -1073,47 +1080,22 @@ export default function ProfessorPage() {
                       
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
-                            <span className="inline-flex items-center">
-                              <svg className="mr-1 h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-                              </svg>
-                              {answer.likes || 0} likes
-                            </span>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {answer.studentName}
                           </span>
-                          <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
-                            Student ID: {answer.studentId.substring(0, 6)}
-                          </span>
-                          <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
-                            <span className="inline-flex items-center">
-                              <svg className="mr-1 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              {new Date(answer.timestamp).toLocaleTimeString()}
-                            </span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {new Date(answer.timestamp).toLocaleString()}
                           </span>
                         </div>
-                        
                         <div className="flex items-center space-x-2">
-                          {pointsAwarded[answer.id] ? (
-                            <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 font-medium">
-                              <span className="inline-flex items-center">
-                                <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {pointsAwarded[answer.id]} points awarded
-                              </span>
-                            </span>
-                          ) : null}
-                          
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {answer.likes || 0} likes
+                          </span>
                           <button
-                            onClick={() => handleDeleteAnswer(answer.id)}
-                            className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                            title="Delete answer"
+                            onClick={() => handleRewardPoints(answer.studentId, 1, answer.id)}
+                            className="text-sm text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 transition-colors"
                           >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
+                            Award 1 point
                           </button>
                         </div>
                       </div>
@@ -1219,26 +1201,6 @@ export default function ProfessorPage() {
       return () => unsubscribe();
     }
   }, [sessionCode]);
-
-  /**
-   * Handle deleting a student answer
-   * 
-   * @param answerId - The ID of the answer to delete
-   */
-  const handleDeleteAnswer = async (answerId: string) => {
-    try {
-      console.log(`Deleting answer ${answerId}`);
-      await deleteAnswer(answerId, 'professor'); // Using 'professor' as studentId since professors can delete any answer
-      
-      // Update the local state immediately to remove the deleted answer
-      setAnswers(prevAnswers => prevAnswers.filter(a => a.id !== answerId));
-      
-      console.log(`Answer ${answerId} deleted successfully`);
-    } catch (error) {
-      console.error("Error deleting answer:", error);
-      setError("Failed to delete answer. Please try again.");
-    }
-  };
 
   // Show error state if there's a problem
   if (error) {
