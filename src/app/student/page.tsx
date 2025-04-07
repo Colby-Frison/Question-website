@@ -150,6 +150,8 @@ export default function StudentPage() {
   const [deleteAnswerId, setDeleteAnswerId] = useState<string | null>(null);
   const [studentAnswer, setStudentAnswer] = useState<Answer | null>(null);
   const [showAnswerDeletedModal, setShowAnswerDeletedModal] = useState(false);
+  const [editingPointsIndex, setEditingPointsIndex] = useState<number | null>(null);
+  const [editingPointsValue, setEditingPointsValue] = useState<string>('');
   const lastQuestionRef = useRef<Question | null>(null);
   const lastAnswerRef = useRef<Answer | null>(null);
   const previousAnswerRef = useRef<Answer | null>(null);
@@ -1680,9 +1682,36 @@ export default function StudentPage() {
             </div>
             <div className="flex items-center justify-between mt-2">
               <div className="flex items-center space-x-4">
-                <span className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300">
-                  {entry.points} points
-                </span>
+                {editingPointsIndex === index ? (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingPointsValue}
+                      onChange={(e) => setEditingPointsValue(e.target.value)}
+                      className="w-16 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    />
+                    <button
+                      onClick={() => handleSaveHistoryPoints(index)}
+                      className="text-sm bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingPointsIndex(null)}
+                      className="text-sm bg-gray-500 text-white px-2 py-1 rounded hover:bg-gray-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleEditHistoryPoints(index, entry.points)}
+                    className="text-sm bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-full text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                  >
+                    {entry.points} points
+                  </button>
+                )}
                 <span className="text-sm text-gray-500 dark:text-gray-400">
                   {new Date(entry.timestamp).toLocaleString()}
                 </span>
@@ -1816,6 +1845,29 @@ export default function StudentPage() {
       newHistory.splice(index, 1);
       return newHistory;
     });
+  };
+
+  // Function to handle editing points in history
+  const handleEditHistoryPoints = (index: number, currentPoints: number) => {
+    setEditingPointsIndex(index);
+    setEditingPointsValue(currentPoints.toString());
+  };
+
+  // Function to save edited points
+  const handleSaveHistoryPoints = (index: number) => {
+    const newPoints = parseInt(editingPointsValue, 10);
+    if (!isNaN(newPoints) && newPoints >= 0) {
+      setPointsHistory(prev => {
+        const newHistory = [...prev];
+        newHistory[index] = {
+          ...newHistory[index],
+          points: newPoints
+        };
+        return newHistory;
+      });
+    }
+    setEditingPointsIndex(null);
+    setEditingPointsValue('');
   };
 
   // Show network error if offline
