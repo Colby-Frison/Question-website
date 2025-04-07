@@ -73,12 +73,11 @@ interface Answer {
 
 // Add new interface for points history
 interface PointHistoryEntry {
-  id: string;
   question: string;
   answer: string;
   points: number;
   timestamp: number;
-  saved: boolean;
+  saved: boolean; // true if manually saved or points were awarded
 }
 
 // Add this to constant declarations near the top with other collection constants
@@ -177,17 +176,11 @@ export default function StudentPage() {
     }
   }, [pointsHistory, studentId]);
 
-  // Function to remove an entry from history
-  const handleRemoveFromHistory = (entryId: string) => {
-    setPointsHistory(prev => prev.filter(entry => entry.id !== entryId));
-  };
-
   // Function to manually save an answer to history
   const handleSaveToHistory = () => {
     if (!activeQuestion || !studentAnswer) return;
 
     const newEntry: PointHistoryEntry = {
-      id: crypto.randomUUID(), // Generate a unique ID for each entry
       question: activeQuestion.text,
       answer: studentAnswer.text,
       points: 0,
@@ -219,7 +212,6 @@ export default function StudentPage() {
     } else {
       // Add new entry
       const newEntry: PointHistoryEntry = {
-        id: crypto.randomUUID(),
         question: activeQuestion.text,
         answer: studentAnswer.text,
         points,
@@ -241,7 +233,31 @@ export default function StudentPage() {
         if (doc.exists()) {
           const data = doc.data();
           if (data.lastAwardedPoints && data.lastAwardedAnswerId === studentAnswer.id) {
-            updateHistoryWithPoints(studentAnswer.id, data.lastAwardedPoints);
+            // Check if this answer is already in history
+            const existingEntryIndex = pointsHistory.findIndex(
+              entry => entry.answer === studentAnswer.text && entry.question === activeQuestion.text
+            );
+
+            if (existingEntryIndex >= 0) {
+              // Update existing entry
+              const updatedHistory = [...pointsHistory];
+              updatedHistory[existingEntryIndex] = {
+                ...updatedHistory[existingEntryIndex],
+                points: data.lastAwardedPoints,
+                saved: true
+              };
+              setPointsHistory(updatedHistory);
+            } else {
+              // Add new entry
+              const newEntry: PointHistoryEntry = {
+                question: activeQuestion.text,
+                answer: studentAnswer.text,
+                points: data.lastAwardedPoints,
+                timestamp: Date.now(),
+                saved: true
+              };
+              setPointsHistory(prev => [newEntry, ...prev]);
+            }
           }
         }
       });
@@ -254,7 +270,7 @@ export default function StudentPage() {
     const interval = setInterval(checkPointsAwarded, 5000);
 
     return () => clearInterval(interval);
-  }, [studentAnswer, activeQuestion, studentId, updateHistoryWithPoints]);
+  }, [studentAnswer, activeQuestion, studentId, pointsHistory]);
 
   // Track new questions and update notification count
   useEffect(() => {
@@ -1675,11 +1691,11 @@ export default function StudentPage() {
                   </span>
                 )}
                 <button
-                  onClick={() => handleRemoveFromHistory(entry.id)}
+                  onClick={() => handleRemoveFromHistory(index)}
                   className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
                   title="Remove from history"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
@@ -1785,6 +1801,15 @@ export default function StudentPage() {
     } catch (error) {
       console.error("Error toggling like:", error);
     }
+  };
+
+  // Function to remove an entry from points history
+  const handleRemoveFromHistory = (index: number) => {
+    setPointsHistory(prev => {
+      const newHistory = [...prev];
+      newHistory.splice(index, 1);
+      return newHistory;
+    });
   };
 
   // Show network error if offline
