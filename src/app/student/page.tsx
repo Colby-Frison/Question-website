@@ -239,16 +239,18 @@ export default function StudentPage() {
             );
 
             if (existingEntryIndex >= 0) {
-              // Update existing entry
-              const updatedHistory = [...pointsHistory];
-              updatedHistory[existingEntryIndex] = {
-                ...updatedHistory[existingEntryIndex],
-                points: data.lastAwardedPoints,
-                saved: true
-              };
-              setPointsHistory(updatedHistory);
+              // Update existing entry with new points
+              setPointsHistory(prev => {
+                const newHistory = [...prev];
+                newHistory[existingEntryIndex] = {
+                  ...newHistory[existingEntryIndex],
+                  points: data.lastAwardedPoints,
+                  saved: true
+                };
+                return newHistory;
+              });
             } else {
-              // Add new entry
+              // Add new entry with awarded points
               const newEntry: PointHistoryEntry = {
                 question: activeQuestion.text,
                 answer: studentAnswer.text,
@@ -258,6 +260,10 @@ export default function StudentPage() {
               };
               setPointsHistory(prev => [newEntry, ...prev]);
             }
+
+            // Update local points to match awarded points
+            setPoints(data.lastAwardedPoints);
+            setPointsInput(data.lastAwardedPoints.toString());
           }
         }
       });
