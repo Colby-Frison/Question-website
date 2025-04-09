@@ -67,8 +67,6 @@ interface Answer {
   timestamp: number;
   studentId: string;
   questionText?: string;
-  likes?: number;
-  likedBy?: string[];
 }
 
 // Add new interface for points history
@@ -1151,15 +1149,6 @@ export default function StudentPage() {
             setEditAnswerText(studentAnswer.text);
           }
         }
-
-        // Update liked answers
-        const newLikedAnswers = new Set<string>();
-        answers.forEach((answer: { id: string, likedBy?: string[] }) => {
-          if (answer.likedBy?.includes(studentId)) {
-            newLikedAnswers.add(answer.id);
-          }
-        });
-        setLikedAnswers(newLikedAnswers);
       });
     }
 
@@ -1642,30 +1631,6 @@ export default function StudentPage() {
                             </span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleLikeAnswer(answer.id)}
-                          className={`flex items-center space-x-1 px-2 py-1 rounded-md transition-colors ${
-                            likedAnswers.has(answer.id)
-                              ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
-                          }`}
-                        >
-                          <svg 
-                            className="w-4 h-4" 
-                            fill={likedAnswers.has(answer.id) ? "currentColor" : "none"} 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24" 
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path 
-                              strokeLinecap="round" 
-                              strokeLinejoin="round" 
-                              strokeWidth={2} 
-                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
-                            />
-                          </svg>
-                          <span className="text-sm">{answer.likes || 0}</span>
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -1818,48 +1783,6 @@ export default function StudentPage() {
       console.error("Error refreshing student points:", error);
       setError("Failed to refresh points data. Please try again.");
       setIsLoading(false);
-    }
-  };
-
-  const handleLikeAnswer = async (answerId: string) => {
-    if (!studentId || !answerId) return;
-
-    try {
-      const answerRef = doc(db, ANSWERS_COLLECTION, answerId);
-      const answerDoc = await getDoc(answerRef);
-      
-      if (!answerDoc.exists()) return;
-      
-      const data = answerDoc.data();
-      const currentLikes = data.likes || 0;
-      const likedBy = data.likedBy || [];
-      const isLiked = likedBy.includes(studentId);
-      
-      if (isLiked) {
-        // Unlike
-        await updateDoc(answerRef, {
-          likes: currentLikes - 1,
-          likedBy: arrayRemove(studentId)
-        });
-        setLikedAnswers((prev: Set<string>) => {
-          const newSet = new Set(prev);
-          newSet.delete(answerId);
-          return newSet;
-        });
-      } else {
-        // Like
-        await updateDoc(answerRef, {
-          likes: currentLikes + 1,
-          likedBy: arrayUnion(studentId)
-        });
-        setLikedAnswers((prev: Set<string>) => {
-          const newSet = new Set(prev);
-          newSet.add(answerId);
-          return newSet;
-        });
-      }
-    } catch (error) {
-      console.error("Error toggling like:", error);
     }
   };
 

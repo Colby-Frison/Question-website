@@ -64,8 +64,6 @@ interface Answer {
   studentId: string;
   questionText?: string;
   activeQuestionId?: string;
-  likes?: number;
-  likedBy?: string[];
 }
 
 export default function ProfessorPage() {
@@ -1073,17 +1071,6 @@ export default function ProfessorPage() {
                       
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
-                            <span className="inline-flex items-center">
-                              <svg className="mr-1 h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-                              </svg>
-                              {answer.likes || 0} likes
-                            </span>
-                          </span>
-                          <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
-                            Student ID: {answer.studentId.substring(0, 6)}
-                          </span>
                           <span className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md dark:text-gray-300">
                             <span className="inline-flex items-center">
                               <svg className="mr-1 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
